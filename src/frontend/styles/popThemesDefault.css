@@ -44,13 +44,13 @@
 
   }
 
-  .ql-container {
+  .content {
     font-size: var(--textScale);
   }
 }
 
 @scope (.theme-big-clock) {
-  .ql-container {
+  .content {
     display: none;
   }
 

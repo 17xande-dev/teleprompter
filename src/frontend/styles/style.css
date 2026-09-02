@@ -1,5 +1,3 @@
-/* @import 'quill/dist/quill.core.css'; */
-
 :root {
   --sidebar-width: 300px;
   --background-color: hsl(240, 5.9%, 11%);
@@ -86,6 +84,6 @@ tp-clock-control {
   }
 }
 
-.ql-container {
+.content {
   font-size: var(--textScale);
 }

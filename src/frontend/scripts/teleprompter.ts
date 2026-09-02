@@ -1,5 +1,3 @@
-import { ToolbarConfig } from "quill/modules/toolbar";
-import Quill, { QuillOptions } from "quill";
 import {
   registerClockComponent,
   registerClockControlComponent,
@@ -25,7 +23,6 @@ const check = WaSplitPanel && WaButton && WaDialog && WaDropdown &&
 console.log(check != undefined);
 
 // CSS imports
-import "quill/dist/quill.snow.css";
 // import "@awesome.me/webawesome/dist/styles/webawesome.css";
 import "@awesome.me/webawesome/dist/styles/themes/shoelace.css";
 import "@awesome.me/webawesome/dist/styles/utilities.css";
@@ -35,35 +32,8 @@ import "@awesome.me/webawesome/dist/styles/utilities.css";
 import "../styles/style.css";
 import { Doc, DocControls } from "./doc.ts";
 import { WaSelectEvent } from "@awesome.me/webawesome";
-
-const toolbarOptions: ToolbarConfig = [
-  ["bold", "italic", "underline", "strike"], // toggled buttons
-  ["blockquote", "code-block"],
-  ["link", "image", "video", "formula"],
-
-  [{ "header": 1 }, { "header": 2 }], // custom button values
-  [{ "list": "ordered" }, { "list": "bullet" }, { "list": "check" }],
-  [{ "script": "sub" }, { "script": "super" }], // superscript/subscript
-  [{ "indent": "-1" }, { "indent": "+1" }], // outdent/indent
-  [{ "direction": "rtl" }], // text direction
-
-  [{ "size": ["small", false, "large", "huge"] }], // custom dropdown
-  [{ "header": [1, 2, 3, 4, 5, 6, false] }],
-
-  [{ "color": [] }, { "background": [] }], // dropdown with defaults from theme
-  [{ "font": [] }],
-  [{ "align": [] }],
-
-  ["clean"], // remove formatting button
-];
-
-const options: QuillOptions = {
-  placeholder: "Bonjour, Le Telepromteur",
-  theme: "snow",
-  modules: {
-    toolbar: toolbarOptions,
-  },
-};
+import { Wordgard } from "wordgard/editor";
+import { newEditor, restoreEditor, saveEditor } from "./editor.ts";
 
 type PopupDimensions = {
   width: number;
@@ -78,7 +48,7 @@ export class Teleprompter {
   docControls: DocControls;
   splitPanel: WaSplitPanel;
   btnMessage: WaButton;
-  quill: Quill;
+  editor: Wordgard;
   rngSpeed: WaSlider;
   rngScale: WaSlider;
   drpLayouts: WaDropdown;
@@ -119,14 +89,21 @@ export class Teleprompter {
       y: 100,
     };
 
-    this.quill = new Quill("#editor", options);
+    this.editor = newEditor(
+      document.querySelector("#editor")!,
+      this.saveEditorContent.bind(this),
+    );
     this.docControls = new DocControls();
 
     // Event listeners.
     // TODO: when docControls becomes a WebComponent, listen directly to it.
     this.docControls.drpDocuments.addEventListener(
       "new",
-      () => this.quill.setText(""),
+      () =>
+        this.editor = newEditor(
+          document.querySelector("#editor")!,
+          this.saveEditorContent.bind(this),
+        ),
     );
 
     this.docControls.drpDocuments.addEventListener(
@@ -135,8 +112,11 @@ export class Teleprompter {
         if (!e.detail) {
           throw new Error("expecting Doc but got undefined?");
         }
-        const parsedDoc = JSON.parse(e.detail.content);
-        this.quill.setContents(parsedDoc);
+        this.editor = restoreEditor(
+          this.editor.dom.parentElement!,
+          e.detail.content,
+          this.saveEditorContent.bind(this),
+        );
       },
     );
 
@@ -180,14 +160,6 @@ export class Teleprompter {
     );
 
     this.editingName = "";
-    this.quill.on("text-change", () => {
-      const quillContents = this.quill.getContents();
-      const content = JSON.stringify(
-        quillContents,
-      );
-      this.docControls.docStorage.setCurrentContent(content);
-      this.docControls.docStorage.save();
-    });
 
     globalThis.addEventListener("keyup", this.listenKey.bind(this));
 
@@ -203,6 +175,12 @@ export class Teleprompter {
       this.ifrmPreview.contentDocument.body.style.overflow = "hidden";
       this.updateMain();
     });
+  }
+
+  saveEditorContent(editor: Wordgard) {
+    const content = JSON.stringify(saveEditor(editor));
+    this.docControls.docStorage.setCurrentContent(content);
+    this.docControls.docStorage.save();
   }
 
   async listenPop() {
@@ -265,7 +243,7 @@ export class Teleprompter {
   }
 
   listenKey(ke: KeyboardEvent) {
-    if (this.quill.hasFocus()) return;
+    if (this.editor.hasFocus) return;
 
     switch (ke.code) {
       case "Space":
@@ -293,17 +271,12 @@ export class Teleprompter {
   }
 
   updateMain() {
-    const editor = <HTMLDivElement> document.querySelector(
-      "#editor > .ql-editor",
-    );
-    if (!editor) {
-      return console.error("editor not found!");
-    }
+    const content = this.editor.contentDOM.innerHTML;
     if (!this.previewer) return;
-    this.previewer.setContent(editor.innerHTML);
+    this.previewer.setContent(content);
     if (!this.viewerWindow) return;
     this.viewer = this.viewerWindow.viewer;
-    this.viewer.setContent(editor.innerHTML);
+    this.viewer.setContent(content);
   }
 
   listenResize(innerWidth: number, innerHeight: number) {
