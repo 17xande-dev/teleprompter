@@ -223,10 +223,29 @@ export class Teleprompter {
     this.ifrmPreview.contentWindow?.postMessage(msg, location.origin);
   }
 
+  // Dragging a slider fires "input" far faster than once a frame, and every
+  // send goes to every viewer on the *reliable* channel — which shares an
+  // SCTP association with the scroll channel, so flooding it makes scroll
+  // samples queue up behind settings and the motion stutters. Merging to at
+  // most one message per frame (last value wins, they're absolute settings)
+  // keeps the channel clear and still lands the change within ~16ms.
+  #pendingSettings: Record<string, unknown> | null = null;
+  #settingsFrame = 0;
+
   #pushSettings(patch: Omit<ControlMessage & { type: "settings" }, "type">) {
-    const msg: ControlMessage = { type: "settings", ...patch };
-    this.link.broadcast(msg);
-    this.#postToPreview(msg);
+    this.#pendingSettings = { ...this.#pendingSettings, ...patch };
+    if (this.#settingsFrame) return;
+
+    this.#settingsFrame = requestAnimationFrame(() => {
+      this.#settingsFrame = 0;
+      const msg = {
+        type: "settings",
+        ...this.#pendingSettings,
+      } as ControlMessage;
+      this.#pendingSettings = null;
+      this.link.broadcast(msg);
+      this.#postToPreview(msg);
+    });
   }
 
   #pushClock(msg: ControlMessage) {

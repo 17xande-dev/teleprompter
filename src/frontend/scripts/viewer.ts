@@ -189,13 +189,24 @@ export class Viewer {
     if (this.lastScrollTime === 0) this.lastScrollTime = timestamp;
     const timeElapsed = timestamp - this.lastScrollTime;
 
-    const pixelsToScroll = (this.scrollSpeed / 1000) * timeElapsed;
-    this.accumulatedScroll += pixelsToScroll;
+    this.accumulatedScroll += (this.scrollSpeed / 1000) * timeElapsed;
 
-    const pixelsToScrollNow = Math.floor(this.accumulatedScroll);
-    globalThis.scrollBy(0, pixelsToScrollNow);
-
-    this.accumulatedScroll -= pixelsToScrollNow;
+    // Scroll by the whole fractional amount rather than rounding down to a
+    // whole pixel. Rounding makes slow speeds visibly step, and — because a
+    // frame whose rounded delta is 0 fires no scroll event at all — it also
+    // made this viewer emit position samples in irregular bursts, so
+    // everyone mirroring it stuttered rather than gliding.
+    const before = globalThis.scrollY;
+    globalThis.scrollBy(0, this.accumulatedScroll);
+    // Carry whatever the browser didn't consume (it may quantise to device
+    // pixels) so slow speeds still accumulate instead of being rounded away
+    // every frame. Clamped so hitting the end of the document can't build
+    // up an unbounded debt that snaps back on the way out.
+    const moved = globalThis.scrollY - before;
+    this.accumulatedScroll = Math.max(
+      -globalThis.innerHeight,
+      Math.min(globalThis.innerHeight, this.accumulatedScroll - moved),
+    );
     this.lastScrollTime = timestamp;
 
     requestAnimationFrame(this.smoothScroll.bind(this));
