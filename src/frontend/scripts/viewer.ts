@@ -42,7 +42,7 @@ export class Viewer {
     this.timer = document.querySelector("#timeTimer")!;
 
     this.#scrollSync = makeScrollSync({
-      el: self,
+      el: document.scrollingElement!,
       send: (ratio) => this.#link?.sendScroll(ratio),
     });
 

@@ -1,83 +1,75 @@
-// Converts a scrollable element's scrollTop to/from a 0..1 ratio (so windows
-// of different sizes stay aligned), coalesces native scroll events to at
-// most one outgoing send per animation frame, and suppresses the echo that
-// would otherwise happen when applyRemote's own scrollTo fires a native
-// "scroll" event straight back into the same listener.
+// scrollsync.ts — keep a scrollable element in sync with a remote peer.
+//
+// Ported from ~/dev/webrtc-go, whose sync feels smooth precisely because it
+// does the simple thing at a high rate rather than anything clever:
+//   * Convert scrollTop to/from a 0..1 ratio, so windows of different sizes
+//     (a phone, a 4K display, the control page's scaled-down preview) stay
+//     aligned on the same line.
+//   * Coalesce local scroll events to one send per animation frame (~60Hz)
+//     instead of the 100+/sec the browser fires.
+//   * Apply a remote position *instantly*. Smoothness comes from receiving
+//     ~60 samples a second, not from interpolating between them — easing
+//     here would only add lag.
+//   * Suppress the echo: applying a remote position must not bounce back.
+//
+// Transport-agnostic: `send` is just a callback, so the same code runs over
+// a WebRTC data channel or postMessage.
 
 export interface ScrollSync {
   applyRemote(ratio: number): void;
+  // Stops the per-frame pump. Only needed by tests and teardown; a page
+  // that syncs for its whole lifetime never calls it.
+  stop(): void;
 }
 
 export interface ScrollSyncOptions {
-  el: HTMLElement | Window;
+  el: Element;
   send: (ratio: number, seq: number) => void;
 }
 
-function maxScroll(el: ScrollSyncOptions["el"]): number {
-  if (el instanceof Window) {
-    return document.documentElement.scrollHeight - el.innerHeight;
-  }
-  return el.scrollHeight - el.clientHeight;
-}
+export function makeScrollSync({ el, send }: ScrollSyncOptions): ScrollSync {
+  // Scroll events for the document's scrolling element are dispatched at
+  // the window, not at the element itself.
+  const isDocument = typeof document !== "undefined" &&
+    el === document.scrollingElement;
+  const target: EventTarget = isDocument ? globalThis : el;
 
-function currentTop(el: ScrollSyncOptions["el"]): number {
-  if (el instanceof Window) {
-    return el.scrollY;
-  }
-  return el.scrollTop;
-}
-
-function scrollTo(el: ScrollSyncOptions["el"], top: number) {
-  if (el instanceof Window) {
-    el.scrollTo({ top, behavior: "instant" });
-    return;
-  }
-  el.scrollTo({ top, behavior: "instant" });
-}
-
-export function makeScrollSync(opts: ScrollSyncOptions): ScrollSync {
-  const { el, send } = opts;
+  let seq = 0;
   let applyingRemote = false;
   let pending: number | null = null;
-  let seq = 0;
-  let scheduled = false;
+  let running = true;
 
-  function currentRatio(): number {
-    const max = maxScroll(el);
-    if (max <= 0) return 0;
-    return currentTop(el) / max;
-  }
+  const maxScroll = () => Math.max(0, el.scrollHeight - el.clientHeight);
+  const currentRatio = () => {
+    const max = maxScroll();
+    return max ? el.scrollTop / max : 0;
+  };
 
-  function flush() {
-    scheduled = false;
-    if (pending === null) return;
-    seq++;
-    send(pending, seq);
-    pending = null;
-  }
+  target.addEventListener("scroll", () => {
+    if (applyingRemote) return; // don't re-broadcast a position we just applied
+    pending = currentRatio();
+  }, { passive: true });
 
-  el.addEventListener(
-    "scroll",
-    () => {
-      // Don't re-broadcast a position we just applied ourselves.
-      if (applyingRemote) return;
-      pending = currentRatio();
-      if (!scheduled) {
-        scheduled = true;
-        requestAnimationFrame(flush);
-      }
-    },
-    { passive: true },
-  );
+  (function frame() {
+    if (!running) return;
+    if (pending !== null) {
+      send(pending, ++seq);
+      pending = null;
+    }
+    requestAnimationFrame(frame);
+  })();
 
   return {
     applyRemote(ratio: number) {
       applyingRemote = true;
-      scrollTo(el, ratio * maxScroll(el));
-      // Release after the resulting scroll event has had a chance to fire.
+      el.scrollTo({ top: ratio * maxScroll(), behavior: "instant" });
+      // Release after the resulting scroll event has been dispatched.
       requestAnimationFrame(() => {
         applyingRemote = false;
       });
+    },
+    stop() {
+      running = false;
     },
   };
 }

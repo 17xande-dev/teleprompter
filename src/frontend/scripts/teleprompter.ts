@@ -67,6 +67,7 @@ export class Teleprompter {
   viewers = new Map<string, ViewerEntry>();
 
   #currentLayout = "theme-default";
+  #currentMessage = "";
   #autoScrollRunning = true;
 
   constructor() {
@@ -210,13 +211,19 @@ export class Teleprompter {
       speed: -this.rngSpeed.value,
       textScale: this.rngScale.value / 10,
       layout: this.#currentLayout,
-      autoScroll: this.#autoScrollRunning,
+      message: this.#currentMessage,
     });
+    // A newcomer may be the only viewer (making it the pacer) or one more
+    // follower; either way the roles need recomputing.
+    this.#applyScrollRoles();
+    this.#applyPreviewScale();
     this.#renderViewers();
   }
 
   #onViewerLeft(id: string) {
     this.viewers.delete(id);
+    // This may have been the pacer; whoever is left has to take over.
+    this.#applyScrollRoles();
     // The preview may have been mirroring this viewer; re-fit to whoever
     // is left (or the fallback size if that was the last one).
     this.#applyPreviewScale();
@@ -267,20 +274,30 @@ export class Teleprompter {
     this.ifrmPreview.style.transformOrigin = "top left";
   }
 
+  // Only the pacing viewer integrates the scroll speed itself; everyone
+  // else mirrors the position it reports. Independent auto-scroll loops
+  // would each run off their own clock and drift apart within a minute
+  // with nothing to pull them back together.
+  #applyScrollRoles() {
+    const pacer = this.#previewSourceID();
+    for (const id of this.link.viewers()) {
+      this.link.sendTo(id, {
+        type: "settings",
+        autoScroll: id === pacer && this.#autoScrollRunning,
+      });
+    }
+  }
+
   #onViewerScroll(id: string, ratio: number) {
     if (!this.viewers.has(id)) return;
+    if (id !== this.#previewSourceID()) return;
 
-    // The preview follows its source viewer regardless of drive permission
-    // — it's the operator's window onto what that viewer is showing, and
-    // gating it would leave it frozen at the top of the script whenever no
-    // viewer has been granted drive (the default).
-    if (id === this.#previewSourceID()) {
-      this.#postToPreview({ type: "scroll", r: ratio, s: 0 });
-    }
-
-    // Fanning the position out to the *other* viewers is the part that
-    // needs permission: that's this viewer driving everyone else.
-    if (!this.viewers.get(id)?.canDrive) return;
+    // The pacing viewer's position goes out to everyone else on every
+    // sample it sends — ~60 a second, on the unreliable channel, applied
+    // instantly at the far end. That high rate is what makes it feel
+    // smooth; throttling it or easing between samples only adds lag (this
+    // is how webrtc-go does it, and it's why that version feels immediate).
+    this.#postToPreview({ type: "scroll", r: ratio, s: 0 });
     for (const otherID of this.link.viewers()) {
       if (otherID !== id) this.link.sendScrollTo(otherID, ratio);
     }
@@ -298,7 +315,9 @@ export class Teleprompter {
     if (!entry) return;
     entry.canDrive = canDrive;
     this.link.sendTo(id, { type: "set-driver", canDrive });
-    // Granting drive changes which viewer the preview follows.
+    // Granting drive changes which viewer paces the scroll, and which one
+    // the preview follows.
+    this.#applyScrollRoles();
     this.#applyPreviewScale();
     this.#renderViewers();
   }
@@ -396,7 +415,7 @@ export class Teleprompter {
       case "Space":
         ke.preventDefault();
         this.#autoScrollRunning = !this.#autoScrollRunning;
-        this.#pushSettings({ autoScroll: this.#autoScrollRunning });
+        this.#applyScrollRoles();
         break;
       default:
         // ignore for now
@@ -408,7 +427,8 @@ export class Teleprompter {
     if (!txtMessage) {
       throw new Error("No Message input found.");
     }
-    this.#pushSettings({ message: txtMessage.value || "" });
+    this.#currentMessage = txtMessage.value || "";
+    this.#pushSettings({ message: this.#currentMessage });
   }
 
   updateMain() {
