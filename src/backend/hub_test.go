@@ -47,6 +47,16 @@ func newTestConn(t *testing.T) *websocket.Conn {
 	}
 }
 
+// mustJoin joins a peer and fails the test if the hub refuses it.
+func mustJoin(t *testing.T, h *hub, room string, rl role, key string, conn *websocket.Conn) *peer {
+	t.Helper()
+	p, err := h.join(room, rl, key, conn)
+	if err != nil {
+		t.Fatalf("join(%s, %s): %v", room, rl, err)
+	}
+	return p
+}
+
 func recvMsg(t *testing.T, p *peer) map[string]any {
 	t.Helper()
 	select {
@@ -64,7 +74,7 @@ func recvMsg(t *testing.T, p *peer) map[string]any {
 
 func TestJoinViewer_WaitingWhenNoController(t *testing.T) {
 	h := newHub()
-	v := h.join("room1", roleViewer, newTestConn(t))
+	v := mustJoin(t, h, "room1", roleViewer, "", newTestConn(t))
 	if msg := recvMsg(t, v); msg["kind"] != "waiting" {
 		t.Fatalf("kind = %v, want waiting", msg["kind"])
 	}
@@ -72,12 +82,12 @@ func TestJoinViewer_WaitingWhenNoController(t *testing.T) {
 
 func TestJoinController_ThenViewer_NotifiesBothSides(t *testing.T) {
 	h := newHub()
-	c := h.join("room1", roleController, newTestConn(t))
+	c := mustJoin(t, h, "room1", roleController, "k1", newTestConn(t))
 	if msg := recvMsg(t, c); msg["kind"] != "viewer-list" {
 		t.Fatalf("controller kind = %v, want viewer-list", msg["kind"])
 	}
 
-	v := h.join("room1", roleViewer, newTestConn(t))
+	v := mustJoin(t, h, "room1", roleViewer, "", newTestConn(t))
 	if msg := recvMsg(t, v); msg["kind"] != "peer-joined" || msg["from"] != c.id {
 		t.Fatalf("viewer msg = %v, want peer-joined from %s", msg, c.id)
 	}
@@ -88,10 +98,10 @@ func TestJoinController_ThenViewer_NotifiesBothSides(t *testing.T) {
 
 func TestJoinController_ExistingViewersListed(t *testing.T) {
 	h := newHub()
-	v := h.join("room1", roleViewer, newTestConn(t))
+	v := mustJoin(t, h, "room1", roleViewer, "", newTestConn(t))
 	recvMsg(t, v) // waiting
 
-	c := h.join("room1", roleController, newTestConn(t))
+	c := mustJoin(t, h, "room1", roleController, "k1", newTestConn(t))
 	msg := recvMsg(t, c)
 	if msg["kind"] != "viewer-list" {
 		t.Fatalf("kind = %v, want viewer-list", msg["kind"])
@@ -108,10 +118,10 @@ func TestJoinController_ExistingViewersListed(t *testing.T) {
 
 func TestJoinController_EvictsPreviousController(t *testing.T) {
 	h := newHub()
-	first := h.join("room1", roleController, newTestConn(t))
+	first := mustJoin(t, h, "room1", roleController, "k1", newTestConn(t))
 	recvMsg(t, first) // viewer-list
 
-	second := h.join("room1", roleController, newTestConn(t))
+	second := mustJoin(t, h, "room1", roleController, "k1", newTestConn(t))
 	recvMsg(t, second) // viewer-list
 
 	h.mu.Lock()
@@ -130,10 +140,10 @@ func TestJoinController_EvictsPreviousController(t *testing.T) {
 
 func TestLeaveViewer_NotifiesController(t *testing.T) {
 	h := newHub()
-	c := h.join("room1", roleController, newTestConn(t))
+	c := mustJoin(t, h, "room1", roleController, "k1", newTestConn(t))
 	recvMsg(t, c) // viewer-list
 
-	v := h.join("room1", roleViewer, newTestConn(t))
+	v := mustJoin(t, h, "room1", roleViewer, "", newTestConn(t))
 	recvMsg(t, v) // peer-joined
 	recvMsg(t, c) // peer-joined
 
@@ -145,13 +155,13 @@ func TestLeaveViewer_NotifiesController(t *testing.T) {
 
 func TestLeaveController_NotifiesAllViewers(t *testing.T) {
 	h := newHub()
-	c := h.join("room1", roleController, newTestConn(t))
+	c := mustJoin(t, h, "room1", roleController, "k1", newTestConn(t))
 	recvMsg(t, c) // viewer-list
 
-	v1 := h.join("room1", roleViewer, newTestConn(t))
+	v1 := mustJoin(t, h, "room1", roleViewer, "", newTestConn(t))
 	recvMsg(t, v1)
 	recvMsg(t, c)
-	v2 := h.join("room1", roleViewer, newTestConn(t))
+	v2 := mustJoin(t, h, "room1", roleViewer, "", newTestConn(t))
 	recvMsg(t, v2)
 	recvMsg(t, c)
 
@@ -165,7 +175,7 @@ func TestLeaveController_NotifiesAllViewers(t *testing.T) {
 
 func TestLeave_EmptyRoomRemovedFromHub(t *testing.T) {
 	h := newHub()
-	v := h.join("room1", roleViewer, newTestConn(t))
+	v := mustJoin(t, h, "room1", roleViewer, "", newTestConn(t))
 	recvMsg(t, v) // waiting
 
 	h.leave(v)
@@ -183,20 +193,89 @@ func TestSendTo_UnknownPeerIsNoop(t *testing.T) {
 	r.sendTo("nonexistent", []byte(`{"kind":"noop"}`)) // must not panic or block
 }
 
+// A new controller evicts the sitting one, so without a key anybody who
+// learned a room id from a viewer link could take the session over and push
+// whatever they liked to every display.
+func TestJoinController_WrongKeyIsRefused(t *testing.T) {
+	h := newHub()
+	owner := mustJoin(t, h, "room1", roleController, "correct-key", newTestConn(t))
+	recvMsg(t, owner) // viewer-list
+
+	if _, err := h.join("room1", roleController, "guessed", newTestConn(t)); err != errControlDenied {
+		t.Fatalf("err = %v, want errControlDenied", err)
+	}
+
+	h.mu.Lock()
+	r := h.rooms["room1"]
+	h.mu.Unlock()
+	r.mu.Lock()
+	still := r.controller
+	r.mu.Unlock()
+	if still != owner {
+		t.Fatal("the rejected controller must not have displaced the sitting one")
+	}
+}
+
+// The operator refreshing presents the same key, and must still be able to
+// reclaim the room they already hold.
+func TestJoinController_SameKeyReclaims(t *testing.T) {
+	h := newHub()
+	first := mustJoin(t, h, "room1", roleController, "k1", newTestConn(t))
+	recvMsg(t, first) // viewer-list
+
+	second, err := h.join("room1", roleController, "k1", newTestConn(t))
+	if err != nil {
+		t.Fatalf("reclaim with the same key: %v", err)
+	}
+	recvMsg(t, second) // viewer-list
+
+	h.mu.Lock()
+	r := h.rooms["room1"]
+	h.mu.Unlock()
+	r.mu.Lock()
+	got := r.controller
+	r.mu.Unlock()
+	if got != second {
+		t.Fatal("the reconnecting controller should hold the room")
+	}
+}
+
+// A viewer needs no key — the room id in the shared link is all it has.
+func TestJoinViewer_NeedsNoKey(t *testing.T) {
+	h := newHub()
+	mustJoin(t, h, "room1", roleController, "k1", newTestConn(t))
+	if _, err := h.join("room1", roleViewer, "", newTestConn(t)); err != nil {
+		t.Fatalf("viewer join: %v", err)
+	}
+}
+
+// The key belongs to the room, and the room only lives as long as someone
+// is in it, so an abandoned room id can be claimed afresh.
+func TestControlKey_ResetsWithTheRoom(t *testing.T) {
+	h := newHub()
+	first := mustJoin(t, h, "room1", roleController, "k1", newTestConn(t))
+	recvMsg(t, first)
+	h.leave(first)
+
+	if _, err := h.join("room1", roleController, "a-different-key", newTestConn(t)); err != nil {
+		t.Fatalf("claiming an empty room: %v", err)
+	}
+}
+
 // An evicted controller's read loop calls leave() only once it notices its
 // connection was closed — by which time the replacement has registered. If
 // leave announced that departure anyway, every viewer would tear down the
 // link it had just built to the new controller and hang on "waiting".
 func TestLeaveEvictedController_DoesNotAnnounceDeparture(t *testing.T) {
 	h := newHub()
-	first := h.join("room1", roleController, newTestConn(t))
+	first := mustJoin(t, h, "room1", roleController, "k1", newTestConn(t))
 	recvMsg(t, first) // viewer-list
 
-	v := h.join("room1", roleViewer, newTestConn(t))
+	v := mustJoin(t, h, "room1", roleViewer, "", newTestConn(t))
 	recvMsg(t, v)     // peer-joined (first controller)
 	recvMsg(t, first) // peer-joined (viewer)
 
-	second := h.join("room1", roleController, newTestConn(t))
+	second := mustJoin(t, h, "room1", roleController, "k1", newTestConn(t))
 	recvMsg(t, second)                                  // viewer-list
 	if msg := recvMsg(t, v); msg["from"] != second.id { // peer-joined (new controller)
 		t.Fatalf("viewer msg = %v, want peer-joined from %s", msg, second.id)
@@ -217,12 +296,12 @@ func TestLeaveEvictedController_DoesNotAnnounceDeparture(t *testing.T) {
 // channel behind for that write to land on.
 func TestSendTo_RacesLeaveWithoutPanicking(t *testing.T) {
 	h := newHub()
-	c := h.join("room1", roleController, newTestConn(t))
+	c := mustJoin(t, h, "room1", roleController, "k1", newTestConn(t))
 	recvMsg(t, c) // viewer-list
 
 	msg := []byte(`{"kind":"noop"}`)
 	for range 50 {
-		v := h.join("room1", roleViewer, newTestConn(t))
+		v := mustJoin(t, h, "room1", roleViewer, "", newTestConn(t))
 		var wg sync.WaitGroup
 		wg.Add(2)
 		go func() {
@@ -250,7 +329,7 @@ func TestSendTo_RacesLeaveWithoutPanicking(t *testing.T) {
 func TestJoinRacesLeave_PeerNeverStrandedInDiscardedRoom(t *testing.T) {
 	h := newHub()
 	for range 50 {
-		v1 := h.join("room1", roleViewer, newTestConn(t))
+		v1 := mustJoin(t, h, "room1", roleViewer, "", newTestConn(t))
 		recvMsg(t, v1) // waiting
 
 		var wg sync.WaitGroup
@@ -262,7 +341,7 @@ func TestJoinRacesLeave_PeerNeverStrandedInDiscardedRoom(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			v2 = h.join("room1", roleViewer, newTestConn(t))
+			v2 = mustJoin(t, h, "room1", roleViewer, "", newTestConn(t))
 		}()
 		wg.Wait()
 

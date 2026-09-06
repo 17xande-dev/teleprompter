@@ -96,12 +96,20 @@ export class Teleprompter {
     // a WebRTC peer — it joins nothing and never appears in `viewers`.
     this.ifrmPreview.src = "/html/pop.html";
 
-    this.link = connectController(this.roomID, {
+    this.link = connectController(this.roomID, this.#ensureControlKey(this.roomID), {
       onViewerJoined: this.#onViewerJoined.bind(this),
       onViewerLeft: this.#onViewerLeft.bind(this),
       onViewerControl: this.#onViewerControl.bind(this),
       onViewerScroll: this.#onViewerScroll.bind(this),
       onViewerState: this.#onViewerState.bind(this),
+      onSignalingStatus: (status) => {
+        document.documentElement.dataset.signaling = status;
+        if (status === "denied") {
+          console.error(
+            `another control page already holds room ${this.roomID}`,
+          );
+        }
+      },
     });
 
     this.editor = newEditor(
@@ -184,6 +192,31 @@ export class Teleprompter {
       history.replaceState(null, "", `${location.pathname}?${params}`);
     }
     return room;
+  }
+
+  // The control key never leaves this browser — it isn't in the viewer link,
+  // so someone who has that link can join and watch but can't claim control
+  // of the room and start pushing their own content to the displays. It
+  // lives in localStorage so a refresh (or reopening the same room URL
+  // later) reclaims the room rather than being locked out of it.
+  #ensureControlKey(room: string): string {
+    const storageKey = `teleprompter.controlKey.${room}`;
+    let key: string | null = null;
+    try {
+      key = localStorage.getItem(storageKey);
+    } catch {
+      // Private mode or blocked storage: fall through to a per-load key.
+    }
+    if (!key) {
+      key = crypto.randomUUID();
+      try {
+        localStorage.setItem(storageKey, key);
+      } catch {
+        // Not persistable; this session still controls the room, but a
+        // refresh will be refused until the room empties out.
+      }
+    }
+    return key;
   }
 
   #postToPreview(msg: ControlMessage) {

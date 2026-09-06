@@ -14,9 +14,17 @@ import type { ControlMessage } from "./protocol.ts";
 
 type ConnState = "waiting" | "connecting" | "connected" | "disconnected";
 
-function wsURL(room: string, role: "controller" | "viewer"): string {
+function wsURL(
+  room: string,
+  role: "controller" | "viewer",
+  key?: string,
+): string {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  return `${proto}://${location.host}/ws?room=${encodeURIComponent(room)}&role=${role}`;
+  const params = new URLSearchParams({ room, role });
+  // Only a controller carries a key; it's what stops someone who has the
+  // viewer link from claiming control of the room.
+  if (key) params.set("key", key);
+  return `${proto}://${location.host}/ws?${params}`;
 }
 
 async function fetchIceConfig(): Promise<RTCConfiguration> {
@@ -189,7 +197,7 @@ export interface ControllerCallbacks {
   // Signaling-socket status. Existing peer connections keep working while
   // this is down, so without surfacing it the operator has no way to know
   // that new viewers can no longer be picked up.
-  onSignalingStatus?(status: "connected" | "disconnected"): void;
+  onSignalingStatus?(status: "connected" | "disconnected" | "denied"): void;
 }
 
 export interface ControllerLink {
@@ -201,7 +209,11 @@ export interface ControllerLink {
   close(): void;
 }
 
-export function connectController(room: string, cb: ControllerCallbacks): ControllerLink {
+export function connectController(
+  room: string,
+  key: string,
+  cb: ControllerCallbacks,
+): ControllerLink {
   const links = new Map<string, Link>();
   let ws: WebSocket | null = null;
   let scrollSeq = 0;
@@ -249,7 +261,7 @@ export function connectController(room: string, cb: ControllerCallbacks): Contro
     (async () => {
       rtcConfig = await fetchIceConfig();
       if (closed) return;
-      ws = new WebSocket(wsURL(room, "controller"));
+      ws = new WebSocket(wsURL(room, "controller", key));
       ws.addEventListener("open", () => cb.onSignalingStatus?.("connected"));
       ws.addEventListener("close", scheduleRetry);
       ws.addEventListener("error", scheduleRetry);
@@ -257,6 +269,12 @@ export function connectController(room: string, cb: ControllerCallbacks): Contro
         const msg = JSON.parse(e.data) as SignalEnvelope;
         switch (msg.kind) {
           case "welcome":
+            return;
+          case "denied":
+            // Someone else holds this room's control key. Retrying would
+            // only be refused again, so stop and surface it.
+            closed = true;
+            cb.onSignalingStatus?.("denied");
             return;
           case "viewer-list":
             (msg.peers ?? []).forEach(addViewer);

@@ -2,7 +2,9 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"log"
 	"sync"
 
@@ -53,10 +55,16 @@ func newPeerID() string {
 // so unlike a flat peer set, the room needs to know which single peer is the
 // controller in order to target signaling messages correctly.
 type room struct {
-	mu         sync.Mutex
-	name       string
-	controller *peer
-	viewers    map[string]*peer
+	mu   sync.Mutex
+	name string
+	// controllerKey is claimed by the first controller to enter the room
+	// and checked against every controller that follows. Without it the
+	// room id alone would grant control, and since a new controller evicts
+	// the old one, anyone who learned a viewer link could silently take
+	// the session over and push arbitrary content to every display.
+	controllerKey string
+	controller    *peer
+	viewers       map[string]*peer
 }
 
 // hub owns all rooms and guards concurrent access to the room map.
@@ -107,11 +115,16 @@ func (r *room) peerByID(id string) *peer {
 	return r.viewers[id]
 }
 
+// errControlDenied is returned when a controller presents the wrong key
+// for a room somebody else already claimed.
+var errControlDenied = errors.New("control denied")
+
 // join adds a peer of the given role to the named room, creating the room
 // if necessary, and returns it. It also fires the join notifications
 // (peer-joined/waiting/viewer-list) that let the controller and viewer(s)
-// discover each other and start negotiating.
-func (h *hub) join(roomName string, rl role, conn *websocket.Conn) *peer {
+// discover each other and start negotiating. A controller must present the
+// room's control key; viewers need no key.
+func (h *hub) join(roomName string, rl role, key string, conn *websocket.Conn) (*peer, error) {
 	r := h.roomFor(roomName)
 	p := &peer{
 		id:   newPeerID(),
@@ -127,6 +140,17 @@ func (h *hub) join(roomName string, rl role, conn *websocket.Conn) *peer {
 	var existingViewers []string
 	switch rl {
 	case roleController:
+		// Claim the room on first control, and require the same key from
+		// every controller after that. Constant-time compare so the key
+		// can't be recovered a byte at a time.
+		switch {
+		case r.controllerKey == "":
+			r.controllerKey = key
+		case subtle.ConstantTimeCompare([]byte(r.controllerKey), []byte(key)) != 1:
+			r.mu.Unlock()
+			return nil, errControlDenied
+		}
+
 		// A new controller replaces any existing one — most commonly the
 		// operator refreshing the control page. Evicting the stale
 		// connection (rather than rejecting the new one) turns what used to
@@ -170,7 +194,7 @@ func (h *hub) join(roomName string, rl role, conn *websocket.Conn) *peer {
 		}
 	}
 
-	return p
+	return p, nil
 }
 
 // leave removes a peer from its room, notifying whoever needs to know, and

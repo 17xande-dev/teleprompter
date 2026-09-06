@@ -79,13 +79,28 @@ func (h *hub) serveWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The control key is what separates "can watch this room" from "can
+	// drive it", so a controller has to bring one. Rejected before the
+	// upgrade, where a plain HTTP status is still possible.
+	key := r.URL.Query().Get("key")
+	if rl == roleController && key == "" {
+		http.Error(w, "controller requires a key", http.StatusBadRequest)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("upgrade: %v", err)
 		return
 	}
 
-	p := h.join(roomName, rl, conn)
+	p, err := h.join(roomName, rl, key, conn)
+	if err != nil {
+		log.Printf("room %s: control denied", roomName)
+		_ = conn.WriteMessage(websocket.TextMessage, encode(msgKind{Kind: "denied"}))
+		conn.Close()
+		return
+	}
 	log.Printf("room %s: %s %s joined", roomName, rl, p.id)
 
 	// Tell the peer its own id, so it can stamp/route further signaling and
