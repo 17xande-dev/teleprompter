@@ -35,7 +35,7 @@
       <fieldset id="divPreview">
         <legend>Preview</legend>
         <div id="divIFrameContainer">
-          <iframe id="ifrmPreview" src="/html/pop.html"></iframe>
+          <iframe id="ifrmPreview"></iframe>
         </div>
         <wa-dropdown id="drpLayouts">
           <wa-button slot="trigger" with-caret>Viewer Layout
@@ -76,6 +76,12 @@
           <wa-icon name="message" slot="end"></wa-icon>
           Send Message
         </wa-button>
+      </fieldset>
+      <fieldset>
+        <legend>Viewers</legend>
+        <p>Share this link with a viewer device (or use Popup for this machine):</p>
+        <a id="lnkViewerLink" target="_blank" rel="noopener"></a>
+        <div id="divViewers"></div>
       </fieldset>
 
     </div>

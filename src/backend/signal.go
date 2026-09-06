@@ -26,15 +26,10 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// clientSignal is the envelope a client sends: "to" addresses a single
-// other peer in the room (this replaces broadcast-to-everyone-but-sender,
-// which stopped being correct once a room can hold more than 2 peers). The
-// server never inspects "description"/"candidate" beyond this envelope —
-// it relays the original bytes verbatim to the addressed peer.
-type clientSignal struct {
-	Kind string `json:"kind"`
-	To   string `json:"to"`
-}
+// clientEnvelope is decoded as raw fields (rather than a fixed struct) so
+// the server can add "from" and relay everything else — "kind",
+// "description", "candidate" — completely untouched. It still never
+// interprets the SDP/ICE payload itself, only routes on "to".
 
 // Server -> client control envelopes. Kept as separate small structs
 // (rather than one do-everything struct) so each only carries the fields
@@ -106,8 +101,9 @@ func (h *hub) serveWS(w http.ResponseWriter, r *http.Request) {
 // reads.
 func (p *peer) readPump(h *hub) {
 	defer func() {
+		// leave closes p.done, which stops writePump; p.send itself is
+		// never closed, since senders write to it without the room lock.
 		h.leave(p)
-		close(p.send)
 		p.conn.Close()
 		log.Printf("room %s: %s %s left", p.room.name, p.role, p.id)
 	}()
@@ -127,15 +123,28 @@ func (p *peer) readPump(h *hub) {
 			return
 		}
 
-		var s clientSignal
-		if err := json.Unmarshal(msg, &s); err != nil || s.To == "" {
-			log.Printf("room %s: ignoring malformed/untargeted message", p.room.name)
+		var env map[string]json.RawMessage
+		var to string
+		if err := json.Unmarshal(msg, &env); err != nil {
+			log.Printf("room %s: ignoring malformed message", p.room.name)
+			continue
+		}
+		if toRaw, ok := env["to"]; !ok || json.Unmarshal(toRaw, &to) != nil || to == "" {
+			log.Printf("room %s: ignoring untargeted message", p.room.name)
 			continue
 		}
 
-		// Relay the original bytes verbatim — the server never parses the
-		// SDP/ICE payload itself, only enough of the envelope to route it.
-		p.room.sendTo(s.To, msg)
+		// The client only knows who it's addressing, not who it is — stamp
+		// the sender so the recipient can route this to the right
+		// per-peer RTCPeerConnection. Every other field (kind, description,
+		// candidate) is relayed completely untouched.
+		env["from"], _ = json.Marshal(p.id)
+		out, err := json.Marshal(env)
+		if err != nil {
+			log.Printf("room %s: re-encoding signal: %v", p.room.name, err)
+			continue
+		}
+		p.room.sendTo(to, out)
 	}
 }
 
@@ -148,12 +157,12 @@ func (p *peer) writePump() {
 
 	for {
 		select {
-		case msg, ok := <-p.send:
+		case <-p.done:
 			_ = p.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if !ok {
-				_ = p.conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
+			_ = p.conn.WriteMessage(websocket.CloseMessage, []byte{})
+			return
+		case msg := <-p.send:
+			_ = p.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := p.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 				return
 			}

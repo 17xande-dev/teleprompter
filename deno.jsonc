@@ -31,10 +31,15 @@
     "dev": "deno task clean; deno task bundle-watch & (cd src/backend && go run .)",
     "build": "deno task bundle",
     "check": "deno check src/frontend/scripts",
+    // --no-check: `deno task check` already covers types; without it, `deno
+    // test`'s type-check pass pulls in the whole configured project graph
+    // (including teleprompter.ts's raw CSS imports, which only the bundler
+    // knows how to resolve) even for a test file that doesn't import it.
+    "test": "deno test --no-check src/frontend/scripts/*_test.ts",
     "clean": "rm -rf src/backend/dist/*",
-    "bundle": "deno bundle src/frontend/index.html src/frontend/html/pop.html --code-splitting --platform browser --sourcemap --outdir src/backend/dist",
+    "bundle": "deno bundle src/frontend/index.html src/frontend/html/pop.html --code-splitting --platform browser --sourcemap=linked --outdir src/backend/dist",
     "bundle-script": "deno task --unstable-bundle bundle.ts",
-    "bundle-watch": "deno bundle --watch src/frontend/index.html src/frontend/html/pop.html --code-splitting --platform browser --sourcemap --outdir src/backend/dist"
+    "bundle-watch": "deno bundle --watch src/frontend/index.html src/frontend/html/pop.html --code-splitting --platform browser --sourcemap=linked --outdir src/backend/dist"
   },
   "permissions": {
     "net-read": {

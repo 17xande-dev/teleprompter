@@ -1,7 +1,7 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@hono/hono@^4.13.3": "4.13.3",
+    "jsr:@std/assert@*": "1.0.19",
     "jsr:@std/cli@^1.0.29": "1.0.29",
     "jsr:@std/encoding@^1.0.10": "1.0.10",
     "jsr:@std/fmt@^1.0.10": "1.0.10",
@@ -19,8 +19,11 @@
     "npm:wordgard@latest": "0.5.0"
   },
   "jsr": {
-    "@hono/hono@4.13.3": {
-      "integrity": "2d277e78219ea145202359af5296cfa136eba5e75ffb08fda6fbd54d72032b4f"
+    "@std/assert@1.0.19": {
+      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
     },
     "@std/cli@1.0.29": {
       "integrity": "fa4ef29130baa834d8a13b7d138240c3a2fcfba740bfb7afa646a360a15ec84f"
@@ -291,7 +294,6 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@hono/hono@^4.13.3",
       "npm:@awesome.me/webawesome@^3.12.0",
       "npm:@types/webscreens-window-placement@*",
       "npm:@types/webscreens-window-placement@~0.1.3",

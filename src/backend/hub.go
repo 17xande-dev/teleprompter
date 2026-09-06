@@ -20,12 +20,25 @@ const (
 )
 
 // peer is a single connected client.
+//
+// send is never closed: a sender resolves a peer from the room and then
+// writes to it without holding the room lock, so closing the channel on
+// departure would race that write and panic the process. Departure is
+// signalled by closing done instead, which both sendTo and writePump
+// select on — a closed channel is safe to read from any number of times.
 type peer struct {
-	id   string
-	role role
-	conn *websocket.Conn
-	send chan []byte
-	room *room
+	id       string
+	role     role
+	conn     *websocket.Conn
+	send     chan []byte
+	done     chan struct{}
+	doneOnce sync.Once
+	room     *room
+}
+
+// close marks the peer as gone. Safe to call more than once.
+func (p *peer) close() {
+	p.doneOnce.Do(func() { close(p.done) })
 }
 
 func newPeerID() string {
@@ -78,6 +91,8 @@ func (r *room) sendTo(id string, msg []byte) {
 	}
 	select {
 	case target.send <- msg:
+	case <-target.done:
+		// Peer left between the lookup and the send.
 	default:
 		// Slow consumer: drop it rather than block the room.
 		log.Printf("room %s: dropping message to slow peer %s", r.name, id)
@@ -98,7 +113,14 @@ func (r *room) peerByID(id string) *peer {
 // discover each other and start negotiating.
 func (h *hub) join(roomName string, rl role, conn *websocket.Conn) *peer {
 	r := h.roomFor(roomName)
-	p := &peer{id: newPeerID(), role: rl, conn: conn, send: make(chan []byte, 16), room: r}
+	p := &peer{
+		id:   newPeerID(),
+		role: rl,
+		conn: conn,
+		send: make(chan []byte, 16),
+		done: make(chan struct{}),
+		room: r,
+	}
 
 	r.mu.Lock()
 	var evicted *peer
@@ -129,6 +151,16 @@ func (h *hub) join(roomName string, rl role, conn *websocket.Conn) *peer {
 	switch rl {
 	case roleController:
 		p.send <- encode(msgViewerList{Kind: "viewer-list", Peers: existingViewers})
+		// Existing viewers won't otherwise learn about this controller: a
+		// viewer only gets told about the controller when *it* joins after
+		// one is already present (below). Telling them now is what makes a
+		// controller reconnect (e.g. a page refresh) a brief renegotiation
+		// blip rather than leaving every viewer stuck addressing the old,
+		// now-dead controller id.
+		joined := encode(msgPeerEvent{Kind: "peer-joined", From: p.id})
+		for _, id := range existingViewers {
+			r.sendTo(id, joined)
+		}
 	case roleViewer:
 		if controller != nil {
 			p.send <- encode(msgPeerEvent{Kind: "peer-joined", From: controller.id})
@@ -144,34 +176,47 @@ func (h *hub) join(roomName string, rl role, conn *websocket.Conn) *peer {
 // leave removes a peer from its room, notifying whoever needs to know, and
 // tears the room down once it holds nobody.
 func (h *hub) leave(p *peer) {
+	p.close()
 	r := p.room
+
+	// h.mu before r.mu, the same order join takes them, and both held
+	// across the empty check and the room delete: releasing in between
+	// would let a peer join the room being deleted and end up in a room
+	// no longer reachable from the hub, waiting forever for a controller
+	// that will only ever see a fresh room object.
+	h.mu.Lock()
 	r.mu.Lock()
 	var notify []*peer
 	switch p.role {
 	case roleController:
+		// Only announce the departure if this peer is still the room's
+		// controller. When an operator refreshes, the replacement has
+		// already registered by the time the evicted connection's read
+		// loop notices it was closed — announcing then would tell every
+		// viewer to tear down the link it just built to the new
+		// controller.
 		if r.controller == p {
 			r.controller = nil
-		}
-		for _, v := range r.viewers {
-			notify = append(notify, v)
+			for _, v := range r.viewers {
+				notify = append(notify, v)
+			}
 		}
 	case roleViewer:
-		delete(r.viewers, p.id)
-		if r.controller != nil {
-			notify = append(notify, r.controller)
+		if r.viewers[p.id] == p {
+			delete(r.viewers, p.id)
+			if r.controller != nil {
+				notify = append(notify, r.controller)
+			}
 		}
 	}
-	empty := r.controller == nil && len(r.viewers) == 0
+	if r.controller == nil && len(r.viewers) == 0 && h.rooms[r.name] == r {
+		delete(h.rooms, r.name)
+	}
 	r.mu.Unlock()
+	h.mu.Unlock()
 
 	msg := encode(msgPeerEvent{Kind: "peer-left", From: p.id})
 	for _, n := range notify {
 		r.sendTo(n.id, msg)
-	}
-
-	if empty {
-		h.mu.Lock()
-		delete(h.rooms, r.name)
-		h.mu.Unlock()
 	}
 }

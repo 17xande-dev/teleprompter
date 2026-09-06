@@ -24,17 +24,23 @@ func frontendHandler() http.Handler {
 	return http.FileServer(http.FS(sub))
 }
 
-// securityHeaders sets a CSP appropriate for a same-origin, no-third-party-
-// script app: the frontend is entirely self-hosted, and WebRTC's SDP/ICE
-// signaling flows over the same-origin WebSocket ('self' already covers
-// ws/wss to the page's own origin), while the data channels themselves are
-// peer-to-peer and outside the CSP's remit.
+// securityHeaders sets a CSP appropriate for a same-origin app: no
+// third-party *script* is ever loaded, and WebRTC's SDP/ICE signaling flows
+// over the same-origin WebSocket ('self' already covers ws/wss to the
+// page's own origin), while the data channels themselves are peer-to-peer
+// and outside the CSP's remit.
+//
+// style-src needs 'unsafe-inline' and connect-src/img-src need the
+// fontawesome CDN because the Web Awesome component library (predates this
+// change) applies inline styles and fetches its icon SVGs remotely at
+// runtime — neither is under this app's control without replacing that
+// library. Recorded as a deliberate trade-off, not an oversight.
 func securityHeaders(next http.Handler) http.Handler {
 	const csp = "default-src 'self'; " +
 		"script-src 'self'; " +
-		"style-src 'self'; " +
-		"connect-src 'self'; " +
-		"img-src 'self'; " +
+		"style-src 'self' 'unsafe-inline'; " +
+		"connect-src 'self' https://ka-f.fontawesome.com data:; " +
+		"img-src 'self' data:; " +
 		"object-src 'none'; " +
 		"base-uri 'none'; " +
 		"frame-ancestors 'self'"
