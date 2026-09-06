@@ -19,20 +19,22 @@
     ]
   },
   "exclude": [
-    "dist"
+    "src/backend/dist"
   ],
   "include": [
-    "src/frontend/scripts",
-    "src/backend"
+    "src/frontend/scripts"
   ],
   "tasks": {
-    "dev": "deno task clean; deno task bundle-watch & deno task start",
+    // Go now serves the frontend directly (go:embed of src/backend/dist), so
+    // "dev" just keeps the bundle fresh and runs the Go server; there's no
+    // separate Deno file-server anymore.
+    "dev": "deno task clean; deno task bundle-watch & (cd src/backend && go run .)",
     "build": "deno task bundle",
-    "start": "deno run --allow-net --allow-read -ESR jsr:@std/http/file-server dist",
-    "clean": "rm -r dist/*",
-    "bundle": "deno bundle src/frontend/index.html src/frontend/html/pop.html --code-splitting --platform browser --sourcemap --outdir dist",
+    "check": "deno check src/frontend/scripts",
+    "clean": "rm -rf src/backend/dist/*",
+    "bundle": "deno bundle src/frontend/index.html src/frontend/html/pop.html --code-splitting --platform browser --sourcemap --outdir src/backend/dist",
     "bundle-script": "deno task --unstable-bundle bundle.ts",
-    "bundle-watch": "deno bundle --watch src/frontend/index.html src/frontend/html/pop.html --code-splitting --platform browser --sourcemap --outdir dist"
+    "bundle-watch": "deno bundle --watch src/frontend/index.html src/frontend/html/pop.html --code-splitting --platform browser --sourcemap --outdir src/backend/dist"
   },
   "permissions": {
     "net-read": {
@@ -42,7 +44,6 @@
   },
   "imports": {
     "@awesome.me/webawesome": "npm:@awesome.me/webawesome@^3.12.0",
-    "@hono/hono": "jsr:@hono/hono@^4.13.3",
     "@types/webscreens-window-placement": "npm:@types/webscreens-window-placement@^0.1.3",
     "wordgard": "npm:wordgard@latest"
   }

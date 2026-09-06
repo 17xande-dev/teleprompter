@@ -25,8 +25,13 @@ go.work.sum
 .env
 
 node_modules
-dist
 public
+
+# Frontend build output, embedded into the Go binary via go:embed. Keep a
+# placeholder tracked so a fresh checkout has something to embed before
+# `deno task build` has run.
+src/backend/dist/*
+!src/backend/dist/.gitkeep
 
 .wrangler
 
