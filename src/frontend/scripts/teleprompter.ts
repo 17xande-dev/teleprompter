@@ -40,6 +40,13 @@ interface ViewerEntry {
 }
 
 export class Teleprompter {
+  // The preview is rendered at a viewer's real pixel size and scaled down to
+  // fit inside this box, so it stays a true miniature of that viewer.
+  static readonly MAX_PREVIEW_WIDTH = 300;
+  static readonly MAX_PREVIEW_HEIGHT = 450;
+  // What the preview falls back to before any viewer has reported its size.
+  static readonly DEFAULT_PREVIEW_DIMS = { width: 1920, height: 1080 };
+
   docControls: DocControls;
   splitPanel: WaSplitPanel;
   btnMessage: WaButton;
@@ -163,6 +170,7 @@ export class Teleprompter {
       this.updateMain();
     });
 
+    this.#applyPreviewScale();
     this.#renderViewers();
   }
 
@@ -209,6 +217,9 @@ export class Teleprompter {
 
   #onViewerLeft(id: string) {
     this.viewers.delete(id);
+    // The preview may have been mirroring this viewer; re-fit to whoever
+    // is left (or the fallback size if that was the last one).
+    this.#applyPreviewScale();
     this.#renderViewers();
   }
 
@@ -217,13 +228,59 @@ export class Teleprompter {
     const entry = this.viewers.get(id);
     if (!entry) return;
     entry.dims = { width: msg.width, height: msg.height };
+    this.#applyPreviewScale();
     this.#renderViewers();
   }
 
+  // Which viewer the preview mirrors — geometry and scroll both. A viewer
+  // granted drive is the canonical one to show; otherwise just the first
+  // one that connected. Viewers can differ in size, so the preview has to
+  // pick one rather than pretend they share a shape.
+  #previewSourceID(): string | null {
+    for (const [id, entry] of this.viewers) {
+      if (entry.canDrive) return id;
+    }
+    return this.viewers.keys().next().value ?? null;
+  }
+
+  // Render the iframe at the previewed viewer's real pixel size and scale
+  // it down, so text wraps and vi-based sizing match what that viewer is
+  // actually showing. Sizing it directly to the small on-screen box instead
+  // would reflow the content and make the preview a lie.
+  #applyPreviewScale() {
+    const source = this.#previewSourceID();
+    const dims = (source && this.viewers.get(source)?.dims) ||
+      Teleprompter.DEFAULT_PREVIEW_DIMS;
+
+    const scale = Math.min(
+      Teleprompter.MAX_PREVIEW_WIDTH / dims.width,
+      Teleprompter.MAX_PREVIEW_HEIGHT / dims.height,
+    );
+
+    const container = <HTMLDivElement> this.ifrmPreview.parentElement;
+    container.style.width = `${dims.width * scale}px`;
+    container.style.height = `${dims.height * scale}px`;
+
+    this.ifrmPreview.style.width = `${dims.width}px`;
+    this.ifrmPreview.style.height = `${dims.height}px`;
+    this.ifrmPreview.style.transform = `scale(${scale})`;
+    this.ifrmPreview.style.transformOrigin = "top left";
+  }
+
   #onViewerScroll(id: string, ratio: number) {
-    const entry = this.viewers.get(id);
-    if (!entry?.canDrive) return;
-    this.#postToPreview({ type: "scroll", r: ratio, s: 0 });
+    if (!this.viewers.has(id)) return;
+
+    // The preview follows its source viewer regardless of drive permission
+    // — it's the operator's window onto what that viewer is showing, and
+    // gating it would leave it frozen at the top of the script whenever no
+    // viewer has been granted drive (the default).
+    if (id === this.#previewSourceID()) {
+      this.#postToPreview({ type: "scroll", r: ratio, s: 0 });
+    }
+
+    // Fanning the position out to the *other* viewers is the part that
+    // needs permission: that's this viewer driving everyone else.
+    if (!this.viewers.get(id)?.canDrive) return;
     for (const otherID of this.link.viewers()) {
       if (otherID !== id) this.link.sendScrollTo(otherID, ratio);
     }
@@ -241,6 +298,8 @@ export class Teleprompter {
     if (!entry) return;
     entry.canDrive = canDrive;
     this.link.sendTo(id, { type: "set-driver", canDrive });
+    // Granting drive changes which viewer the preview follows.
+    this.#applyPreviewScale();
     this.#renderViewers();
   }
 

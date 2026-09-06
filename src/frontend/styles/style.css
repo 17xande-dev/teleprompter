@@ -27,21 +27,16 @@ html {
 /*   height: 92vh; */
 /* } */
 
-/* The preview no longer tracks one specific viewer's exact pixel
-   dimensions (that stopped making sense once there can be several viewers
-   of different sizes) — it's a fixed-aspect box the iframe fills, and
-   scroll position syncs into it as a ratio so it still lines up. */
+/* The preview iframe is rendered at the previewed viewer's *real* pixel
+   size and then CSS-scaled down (see #applyPreviewScale in teleprompter.ts),
+   so text wraps identically and vi-based sizing matches what that viewer
+   actually shows. Sizes come from JS; this just clips the scaled result. */
 #divIFrameContainer {
-  width: 100%;
-  max-width: 480px;
-  aspect-ratio: 16 / 9;
   overflow: hidden;
   position: relative;
 }
 
 #ifrmPreview {
-  width: 100%;
-  height: 100%;
   border: none;
   overflow: hidden;
   pointer-events: none;

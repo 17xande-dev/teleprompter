@@ -7,6 +7,7 @@ package main
 
 import (
 	"embed"
+	"flag"
 	"io/fs"
 	"log"
 	"net/http"
@@ -16,10 +17,23 @@ import (
 //go:embed all:dist
 var distFS embed.FS
 
-func frontendHandler() http.Handler {
+// frontendHandler serves the built frontend. Embedding happens at compile
+// time, so a release binary is self-contained — but that also means a
+// rebundle is invisible to a running server. In dev, read dist/ from disk
+// instead so `deno task bundle-watch` output shows up on a page refresh
+// rather than needing the Go process restarted.
+func frontendHandler(dev bool) http.Handler {
+	if dev {
+		log.Println("serving frontend from ./dist on disk (dev mode)")
+		return http.FileServer(http.Dir("dist"))
+	}
+
 	sub, err := fs.Sub(distFS, "dist")
 	if err != nil {
 		log.Fatalf("frontend: %v", err)
+	}
+	if entries, err := fs.ReadDir(sub, "."); err == nil && len(entries) <= 1 {
+		log.Println("warning: embedded frontend looks empty — run `deno task build` before `go build`")
 	}
 	return http.FileServer(http.FS(sub))
 }
@@ -53,20 +67,24 @@ func securityHeaders(next http.Handler) http.Handler {
 }
 
 func main() {
+	dev := flag.Bool("dev", false, "serve the frontend from ./dist on disk instead of the embedded copy")
+	addr := flag.String("addr", ":8080", "address to listen on")
+	flag.Parse()
+
 	h := newHub()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", h.serveWS)
 	mux.HandleFunc("/ice", handleICE)
-	mux.Handle("/", frontendHandler())
+	mux.Handle("/", frontendHandler(*dev))
 
 	srv := &http.Server{
-		Addr:              ":8080",
+		Addr:              *addr,
 		Handler:           securityHeaders(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	log.Println("listening on http://localhost:8080")
+	log.Printf("listening on http://localhost%s", *addr)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}

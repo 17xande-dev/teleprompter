@@ -25,10 +25,12 @@
     "src/frontend/scripts"
   ],
   "tasks": {
-    // Go now serves the frontend directly (go:embed of src/backend/dist), so
+    // Go serves the frontend directly (go:embed of src/backend/dist), so
     // "dev" just keeps the bundle fresh and runs the Go server; there's no
-    // separate Deno file-server anymore.
-    "dev": "deno task clean; deno task bundle-watch & (cd src/backend && go run .)",
+    // separate Deno file-server anymore. -dev makes the server read dist/
+    // off disk, since the embedded copy is fixed at compile time and would
+    // otherwise ignore everything bundle-watch rebuilds.
+    "dev": "deno task bundle-watch & (cd src/backend && go run . -dev)",
     "build": "deno task bundle",
     "check": "deno check src/frontend/scripts",
     // --no-check: `deno task check` already covers types; without it, `deno

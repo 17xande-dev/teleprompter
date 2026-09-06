@@ -65,6 +65,11 @@ export class Viewer {
       onScroll: (ratio) => this.#scrollSync.applyRemote(ratio),
       onStatus: (status) => {
         document.documentElement.dataset.rtcStatus = status;
+        // Re-report on every (re)connect, not just at startup: a reconnect
+        // builds a fresh link the controller knows nothing about, so
+        // without this its viewer list shows this viewer as dimensionless
+        // for the rest of the session.
+        if (status === "connected") this.#reportDims();
       },
     });
 
@@ -157,6 +162,10 @@ export class Viewer {
   }
 
   startSmoothScroll() {
+    // The loop re-arms itself every frame, so starting it twice (the
+    // constructor, then the controller's on-join settings{autoScroll})
+    // would leave two self-perpetuating chains running for the page's life.
+    if (this.scroll) return;
     this.lastScrollTime = 0;
     this.accumulatedScroll = 0;
     this.scroll = true;

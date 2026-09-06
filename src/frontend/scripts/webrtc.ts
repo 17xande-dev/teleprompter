@@ -107,10 +107,17 @@ function makeLink(opts: LinkOptions): Link {
     };
 
     pc.onnegotiationneeded = async () => {
+      const negotiating = pc!;
       try {
         makingOffer = true;
-        await pc!.setLocalDescription();
-        opts.sendSignal({ description: pc!.localDescription! });
+        await negotiating.setLocalDescription();
+        // close() can land while setLocalDescription is in flight (e.g. the
+        // viewer disconnects mid-offer); the connection we started
+        // negotiating is then no longer the live one.
+        if (pc !== negotiating) return;
+        opts.sendSignal({ description: negotiating.localDescription! });
+      } catch (err) {
+        console.error("negotiation failed", err);
       } finally {
         makingOffer = false;
       }
@@ -166,6 +173,11 @@ function makeLink(opts: LinkOptions): Link {
   };
 }
 
+// How long to wait before re-opening a dropped signaling socket. Both roles
+// reconnect: a viewer to find its controller again, a controller so it can
+// still pick up viewers that join after the socket died.
+const RETRY_DELAY_MS = 2000;
+
 // --- Controller: one link per connected viewer ---------------------------
 
 export interface ControllerCallbacks {
@@ -174,6 +186,10 @@ export interface ControllerCallbacks {
   onViewerControl?(id: string, msg: ControlMessage): void;
   onViewerScroll?(id: string, ratio: number, seq: number): void;
   onViewerState?(id: string, state: RTCPeerConnectionState): void;
+  // Signaling-socket status. Existing peer connections keep working while
+  // this is down, so without surfacing it the operator has no way to know
+  // that new viewers can no longer be picked up.
+  onSignalingStatus?(status: "connected" | "disconnected"): void;
 }
 
 export interface ControllerLink {
@@ -214,28 +230,50 @@ export function connectController(room: string, cb: ControllerCallbacks): Contro
   }
 
   let rtcConfig: RTCConfiguration = { iceServers: [] };
+  let closed = false;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
-  (async () => {
-    rtcConfig = await fetchIceConfig();
-    ws = new WebSocket(wsURL(room, "controller"));
-    ws.addEventListener("message", async (e) => {
-      const msg = JSON.parse(e.data) as SignalEnvelope;
-      switch (msg.kind) {
-        case "welcome":
-          return;
-        case "viewer-list":
-          (msg.peers ?? []).forEach(addViewer);
-          return;
-        case "peer-joined":
-          if (msg.from) addViewer(msg.from);
-          return;
-        case "peer-left":
-          if (msg.from) removeViewer(msg.from);
-          return;
-      }
-      if (msg.from) await links.get(msg.from)?.onSignal(msg);
-    });
-  })();
+  // The signaling socket dropping (server restart, sleep, wifi blip) leaves
+  // established data channels working but silently stops new viewers from
+  // ever being negotiated with, so it has to reconnect on its own.
+  function scheduleRetry() {
+    if (closed || retryTimer) return;
+    cb.onSignalingStatus?.("disconnected");
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      connect();
+    }, RETRY_DELAY_MS);
+  }
+
+  function connect() {
+    (async () => {
+      rtcConfig = await fetchIceConfig();
+      if (closed) return;
+      ws = new WebSocket(wsURL(room, "controller"));
+      ws.addEventListener("open", () => cb.onSignalingStatus?.("connected"));
+      ws.addEventListener("close", scheduleRetry);
+      ws.addEventListener("error", scheduleRetry);
+      ws.addEventListener("message", async (e) => {
+        const msg = JSON.parse(e.data) as SignalEnvelope;
+        switch (msg.kind) {
+          case "welcome":
+            return;
+          case "viewer-list":
+            (msg.peers ?? []).forEach(addViewer);
+            return;
+          case "peer-joined":
+            if (msg.from) addViewer(msg.from);
+            return;
+          case "peer-left":
+            if (msg.from) removeViewer(msg.from);
+            return;
+        }
+        if (msg.from) await links.get(msg.from)?.onSignal(msg);
+      });
+    })();
+  }
+
+  connect();
 
   return {
     broadcast(msg) {
@@ -256,6 +294,8 @@ export function connectController(room: string, cb: ControllerCallbacks): Contro
       return [...links.keys()];
     },
     close() {
+      closed = true;
+      if (retryTimer) clearTimeout(retryTimer);
       ws?.close();
       for (const link of links.values()) link.close();
       links.clear();
@@ -276,8 +316,6 @@ export interface ViewerLink {
   sendControl(msg: ControlMessage): void;
   close(): void;
 }
-
-const RETRY_DELAY_MS = 2000;
 
 export function connectViewer(room: string, cb: ViewerCallbacks): ViewerLink {
   let link: Link | null = null;
@@ -321,6 +359,9 @@ export function connectViewer(room: string, cb: ViewerCallbacks): ViewerLink {
             return;
           case "peer-joined":
             if (!msg.from) return;
+            // A controller reconnecting replaces the previous one; drop the
+            // old peer connection rather than leaking it and its transports.
+            link?.close();
             controllerID = msg.from;
             cb.onStatus?.("connecting");
             link = makeLink({
@@ -339,6 +380,11 @@ export function connectViewer(room: string, cb: ViewerCallbacks): ViewerLink {
             for (const msg of pendingControl.splice(0)) link.sendControl(msg);
             return;
           case "peer-left":
+            // Only act on the departure of the controller we're actually
+            // connected to. An evicted controller's peer-left can arrive
+            // after its replacement's peer-joined, and tearing down on that
+            // would kill the link we just built to the new controller.
+            if (msg.from && msg.from !== controllerID) return;
             link?.close();
             link = null;
             controllerID = null;
