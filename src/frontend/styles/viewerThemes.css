@@ -1,8 +1,10 @@
-@property --textScale {
-  syntax: "number";
-  inherits: false;
-  initial-value: 0;
-}
+/* --textScale is deliberately *not* registered with @property. viewer.ts sets
+   it as a length ("3rem"), and the registration that used to sit here claimed
+   syntax: "number" — which never parsed (a syntax definition needs <number>),
+   so the rule was ignored and the length worked by accident. Correcting it to
+   <number> would have made setProperty reject the rem value and computed
+   font-size 0; <length> would work, but an unregistered property already
+   does, with one less thing to keep in step with viewer.ts. */
 
 @scope (.theme-default) {
   .viewer-clocks {

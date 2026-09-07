@@ -74,7 +74,11 @@
           <span slot="reference">Stop</span>
           <span slot="reference">Forward</span>
         </wa-slider>
-        <wa-slider id="rngScale" label="Text Scale" min="1" max="100" step="5" value="1" orientation="vertical"
+        <!-- Tenths of a rem of viewer text, so 30 is 3rem. step="1" because
+             step counts from min: with step="5" the grid was 1, 6, 11 … which
+             put 10 — the fit-to-width position a PDF uses, PDF_FIT_SCALE —
+             out of reach of the slider and settable only from code. -->
+        <wa-slider id="rngScale" label="Text Scale" min="1" max="100" step="1" value="30" orientation="vertical"
           with-markers with-tooltip>
           <span slot="reference">Larger</span>
           <span slot="reference">Smaller</span>

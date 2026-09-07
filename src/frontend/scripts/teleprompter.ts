@@ -238,6 +238,15 @@ export class Teleprompter {
       // persisted custom layout has to be pushed to it the same way a real
       // viewer gets it on join.
       this.#postToPreview(this.themeControls.themeMessage());
+      // And the same for the text scale, for the same reason. Without it the
+      // preview never receives a textScale at all, so its `font-size:
+      // var(--textScale)` is invalid at computed-value time and inherits 16px
+      // while every real viewer sits at whatever the slider says — the preview
+      // was lying about the one thing it exists to show.
+      this.#postToPreview({
+        type: "settings",
+        textScale: this.rngScale.value / 10,
+      });
       this.updateMain();
     });
 

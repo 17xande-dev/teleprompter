@@ -12,12 +12,6 @@ html {
   font-optical-sizing: auto;
 }
 
-@property --textScale {
-  syntax: "number";
-  inherits: false;
-  initial-value: 0;
-}
-
 /* #controls { */
 /*   position: sticky; */
 /*   height: 98vh; */
@@ -181,10 +175,6 @@ tp-clock-control {
       width: 5rem;
     }
   }
-}
-
-.content {
-  font-size: var(--textScale);
 }
 
 /* Command palette (Ctrl+K) and the shortcut cheatsheet (Ctrl+/), which are
