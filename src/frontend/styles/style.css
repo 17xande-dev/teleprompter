@@ -104,16 +104,8 @@ html {
   opacity: 0.7;
 }
 
-.viewer-row .viewer-pacing {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  white-space: nowrap;
-  opacity: 0.8;
-  /* Pushed to the end of the row so the eye can find the pacing viewer down
-     the list without reading each one. */
-  margin-inline-start: auto;
-}
+/* The "pacing" badge this styled is gone: the drive radio marks the same
+   viewer, and saying it twice on one row read as two different facts. */
 
 .hidden {
   display: none;

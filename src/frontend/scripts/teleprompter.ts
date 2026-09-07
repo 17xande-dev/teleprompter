@@ -51,7 +51,6 @@ import { ThemeControls } from "./themeControls.ts";
 
 interface ViewerEntry {
   dims: { width: number; height: number } | null;
-  canDrive: boolean;
   state: RTCPeerConnectionState | "new";
 }
 
@@ -100,6 +99,10 @@ export class Teleprompter {
   // means "no preference" — fall back to whoever connected first, which is
   // what a single-viewer setup wants and never needs to think about.
   #chosenPreviewID: string | null = null;
+  // And which viewer may be scrolled by hand, in the same shape. Null means
+  // "no preference" — the first to connect drives, which is what a
+  // single-viewer setup wants and never has to think about.
+  #chosenDriverID: string | null = null;
 
   // A dropped PDF takes over from the editor for the rest of the session. It
   // is held in memory only — deliberately never written to DocStorage, whose
@@ -445,7 +448,7 @@ export class Teleprompter {
   }
 
   #onViewerJoined(id: string) {
-    this.viewers.set(id, { dims: null, canDrive: false, state: "new" });
+    this.viewers.set(id, { dims: null, state: "new" });
     // Bring the newcomer up to date rather than leaving it blank until the
     // next edit/setting change. In PDF mode that means re-sending the whole
     // file — the channel isn't open yet at this point, so this relies on the
@@ -498,12 +501,18 @@ export class Teleprompter {
     this.#renderViewers();
   }
 
-  // Which viewer paces the scroll: the one granted drive, else whoever
+  // Which viewer drives the scroll: the operator's pick, else whoever
   // connected first. Exactly one, always — two viewers each integrating the
-  // speed off their own clock drift apart with nothing to pull them back.
-  #pacerID(): string | null {
-    for (const [id, entry] of this.viewers) {
-      if (entry.canDrive) return id;
+  // speed off their own clock drift apart with nothing to pull them back, and
+  // two viewers scrolled by hand would fight.
+  //
+  // Deliberately the same shape as #previewID(): an explicit choice that only
+  // holds while that viewer is connected, over a first-connected fallback.
+  // Holding the choice here rather than a flag per viewer is what makes "only
+  // one driver" structural instead of something the UI has to keep true.
+  #driverID(): string | null {
+    if (this.#chosenDriverID && this.viewers.has(this.#chosenDriverID)) {
+      return this.#chosenDriverID;
     }
     return this.viewers.keys().next().value ?? null;
   }
@@ -546,25 +555,32 @@ export class Teleprompter {
     this.ifrmPreview.style.transformOrigin = "top left";
   }
 
-  // Only the pacing viewer integrates the scroll speed itself; everyone
+  // Only the driving viewer integrates the scroll speed itself; everyone
   // else mirrors the position it reports. Independent auto-scroll loops
   // would each run off their own clock and drift apart within a minute
   // with nothing to pull them back together.
+  //
+  // Both halves of the role go out from here — who auto-scrolls and who may
+  // be scrolled by hand — because they are the same decision. Sending the
+  // drive grant only from #setDriver was a bug: the *derived* driver (the
+  // first viewer to connect, before the operator picks anyone) was never told,
+  // so the default driver couldn't be scrolled.
   #applyScrollRoles() {
-    const pacer = this.#pacerID();
+    const driver = this.#driverID();
     for (const id of this.link.viewers()) {
+      this.link.sendTo(id, { type: "set-driver", canDrive: id === driver });
       this.link.sendTo(id, {
         type: "settings",
-        autoScroll: id === pacer && this.#autoScrollRunning,
+        autoScroll: id === driver && this.#autoScrollRunning,
       });
     }
   }
 
   #onViewerScroll(id: string, ratio: number) {
     if (!this.viewers.has(id)) return;
-    // Only the pacer's samples are authoritative. Every viewer reports its
+    // Only the driver's samples are authoritative. Every viewer reports its
     // own position unconditionally; the rest are echoes of this one.
-    if (id !== this.#pacerID()) return;
+    if (id !== this.#driverID()) return;
 
     this.#lastRatio = ratio;
 
@@ -586,11 +602,11 @@ export class Teleprompter {
     this.#renderViewers();
   }
 
-  #setDriver(id: string, canDrive: boolean) {
-    const entry = this.viewers.get(id);
-    if (!entry) return;
-    entry.canDrive = canDrive;
-    this.link.sendTo(id, { type: "set-driver", canDrive });
+  #setDriver(id: string) {
+    if (!this.viewers.has(id)) return;
+    this.#chosenDriverID = id;
+    // The grant itself goes out from #applyScrollRoles, which tells every
+    // viewer where it stands — including the one losing drive.
     // Granting drive changes which viewer paces the scroll. It no longer
     // changes what the preview is shaped like — that's the operator's own
     // choice now, since the viewer worth driving from and the viewer worth
@@ -609,7 +625,7 @@ export class Teleprompter {
   #renderViewers() {
     this.divViewers.innerHTML = "";
     const previewID = this.#previewID();
-    const pacerID = this.#pacerID();
+    const driverID = this.#driverID();
 
     for (const [id, entry] of this.viewers) {
       const row = document.createElement("div");
@@ -640,28 +656,24 @@ export class Teleprompter {
       previewLabel.appendChild(document.createTextNode("preview"));
       row.appendChild(previewLabel);
 
-      const label2 = document.createElement("label");
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = entry.canDrive;
-      checkbox.addEventListener(
-        "change",
-        () => this.#setDriver(id, checkbox.checked),
-      );
-      label2.appendChild(checkbox);
-      label2.appendChild(document.createTextNode("allow drive"));
-      row.appendChild(label2);
+      // Also a radio, and for a stronger reason than the preview's: exactly
+      // one viewer drives, so a checkbox per viewer could express states the
+      // app has no meaning for. It was a checkbox, and ticking a second
+      // viewer silently did nothing because only the first grant was read.
+      // Checked on the derived driver too, so the operator can see that the
+      // first viewer to connect is already the one driving.
+      const driveLabel = document.createElement("label");
+      const driveRadio = document.createElement("input");
+      driveRadio.type = "radio";
+      driveRadio.name = "driveSource";
+      driveRadio.checked = id === driverID;
+      driveRadio.addEventListener("change", () => this.#setDriver(id));
+      driveLabel.appendChild(driveRadio);
+      driveLabel.appendChild(document.createTextNode("drive"));
+      row.appendChild(driveLabel);
 
-      // Which viewer is actually pacing is derived (drive grant, else first
-      // to connect), so without saying so the operator can't tell whose
-      // position everyone else is mirroring.
-      if (id === pacerID) {
-        const pacing = document.createElement("span");
-        pacing.className = "viewer-pacing";
-        pacing.textContent = "pacing";
-        row.appendChild(pacing);
-      }
-
+      // No separate "pacing" badge any more: the driver *is* the pacer, and
+      // the radio above already says which one that is.
       this.divViewers.appendChild(row);
     }
   }
