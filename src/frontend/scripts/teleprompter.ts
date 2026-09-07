@@ -38,6 +38,7 @@ import {
   layoutCommands,
 } from "./controlCommands.ts";
 import { PaletteControls } from "./paletteControls.ts";
+import { GamepadControls } from "./gamepadControls.ts";
 import { connectController, type ControllerLink } from "./webrtc.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
 import { ratioOf, setRatio } from "./scrollsync.ts";
@@ -83,6 +84,7 @@ export class Teleprompter {
   btnMatchScale: WaButton;
   btnSendScale: WaButton;
   palette: PaletteControls;
+  padControls: GamepadControls;
 
   roomID: string;
   link: ControllerLink;
@@ -254,12 +256,19 @@ export class Teleprompter {
     // Last, deliberately: the commands press the controls above, so every
     // seam they reach for has to exist by now. The palette also installs the
     // key bindings, which is why there is no keyup listener here any more.
-    this.palette = new PaletteControls(buildCommands(this), {
+    const commands = buildCommands(this);
+    this.palette = new PaletteControls(commands, {
       isEditorFocused: () => this.editor.hasFocus,
       providers: [
         () => documentCommands(this.docControls),
         () => layoutCommands(this.themeControls),
       ],
+    });
+
+    // Handed the *same* bound list the palette got, so a controller button and
+    // the palette row and the keyboard shortcut all run one function.
+    this.padControls = new GamepadControls(commands, this, {
+      indicator: document.querySelector<WaIcon>("#icnGamepad") ?? undefined,
     });
 
     this.ifrmPreview.addEventListener("load", () => {

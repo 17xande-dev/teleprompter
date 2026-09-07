@@ -67,7 +67,11 @@
         </wa-dropdown>
       </fieldset>
       <fieldset class="wa-cluster divSliders">
-        <legend>Controls</legend>
+        <!-- The gamepad icon appears only while a pad is connected, which is
+             also the only feedback the operator gets that the browser has
+             noticed it — Chrome hides a pad until a button is pressed. -->
+        <legend>Controls <wa-icon id="icnGamepad" name="gamepad" title="Game controller connected" hidden></wa-icon>
+        </legend>
         <wa-slider id="rngSpeed" label="Scroll Speed" min="-500" max="500" step="0.1" value="0" orientation="vertical"
           indicator-offset="0" with-tooltip>
           <span slot="reference">Reverse</span>
