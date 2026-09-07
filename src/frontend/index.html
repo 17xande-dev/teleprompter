@@ -246,7 +246,10 @@
         <!-- Collapsed by default: on a phone this is faster than typing the
              URL, but it is only needed while a display is being set up. -->
         <wa-details id="dtlQr" summary="Scan to join">
-          <wa-qr-code id="qrViewerLink" value="" size="160" label="Viewer link"></wa-qr-code>
+          <!-- 200 rather than 160: a viewer URL encodes to a 44-module symbol,
+               so this is 4.55px a module for a phone camera to resolve. Fits
+               the sidebar at its narrowest (316px). -->
+          <wa-qr-code id="qrViewerLink" value="" size="200" label="Viewer link"></wa-qr-code>
         </wa-details>
         <div id="divViewers"></div>
       </wa-card>

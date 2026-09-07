@@ -211,6 +211,18 @@ WebSocket relay, `ice.go` STUN/TURN config.
 
 ### Things that will bite
 
+- **`wa-qr-code` paints its modules in the host's `color`** — its own `fill`
+  attribute is deprecated in favour of that property — so on this page it
+  inherited the dark theme's near-white text and drew near-white modules on the
+  white quiet zone underneath. Measured at luminance 0.949 against 1.0: a
+  contrast ratio of about 1.05:1, which no scanner can read, and it looks merely
+  "faint" rather than broken. `#qrViewerLink` pins ink _and_ paper, and is the
+  one place in the app deliberately light-on-dark's opposite — inverting a QR
+  code stops some phones recognising it at all. The padding is the code's quiet
+  zone and must clear four modules: the component draws the symbol edge to edge
+  of its canvas, a viewer URL encodes to 44 modules (local and deployed alike),
+  and at `size="200"` that is 4.55px a module — so 1rem would be 3.5 modules and
+  fail where 1.5rem is 5.3. Check it by sampling the canvas, not by eye.
 - **A `wa-button-group`'s slot is `flex-wrap: wrap`**, so a group short of width
   breaks its _own_ buttons onto a second row — which is what made the app bar
   spill out of a fixed height on a phone, its contents measuring `y: -14` inside

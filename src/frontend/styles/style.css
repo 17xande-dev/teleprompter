@@ -329,11 +329,26 @@ tp-clock-control time {
 }
 
 #qrViewerLink {
-  /* The code has to be light-on-dark's opposite: a scanner wants a white
-     quiet zone around dark modules, and inverting it stops some phones
-     recognising it at all. */
+  /* Both ink and paper are pinned here, and the ink is the one that matters:
+     wa-qr-code paints its modules in the host's `color` (its own docs deprecate
+     the `fill` attribute in favour of that property), which on this page
+     inherits the dark theme's near-white text. The result was near-white modules
+     on a white quiet zone — measured at luminance 0.949 against 1.0, a contrast
+     ratio of about 1.05:1, which no scanner can read.
+
+     This is also the one place in the app deliberately light-on-dark's
+     opposite: a scanner expects dark modules inside a light quiet zone, and
+     inverting a QR code stops some phones recognising it at all. */
+  color: black;
   background-color: white;
-  padding: var(--wa-space-s);
+  /* The quiet zone, and it has to be at least four modules wide or scanners
+     start refusing the code — wa-qr-code draws the symbol edge to edge of its
+     canvas (measured: the dark bounds run 0..319 of 320), so this padding is
+     the entire margin. A viewer URL encodes to 44 modules, local and deployed
+     alike, which at size 200 is 4.55px a module: 1rem would be 3.5 modules and
+     fail, 1.5rem is 5.3 and passes. Measured, not assumed — the module count
+     rises with the URL's length. */
+  padding: var(--wa-space-l, 1.5rem);
   border-radius: var(--wa-border-radius-m);
 }
 
