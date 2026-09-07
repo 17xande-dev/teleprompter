@@ -3,11 +3,21 @@ import { fullSchema } from "wordgard/schema";
 import { history } from "wordgard/history";
 import { GardState } from "wordgard/state";
 
+// The editor pane's height, matching #pdfPane so the two modes occupy the
+// same box.
+const EDITOR_HEIGHT = "92vh";
+
 function buildConfig(onUpdate?: (wg: Wordgard) => void) {
   return [
     fullSchema(),
     history(),
     menuBar(),
+    // Without this the editor grows to fit its content, the whole control page
+    // scrolls instead, and scrollDOM's scrollHeight equals its clientHeight —
+    // so the pane has no scroll position of its own to read or set, which the
+    // sync-position actions need. It also keeps the right-hand controls on
+    // screen while the script is long.
+    Wordgard.scrolling(EDITOR_HEIGHT),
     ...(onUpdate
       ? [
         Wordgard.updateListener.of((update) => {

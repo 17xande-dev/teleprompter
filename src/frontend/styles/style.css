@@ -16,10 +16,17 @@ html {
 /*   position: sticky; */
 /*   height: 98vh; */
 /* } */
-/**/
-/* #mainEditor { */
-/*   height: 92vh; */
-/* } */
+
+/* The script is read at arm's length off a second screen, so the editor is a
+   prompter pane rather than a document: it starts far larger than the 16px it
+   used to inherit from the UA. Roughly matches what a 1920px-wide viewer shows
+   at the Text Scale slider's default, given this pane is about three quarters
+   as wide — "Match viewers' text size" computes that exactly.
+   The editor's *height* comes from Wordgard.scrolling() in editor.ts, not from
+   here: the scroll container is inside the editor's own shadow-free DOM. */
+#editor {
+  font-size: 2rem;
+}
 
 /* The preview iframe is rendered at the previewed viewer's *real* pixel
    size and then CSS-scaled down (see #applyPreviewScale in teleprompter.ts),
