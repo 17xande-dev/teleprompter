@@ -174,7 +174,8 @@ function makeLink(opts: LinkOptions): Link {
     };
 
     if (opts.onStateChange) {
-      pc.onconnectionstatechange = () => opts.onStateChange!(pc!.connectionState);
+      pc.onconnectionstatechange = () =>
+        opts.onStateChange!(pc!.connectionState);
     }
   }
 
@@ -192,7 +193,9 @@ function makeLink(opts: LinkOptions): Link {
       if (generation !== fileGeneration || ch.readyState !== "open") return;
       if (ch.bufferedAmount > FILE_BUFFER_HIGH) {
         await new Promise<void>((resolve) => {
-          ch.addEventListener("bufferedamountlow", () => resolve(), { once: true });
+          ch.addEventListener("bufferedamountlow", () => resolve(), {
+            once: true,
+          });
         });
         if (generation !== fileGeneration || ch.readyState !== "open") return;
       }
@@ -483,7 +486,8 @@ export function connectViewer(room: string, cb: ViewerCallbacks): ViewerLink {
             link = makeLink({
               polite: true, // the viewer always yields to the controller's offer
               rtcConfig,
-              sendSignal: (m) => ws?.send(JSON.stringify({ ...m, to: controllerID })),
+              sendSignal: (m) =>
+                ws?.send(JSON.stringify({ ...m, to: controllerID })),
               onScroll: (r, s) => cb.onScroll?.(r, s),
               onControl: (m) => cb.onControl?.(m),
               onFile: (n, d) => cb.onFile?.(n, d),

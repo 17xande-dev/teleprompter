@@ -20,7 +20,9 @@ interface Received {
 
 function roundTrip(name: string, bytes: ArrayBuffer): Received[] {
   const got: Received[] = [];
-  const sink = makeReassembler((n, d) => got.push({ name: n, data: new Uint8Array(d) }));
+  const sink = makeReassembler((n, d) =>
+    got.push({ name: n, data: new Uint8Array(d) })
+  );
   for (const frame of chunkFile(name, bytes, CHUNK)) sink(frame);
   return got;
 }
@@ -62,7 +64,9 @@ Deno.test("a second transfer starts clean rather than splicing onto the first", 
   // off. Appending there yields a plausible-looking buffer of the right length
   // full of the wrong bytes.
   const got: Received[] = [];
-  const sink = makeReassembler((n, d) => got.push({ name: n, data: new Uint8Array(d) }));
+  const sink = makeReassembler((n, d) =>
+    got.push({ name: n, data: new Uint8Array(d) })
+  );
 
   const first = pattern(CHUNK * 3);
   const frames = [...chunkFile("first.pdf", first, CHUNK)];
@@ -83,9 +87,13 @@ Deno.test("drops a transfer that ends short of its declared length", () => {
   // of zero bytes — reported as a corrupt document, which sends you looking at
   // the PDF rather than at the transfer that lost bytes.
   const got: Received[] = [];
-  const sink = makeReassembler((n, d) => got.push({ name: n, data: new Uint8Array(d) }));
+  const sink = makeReassembler((n, d) =>
+    got.push({ name: n, data: new Uint8Array(d) })
+  );
 
-  sink(JSON.stringify({ k: "begin", name: "short.pdf", bytes: 128, chunks: 2 }));
+  sink(
+    JSON.stringify({ k: "begin", name: "short.pdf", bytes: 128, chunks: 2 }),
+  );
   sink(pattern(64));
   sink(JSON.stringify({ k: "end" }));
 
@@ -94,7 +102,9 @@ Deno.test("drops a transfer that ends short of its declared length", () => {
 
 Deno.test("drops a transfer whose bytes overrun its header", () => {
   const got: Received[] = [];
-  const sink = makeReassembler((n, d) => got.push({ name: n, data: new Uint8Array(d) }));
+  const sink = makeReassembler((n, d) =>
+    got.push({ name: n, data: new Uint8Array(d) })
+  );
 
   sink(JSON.stringify({ k: "begin", name: "liar.pdf", bytes: 4, chunks: 1 }));
   sink(pattern(64));

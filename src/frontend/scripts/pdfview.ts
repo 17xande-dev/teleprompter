@@ -91,7 +91,14 @@ export async function renderPdf(
     const { width, height } = proxy.getViewport({ scale: 1 });
     const el = document.createElement("div");
     el.className = "pdf-page";
-    return { proxy, baseWidth: width, baseHeight: height, el, canvas: null, task: null };
+    return {
+      proxy,
+      baseWidth: width,
+      baseHeight: height,
+      el,
+      canvas: null,
+      task: null,
+    };
   });
 
   container.replaceChildren(...pages.map((p) => p.el));
@@ -192,7 +199,9 @@ export async function renderPdf(
       // The observer only reports *changes* in intersection, and a page that
       // was visible before and after the relayout produces no entry — so it
       // would sit blank until the reader scrolled. Kick the visible ones.
-      await Promise.all(pages.filter((p) => isNear(p.el, scroller)).map(rasterize));
+      await Promise.all(
+        pages.filter((p) => isNear(p.el, scroller)).map(rasterize),
+      );
     },
     destroy() {
       destroyed = true;

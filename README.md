@@ -3,9 +3,9 @@
 An open source teleprompter running in your browser. What a time to be alive.
 
 A **control** page holds the script and the controls; one or more **viewer**
-displays show it — a popup on a second monitor, a tablet on the floor, a
-laptop across the room. Scroll position, content, speed, text scale, layout,
-messages and clocks all stay in sync between them.
+displays show it — a popup on a second monitor, a tablet on the floor, a laptop
+across the room. Scroll position, content, speed, text scale, layout, messages
+and clocks all stay in sync between them.
 
 ## Run
 
@@ -24,13 +24,13 @@ Or, while developing, both together with live rebuilds:
 deno task dev              # watch-bundle the frontend AND run the Go server
 ```
 
-`deno task dev` passes `-dev` to the server, which then reads `dist/` from
-disk. The embedded copy is fixed at compile time, so without that flag a
-rebundle stays invisible until the Go process restarts.
+`deno task dev` passes `-dev` to the server, which then reads `dist/` from disk.
+The embedded copy is fixed at compile time, so without that flag a rebundle
+stays invisible until the Go process restarts.
 
-Open <http://localhost:8080>. The control page gives itself a room and shows
-a viewer link — open that on any device on the network, or hit **Popup** for
-a viewer window on this machine.
+Open <http://localhost:8080>. The control page gives itself a room and shows a
+viewer link — open that on any device on the network, or hit **Popup** for a
+viewer window on this machine.
 
 ## Architecture
 
@@ -39,87 +39,86 @@ scroll position and content travel directly between them over WebRTC data
 channels; the server never sees either.
 
 ```
-                     ┌──────────── Go server (:8080) ────────────┐
-                     │ /ws   signaling relay, one room per session │
-                     │ /ice  STUN/TURN config                      │
-                     │ /     the embedded frontend                 │
-                     └───────────────────┬─────────────────────────┘
-                                         │ SDP/ICE only
-        ┌────────────────────────────────┼────────────────────────────────┐
-        ▼                                ▼                                ▼
-  [Control page]                  [Viewer: window]              [Viewer: another device]
-   one RTCPeerConnection ───── scroll (unreliable) + control (reliable) ─────┘
-   per viewer, plus a local
-   preview iframe over postMessage
+                   ┌──────────── Go server (:8080) ────────────┐
+                   │ /ws   signaling relay, one room per session │
+                   │ /ice  STUN/TURN config                      │
+                   │ /     the embedded frontend                 │
+                   └───────────────────┬─────────────────────────┘
+                                       │ SDP/ICE only
+      ┌────────────────────────────────┼────────────────────────────────┐
+      ▼                                ▼                                ▼
+[Control page]                  [Viewer: window]              [Viewer: another device]
+ one RTCPeerConnection ───── scroll (unreliable) + control (reliable) ─────┘
+ per viewer, plus a local
+ preview iframe over postMessage
 ```
 
-**Star topology.** The control page holds one `RTCPeerConnection` per viewer
-and is always the WebRTC perfect-negotiation *impolite* side; viewers are
-always *polite* and only ever talk to the controller, never to each other.
-That keeps a viewer's job simple no matter how many others are connected.
+**Star topology.** The control page holds one `RTCPeerConnection` per viewer and
+is always the WebRTC perfect-negotiation _impolite_ side; viewers are always
+_polite_ and only ever talk to the controller, never to each other. That keeps a
+viewer's job simple no matter how many others are connected.
 
 **Sync state, not pixels.** Both ends render the same HTML; what crosses the
 wire is a `0..1` scroll ratio, not video. Using a ratio rather than a pixel
 offset is what lets a phone, a 4K display and the control page's scaled-down
 preview all sit on the same line.
 
-**One pacer.** Only one viewer integrates the scroll speed — the one the
-preview follows, preferring whichever viewer has been granted drive. The
-others mirror the position it reports. Independent auto-scroll loops each
-run off their own clock and drift apart within a minute, with nothing to
-pull them back.
+**One pacer.** Only one viewer integrates the scroll speed — the one the preview
+follows, preferring whichever viewer has been granted drive. The others mirror
+the position it reports. Independent auto-scroll loops each run off their own
+clock and drift apart within a minute, with nothing to pull them back.
 
 **The preview is a real miniature.** The iframe is rendered at the previewed
-viewer's actual pixel size and CSS-scaled down, so text wraps exactly as it
-does on that display. Sizing it to the small on-screen box instead would
-reflow the content and show the operator something no viewer is rendering.
+viewer's actual pixel size and CSS-scaled down, so text wraps exactly as it does
+on that display. Sizing it to the small on-screen box instead would reflow the
+content and show the operator something no viewer is rendering.
 
 ## Rooms, links and control
 
-A room id identifies a session and is in the control page's URL, so a
-refresh rejoins the same room. The viewer link carries only that id.
+A room id identifies a session and is in the control page's URL, so a refresh
+rejoins the same room. The viewer link carries only that id.
 
-Control of a room is held with a separate **key**, generated by the control
-page and kept in `localStorage` — never in the viewer link. The first
-controller into a room claims it; any controller afterwards must present the
-same key. Without this, since a reconnecting controller displaces the
-sitting one, anybody who was sent a viewer link could take over the session
-and push their own content to every display.
+Control of a room is held with a separate **key**, generated by the control page
+and kept in `localStorage` — never in the viewer link. The first controller into
+a room claims it; any controller afterwards must present the same key. Without
+this, since a reconnecting controller displaces the sitting one, anybody who was
+sent a viewer link could take over the session and push their own content to
+every display.
 
 ## Viewer layouts and themes
 
 Two layouts ship built in — **Clocks & Text** and **Big Clocks** — and the
 **Viewer Layout** dropdown beside the preview switches every display at once.
 
-Beyond those, **New Theme…** creates a layout you write yourself in plain
-CSS. A theme starts as a copy of the default layout's rules, with the markup
-contract commented at the top, and the dialog's editor pushes each change
-straight to the preview *and* to every connected display, so you style
-against the real thing rather than guessing. Save keeps it; Cancel puts back
-whatever was on screen before.
+Beyond those, **New Theme…** creates a layout you write yourself in plain CSS. A
+theme starts as a copy of the default layout's rules, with the markup contract
+commented at the top, and the dialog's editor pushes each change straight to the
+preview _and_ to every connected display, so you style against the real thing
+rather than guessing. Save keeps it; Cancel puts back whatever was on screen
+before.
 
 A theme replaces the built-in layout entirely — it isn't layered on top — so
 what you see is what your CSS says. Three things stay out of your hands: the
-message's font size (recalculated to fit its box), `--textScale` (the Text
-Scale slider), and the height and spacing of `.pdf-page`, which is what makes
-a scroll position land on the same line on a phone and on a 4K display. The
-editor warns you if a rule touches that last one, and if you use `@import` —
-which won't apply, since a theme is installed as a constructed stylesheet
-with no base URL. `url()` can only reach this server, per the page's CSP.
+message's font size (recalculated to fit its box), `--textScale` (the Text Scale
+slider), and the height and spacing of `.pdf-page`, which is what makes a scroll
+position land on the same line on a phone and on a 4K display. The editor warns
+you if a rule touches that last one, and if you use `@import` — which won't
+apply, since a theme is installed as a constructed stylesheet with no base URL.
+`url()` can only reach this server, per the page's CSP.
 
 Themes live in the **control page's** browser storage, and the operator's
-machine ships the CSS to each display over the same data channel as
-everything else — so viewers need no setup, and a display that reloads
-mid-service comes back wearing the right theme. Nothing is stored
-server-side yet; clearing that browser's storage loses them.
+machine ships the CSS to each display over the same data channel as everything
+else — so viewers need no setup, and a display that reloads mid-service comes
+back wearing the right theme. Nothing is stored server-side yet; clearing that
+browser's storage loses them.
 
 ## TURN (NAT/firewall fallback)
 
 STUN gets peers connected in most co-located cases; TURN is the fallback for
 networks that block direct peer traffic (guest wifi, client isolation). The
 client fetches ICE config from `GET /ice` at connect time — credentials are
-never hardcoded in the frontend. The server issues short-lived HMAC
-credentials following coturn's `use-auth-secret` scheme:
+never hardcoded in the frontend. The server issues short-lived HMAC credentials
+following coturn's `use-auth-secret` scheme:
 
 ```sh
 TURN_URLS="turn:turn.example.com:3478" \
@@ -141,14 +140,14 @@ deno task check                         # type-check the frontend
 
 ## Decisions still open
 
-| Question | Where it stands |
-|---|---|
-| Anything stronger than a room id + control key? | Fine for a trusted LAN or a private tunnel. Exposed publicly, this wants real accounts. |
-| Content is re-sent whole on every keystroke | Fine for a script; a very long document may want debouncing or diffing. |
-| Viewer renders pushed content with `innerHTML` | Acceptable while only the control key holder can push. Revisit if rooms ever become semi-public. |
-| CSP carries `'unsafe-inline'` for styles and allows the fontawesome CDN | Forced by the Web Awesome component library, which applies inline styles and fetches icon SVGs at runtime. Self-hosting the icons would let both be dropped. |
-| Theme CSS is applied unsandboxed, and warnings are advisory | The author is the operator, who already holds the control key, so this is their own foot. The one rule that breaks sync silently (`.pdf-page` height) is warned about but not blocked — worth revisiting if themes ever become shareable between users. |
-| Clock state isn't restored on reconnect | A viewer that reconnects gets content and settings back, but its countdown restarts. Needs a serialisable clock (start time + duration) rather than start/stop events. |
+| Question                                                                | Where it stands                                                                                                                                                                                                                                         |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anything stronger than a room id + control key?                         | Fine for a trusted LAN or a private tunnel. Exposed publicly, this wants real accounts.                                                                                                                                                                 |
+| Content is re-sent whole on every keystroke                             | Fine for a script; a very long document may want debouncing or diffing.                                                                                                                                                                                 |
+| Viewer renders pushed content with `innerHTML`                          | Acceptable while only the control key holder can push. Revisit if rooms ever become semi-public.                                                                                                                                                        |
+| CSP carries `'unsafe-inline'` for styles and allows the fontawesome CDN | Forced by the Web Awesome component library, which applies inline styles and fetches icon SVGs at runtime. Self-hosting the icons would let both be dropped.                                                                                            |
+| Theme CSS is applied unsandboxed, and warnings are advisory             | The author is the operator, who already holds the control key, so this is their own foot. The one rule that breaks sync silently (`.pdf-page` height) is warned about but not blocked — worth revisiting if themes ever become shareable between users. |
+| Clock state isn't restored on reconnect                                 | A viewer that reconnects gets content and settings back, but its countdown restarts. Needs a serialisable clock (start time + duration) rather than start/stop events.                                                                                  |
 
 ## TODO
 

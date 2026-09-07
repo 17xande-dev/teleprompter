@@ -59,7 +59,10 @@ function makeFakeElement(
 // sees a timer still scheduled once the test returns.
 async function withSync(
   el: FakeElement,
-  body: (sync: ScrollSync, sent: Array<{ r: number; s: number }>) => Promise<void>,
+  body: (
+    sync: ScrollSync,
+    sent: Array<{ r: number; s: number }>,
+  ) => Promise<void>,
 ) {
   installRAFPolyfill();
   const sent: Array<{ r: number; s: number }> = [];
@@ -77,7 +80,11 @@ async function withSync(
 
 Deno.test("converts scrollTop to a 0..1 ratio and coalesces to one send per frame", async () => {
   // max scroll = 1000 - 200 = 800
-  const el = makeFakeElement({ scrollTop: 0, scrollHeight: 1000, clientHeight: 200 });
+  const el = makeFakeElement({
+    scrollTop: 0,
+    scrollHeight: 1000,
+    clientHeight: 200,
+  });
   await withSync(el, async (_sync, sent) => {
     el.fireUserScroll(400); // ratio 0.5
     el.fireUserScroll(600); // ratio 0.75 — coalesces with the above
@@ -88,18 +95,30 @@ Deno.test("converts scrollTop to a 0..1 ratio and coalesces to one send per fram
 });
 
 Deno.test("applyRemote suppresses the echo from its own scrollTo", async () => {
-  const el = makeFakeElement({ scrollTop: 0, scrollHeight: 1000, clientHeight: 200 });
+  const el = makeFakeElement({
+    scrollTop: 0,
+    scrollHeight: 1000,
+    clientHeight: 200,
+  });
   await withSync(el, async (sync, sent) => {
     sync.applyRemote(0.5);
     await flush();
 
     assertEquals(el.scrollTop, 400);
-    assertEquals(sent, [], "a position we applied ourselves must not be sent back");
+    assertEquals(
+      sent,
+      [],
+      "a position we applied ourselves must not be sent back",
+    );
   });
 });
 
 Deno.test("a real scroll after the echo-suppression window closes is reported normally", async () => {
-  const el = makeFakeElement({ scrollTop: 0, scrollHeight: 1000, clientHeight: 200 });
+  const el = makeFakeElement({
+    scrollTop: 0,
+    scrollHeight: 1000,
+    clientHeight: 200,
+  });
   await withSync(el, async (sync, sent) => {
     sync.applyRemote(0.5);
     await flush();
@@ -111,7 +130,11 @@ Deno.test("a real scroll after the echo-suppression window closes is reported no
 });
 
 Deno.test("send sequence numbers increase across separate frames", async () => {
-  const el = makeFakeElement({ scrollTop: 0, scrollHeight: 1000, clientHeight: 200 });
+  const el = makeFakeElement({
+    scrollTop: 0,
+    scrollHeight: 1000,
+    clientHeight: 200,
+  });
   await withSync(el, async (_sync, sent) => {
     el.fireUserScroll(100);
     await flush();
@@ -123,7 +146,11 @@ Deno.test("send sequence numbers increase across separate frames", async () => {
 });
 
 Deno.test("a zero-height page reports ratio 0 rather than dividing by zero", async () => {
-  const el = makeFakeElement({ scrollTop: 0, scrollHeight: 200, clientHeight: 200 });
+  const el = makeFakeElement({
+    scrollTop: 0,
+    scrollHeight: 200,
+    clientHeight: 200,
+  });
   await withSync(el, async (_sync, sent) => {
     el.fireUserScroll(0);
     await flush();
@@ -138,7 +165,11 @@ Deno.test("re-applying a stored ratio re-anchors after the content changes heigh
   // the browser keeps scrollTop in pixels, so the same position now means a
   // different line. While the pacer is moving its ~60Hz samples hide this;
   // paused, nothing else ever corrects it.
-  const el = makeFakeElement({ scrollTop: 0, scrollHeight: 1000, clientHeight: 200 });
+  const el = makeFakeElement({
+    scrollTop: 0,
+    scrollHeight: 1000,
+    clientHeight: 200,
+  });
   await withSync(el, async (sync) => {
     sync.applyRemote(0.5);
     assertEquals(el.scrollTop, 400); // half of (1000 - 200)

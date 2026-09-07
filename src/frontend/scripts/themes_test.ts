@@ -8,9 +8,9 @@ import {
   DEFAULT_LAYOUT,
   findThemeCssProblems,
   parseThemes,
-  type ThemeStore,
-  ThemeStorage,
   themeSlug,
+  ThemeStorage,
+  type ThemeStore,
   uniqueSlug,
 } from "./themes.ts";
 
@@ -140,7 +140,9 @@ Deno.test("renaming keeps the slug, so a viewer's class stays valid", () => {
 
 Deno.test("updating a theme that doesn't exist throws rather than creating it", () => {
   const storage = new ThemeStorage(fakeStore());
-  assertThrows(() => storage.update("theme-user-ghost", { name: "x", css: "" }));
+  assertThrows(() =>
+    storage.update("theme-user-ghost", { name: "x", css: "" })
+  );
 });
 
 Deno.test("@import is reported, because replaceSync will reject it", () => {
@@ -153,12 +155,14 @@ Deno.test("@import is reported, because replaceSync will reject it", () => {
 Deno.test("a rule changing .pdf-page height is reported", () => {
   // Nothing errors when a theme does this — the PDF column just stops being
   // proportional and differently-sized viewers drift apart per page.
-  for (const css of [
-    `.pdf-page { height: 500px }`,
-    `.pdf-page{margin-bottom:2rem}`,
-    `.pdf-page {\n  padding: 1rem;\n}`,
-    `.content .pdf-page { border: 1px solid red }`,
-  ]) {
+  for (
+    const css of [
+      `.pdf-page { height: 500px }`,
+      `.pdf-page{margin-bottom:2rem}`,
+      `.pdf-page {\n  padding: 1rem;\n}`,
+      `.content .pdf-page { border: 1px solid red }`,
+    ]
+  ) {
     assertEquals(findThemeCssProblems(css).length, 1, css);
   }
 });

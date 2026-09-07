@@ -134,7 +134,11 @@ Deno.test("renaming another document does not move the open one", () => {
   storage.rename(other, "Renamed");
 
   assertEquals(storage.getCurrentID(), open);
-  assertEquals(storage.get(other)?.content, "", "other document was written to");
+  assertEquals(
+    storage.get(other)?.content,
+    "",
+    "other document was written to",
+  );
   assertEquals(storage.get(open)?.content, "the open document's text");
 });
 
@@ -259,7 +263,9 @@ function throttled(seed: Record<string, string> = {}) {
 }
 
 /** The content currently persisted for the open document, if any. */
-function storedContent(store: ReturnType<typeof fakeStore>): string | undefined {
+function storedContent(
+  store: ReturnType<typeof fakeStore>,
+): string | undefined {
   const raw = store.data.get(DOCS_KEY);
   if (!raw) return undefined;
   const id = store.data.get(CURRENT_KEY)!;
@@ -275,7 +281,11 @@ Deno.test("a content edit is readable immediately but not yet written", async ()
   assertEquals(storedContent(store), "", "wrote through instead of throttling");
 
   await settle();
-  assertEquals(storedContent(store), "typed", "the throttled write never landed");
+  assertEquals(
+    storedContent(store),
+    "typed",
+    "the throttled write never landed",
+  );
 });
 
 Deno.test("a burst of edits collapses to one write, with the last value", async () => {
@@ -369,7 +379,10 @@ Deno.test("a throttled write that fails leaves memory intact", async () => {
 });
 
 Deno.test("formatDateTime pads every field from its injected clock", () => {
-  assertEquals(formatDateTime(new Date(2026, 0, 2, 3, 4, 5)), "20260102-030405");
+  assertEquals(
+    formatDateTime(new Date(2026, 0, 2, 3, 4, 5)),
+    "20260102-030405",
+  );
   assertEquals(
     formatDateTime(new Date(2026, 10, 20, 13, 40, 50)),
     "20261120-134050",

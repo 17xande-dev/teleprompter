@@ -34,7 +34,10 @@ export function* chunkFile(
   const header: Header = { k: "begin", name, bytes: bytes.byteLength, chunks };
   yield JSON.stringify(header);
   for (let i = 0; i < chunks; i++) {
-    yield bytes.slice(i * chunkSize, Math.min((i + 1) * chunkSize, bytes.byteLength));
+    yield bytes.slice(
+      i * chunkSize,
+      Math.min((i + 1) * chunkSize, bytes.byteLength),
+    );
   }
   const trailer: Trailer = { k: "end" };
   yield JSON.stringify(trailer);

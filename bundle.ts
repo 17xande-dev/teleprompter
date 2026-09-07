@@ -12,10 +12,10 @@ await bundle();
 
 // Watch for changes.
 const watcher = Deno.watchFs(["src"]);
-console.log("Watching for changes in src/...")
+console.log("Watching for changes in src/...");
 
 for await (const event of watcher) {
-  if (event.kind ==="modify" || event.kind === "create"){
+  if (event.kind === "modify" || event.kind === "create") {
     console.log("Change detected, rebundling...");
     await bundle();
   }
