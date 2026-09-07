@@ -56,6 +56,13 @@ export interface Command extends CommandSpec {
 }
 
 /**
+ * What the palette is showing. "shortcuts" is the cheatsheet: the same dialog,
+ * renderer and list, filtered to the commands that have a binding — so the
+ * cheatsheet cannot fall out of step with what actually fires.
+ */
+export type PaletteMode = "all" | "shortcuts";
+
+/**
  * A source of commands, called every time the palette opens.
  *
  * Re-reading on open is what guarantees a dynamic list agrees with storage,

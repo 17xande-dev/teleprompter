@@ -12,6 +12,7 @@ import {
   toTinykeys,
   validateCommands,
 } from "./commands.ts";
+import { COMMAND_SPECS } from "./controlCommands.ts";
 
 function cmd(spec: Partial<Command> & { label: string }): Command {
   return {
@@ -245,4 +246,42 @@ Deno.test("a palette-only command may not claim to fire while typing", () => {
   ]);
   assertEquals(problems.length, 1);
   assert(problems[0].includes("no shortcut"));
+});
+
+// The checks above are only worth having if they run against the table that
+// actually ships, which is why controlCommands.ts keeps COMMAND_SPECS free of
+// any DOM access at module scope.
+
+Deno.test("the real command table has nothing wrong with it", () => {
+  assertEquals(validateCommands(COMMAND_SPECS), []);
+});
+
+Deno.test("every real shortcut both binds and displays", () => {
+  // A spec that parses for tinykeys but formats to "" (or the reverse) would
+  // mean the palette and the keyboard disagreed about the same command.
+  for (const spec of COMMAND_SPECS) {
+    if (spec.shortcut === undefined) continue;
+    assert(
+      toTinykeys(spec.shortcut) !== null,
+      `${spec.id}: ${spec.shortcut} does not bind`,
+    );
+    assert(
+      formatShortcut(spec.shortcut, { apple: false }) !== "",
+      `${spec.id}: ${spec.shortcut} does not display`,
+    );
+    assert(
+      formatShortcut(spec.shortcut, { apple: true }) !== "",
+      `${spec.id}: ${spec.shortcut} does not display on a Mac`,
+    );
+  }
+});
+
+Deno.test("only Space is bound bare, and every other binding is a chord", () => {
+  // The operator asked for chords precisely so shortcuts stay out of the way
+  // while typing. Space predates that and is guarded by focus instead; a new
+  // bare key slipping in is the regression this catches.
+  const bare = COMMAND_SPECS
+    .filter((s) => s.shortcut && !shortcutHasModifier(s.shortcut))
+    .map((s) => s.shortcut);
+  assertEquals(bare, ["Space"]);
 });
