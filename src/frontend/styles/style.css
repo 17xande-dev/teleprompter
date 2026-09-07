@@ -1,4 +1,9 @@
 :root {
+  /* The app bar's real height, overwritten from JS once it has been measured
+     (#trackAppBarHeight). This value is what applies until then, and is the
+     height the bar is designed to be. It is *not* what sizes the bar — that is
+     a constant in #appBar's own rule, so writing this back can't feed into it
+     and loop. */
   --app-bar-height: 3rem;
 
   /* The height of both panes, and the one definition of it. The editor gets
@@ -25,16 +30,36 @@ body {
 
 /* ---------------------------------------------------------------- app bar */
 
+/* Sizes to its content with 3rem as a floor, and is allowed to wrap. It used to
+   be a fixed `block-size`, which clipped: on a phone the groups needed more
+   width than there was, and the bar's contents spilled out of it both above and
+   below (measured at y: -14 in a 48px bar). Wrapping instead of clipping is
+   only safe because JS measures the result into --app-bar-height — the panes
+   below are sized as the viewport minus exactly that. This also covers a
+   viewer's larger default font or browser zoom, which is the same bug arriving
+   by another route. The floor is a constant, deliberately, so it cannot depend
+   on the variable it feeds. */
 #appBar {
-  block-size: var(--app-bar-height);
+  min-block-size: 3rem;
   box-sizing: border-box;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--wa-space-m);
   padding-inline: var(--wa-space-m);
   background-color: var(--wa-color-surface-raised);
   border-block-end: 1px solid var(--wa-color-surface-border);
+}
+
+/* A wa-button-group's slot is `flex-wrap: wrap`, so a group short of width
+   breaks its own buttons onto a second row — which is what made the bar spill.
+   A group is a row by definition (its first/last-child rules round the ends of
+   one), so it must never wrap; the bar wraps between groups instead. ::part is
+   the only hook — the wrap lives on the slot inside the shadow root, and the
+   host's own flex-wrap does not reach it. */
+#appBar wa-button-group::part(base) {
+  flex-wrap: nowrap;
 }
 
 .bar-group {
@@ -130,6 +155,14 @@ body {
   /* Nothing to pop out to on a phone: window.open would land on top of the
      control page, which is the one thing the operator needs to keep. */
   #btnPop {
+    display: none;
+  }
+
+  /* The document actions go too — not for room (though they are what pushed the
+     bar past a phone's width) but because the palette already holds both of
+     them: "New document", and "Open: <name>" for every document, from the same
+     command table. The Commands button beside this opens it. */
+  #grpDocument {
     display: none;
   }
 

@@ -211,6 +211,28 @@ WebSocket relay, `ice.go` STUN/TURN config.
 
 ### Things that will bite
 
+- **A `wa-button-group`'s slot is `flex-wrap: wrap`**, so a group short of width
+  breaks its _own_ buttons onto a second row — which is what made the app bar
+  spill out of a fixed height on a phone, its contents measuring `y: -14` inside
+  a 48px bar. A group is a row by definition (its first/last-child rules round
+  the ends of one), so the bar sets `::part(base) { flex-wrap: nowrap }` and
+  wraps _between_ groups instead. `::part` is the only hook: the wrap is on the
+  slot inside the shadow root and the host's own `flex-wrap` can't reach it.
+- **`--app-bar-height` is measured from the bar, not assumed** —
+  `#trackAppBarHeight` publishes its real height and `--pane-height` is the
+  viewport minus that. The bar is allowed to wrap, so it can be taller than the
+  3rem it is designed to be; a viewer's larger default font or browser zoom does
+  the same thing (at a 26px root it becomes 151px). Either way the panes have to
+  give up the space, or they hang off the bottom of the viewport. No loop is
+  possible: the bar's height comes from its content and a **constant** floor in
+  CSS, never from the property written back — the same discipline
+  `#applyPreviewScale` follows.
+- **The status badge means "a display is showing this", not "the socket is
+  up".** It reports `connected` _and_ `viewers.size`, which is why
+  `#renderStatus` is called from both the signaling callback and
+  `#renderViewers`. It said "Live" on a bare signaling connection at first, and
+  that reads as on-air with nothing plugged in — the operator's question is
+  whether anything is showing their script, so with none it says "No viewers".
 - **Both panes take their height from `--pane-height`**, one token in
   `style.css` (`100dvh` minus the app bar). `#pdfPane` reads it in CSS and the
   editor gets it through `Wordgard.scrolling()` in `editor.ts`, which drops the
@@ -296,18 +318,18 @@ WebSocket relay, `ice.go` STUN/TURN config.
 - **The Editor Text slider is the one slider that is _not_ on the wire.** It is
   the operator's own reading size, so it goes through `#applyEditorScale`
   (custom property, `localStorage`, readout) and must never reach
-  `#pushSettings` — sending it would resize every display because someone
-  leaned into their own screen. It is still the single source of truth for how
-  big the script is: "Match viewers' text size" drives the _slider_ rather than
-  writing a font size onto the element, so the thumb, the readout and the
-  remembered size cannot disagree with what is on screen.
-- **The sliders' defaults are read out of the markup**, once, in the
-  constructor — that is what a right-click (and the palette's "Reset sliders to
-  defaults") returns them to. The capture has to happen _before_
-  `#restoreEditorScale` writes the stored editor size, or "reset" would put
-  back whatever the operator last dragged to rather than the default. A reset
-  dispatches a synthetic `input`, like `controlCommands.ts`'s `nudge`, so it
-  travels the same path a drag does and cannot forget to tell the viewers.
+  `#pushSettings` — sending it would resize every display because someone leaned
+  into their own screen. It is still the single source of truth for how big the
+  script is: "Match viewers' text size" drives the _slider_ rather than writing
+  a font size onto the element, so the thumb, the readout and the remembered
+  size cannot disagree with what is on screen.
+- **The sliders' defaults are read out of the markup**, once, in the constructor
+  — that is what a right-click (and the palette's "Reset sliders to defaults")
+  returns them to. The capture has to happen _before_ `#restoreEditorScale`
+  writes the stored editor size, or "reset" would put back whatever the operator
+  last dragged to rather than the default. A reset dispatches a synthetic
+  `input`, like `controlCommands.ts`'s `nudge`, so it travels the same path a
+  drag does and cannot forget to tell the viewers.
 - **`keyLabel` needs an entry for every physical key name a shortcut uses.**
   Anything carrying `Alt` is written as a `code` (`BracketRight`), and without a
   `KEY_LABELS` entry the palette advertises the chord as literally

@@ -138,6 +138,9 @@ export class Teleprompter {
   // The app bar's status half. All four are display-only — nothing reads back
   // out of them — so they are looked up once and written to.
   #bdgSignaling: WaBadge;
+  // Half of what the status badge shows; the other half is viewers.size.
+  // Starts "disconnected" because that is true until the socket opens.
+  #signaling: "connected" | "disconnected" | "denied" = "disconnected";
   #spnViewerNum: HTMLElement;
   #outSpeed: HTMLOutputElement;
   #outScale: HTMLOutputElement;
@@ -216,7 +219,8 @@ export class Teleprompter {
         onViewerState: this.#onViewerState.bind(this),
         onSignalingStatus: (status) => {
           document.documentElement.dataset.signaling = status;
-          this.#renderSignaling(status);
+          this.#signaling = status;
+          this.#renderStatus();
           if (status === "denied") {
             console.error(
               `another control page already holds room ${this.roomID}`,
@@ -373,11 +377,38 @@ export class Teleprompter {
       () => this.palette.open("all"),
     );
 
+    this.#trackAppBarHeight();
     this.#wirePaneToggle();
 
     this.#applyPreviewScale();
     this.#renderViewers();
     this.#renderTransport();
+  }
+
+  /**
+   * Publish the app bar's measured height as --app-bar-height.
+   *
+   * Both panes are sized as the viewport minus that (--pane-height), so the
+   * number has to be the bar's *real* height rather than the one it was
+   * designed to be. The bar wraps rather than clipping when it runs short of
+   * width, and a viewer's larger default font or browser zoom can push it over
+   * too — in either case the panes have to give up the row it gained, or they
+   * hang off the bottom of the viewport.
+   *
+   * It cannot loop: the bar's own height comes from its content and a constant
+   * floor in CSS, never from the property written here. (Same discipline as
+   * #applyPreviewScale, which measures the box it never writes to.)
+   */
+  #trackAppBarHeight() {
+    const bar = <HTMLElement> document.querySelector("#appBar");
+    const publish = () => {
+      document.documentElement.style.setProperty(
+        "--app-bar-height",
+        `${bar.getBoundingClientRect().height}px`,
+      );
+    };
+    new ResizeObserver(publish).observe(bar);
+    publish();
   }
 
   /**
@@ -806,23 +837,27 @@ export class Teleprompter {
   }
 
   /**
-   * The app bar's connection badge.
+   * The app bar's status badge.
    *
-   * Deliberately worded as what the operator can and cannot do rather than as
-   * a transport state: "denied" means another control page holds this room, so
-   * this one will never drive anything, and that is a different problem from a
-   * dropped socket that is already reconnecting on its own.
+   * "Live" means *a display is showing this*, which is the question an operator
+   * is actually asking — not "the signaling socket is up", which is what this
+   * reported at first and which reads as on-air with nothing connected. So it
+   * takes both facts, and the two callers that learn them (the signaling
+   * callback and #renderViewers) both come through here.
+   *
+   * The wording is deliberately about what the operator can do rather than
+   * about transport state: "denied" means another control page holds the room,
+   * so this one will never drive anything, and that is a different problem from
+   * a dropped socket already reconnecting on its own.
    */
-  #renderSignaling(status: "connected" | "disconnected" | "denied") {
-    const shown = {
-      connected: { variant: "success", text: "Live", attention: "pulse" },
-      disconnected: {
-        variant: "warning",
-        text: "Reconnecting",
-        attention: "none",
-      },
-      denied: { variant: "danger", text: "No control", attention: "none" },
-    }[status];
+  #renderStatus() {
+    const shown = this.#signaling === "denied"
+      ? { variant: "danger", text: "No control", attention: "none" }
+      : this.#signaling === "disconnected"
+      ? { variant: "warning", text: "Reconnecting", attention: "none" }
+      : this.viewers.size === 0
+      ? { variant: "neutral", text: "No viewers", attention: "none" }
+      : { variant: "success", text: "Live", attention: "pulse" };
     this.#bdgSignaling.variant = <WaBadge["variant"]> shown.variant;
     this.#bdgSignaling.attention = <WaBadge["attention"]> shown.attention;
     this.#bdgSignaling.textContent = shown.text;
@@ -845,6 +880,8 @@ export class Teleprompter {
 
   #renderViewers() {
     this.#spnViewerNum.textContent = `${this.viewers.size}`;
+    // The badge reads the viewer count, so it is stale until this runs.
+    this.#renderStatus();
     this.divViewers.innerHTML = "";
     const previewID = this.#previewID();
     const driverID = this.#driverID();
