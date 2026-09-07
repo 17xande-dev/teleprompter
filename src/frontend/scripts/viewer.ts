@@ -1,6 +1,10 @@
 import { registerClockComponent, TPClock } from "./clock.ts";
 import { connectViewer, type ViewerLink } from "./webrtc.ts";
-import { makeScrollSync, type ScrollSync } from "./scrollsync.ts";
+import {
+  carryRemainder,
+  makeScrollSync,
+  type ScrollSync,
+} from "./scrollsync.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
 import type { ControlMessage } from "./protocol.ts";
 
@@ -264,16 +268,13 @@ export class Viewer {
     // made this viewer emit position samples in irregular bursts, so
     // everyone mirroring it stuttered rather than gliding.
     const before = globalThis.scrollY;
-    globalThis.scrollBy(0, this.accumulatedScroll);
-    // Carry whatever the browser didn't consume (it may quantise to device
-    // pixels) so slow speeds still accumulate instead of being rounded away
-    // every frame. Clamped so hitting the end of the document can't build
-    // up an unbounded debt that snaps back on the way out.
+    const wanted = this.accumulatedScroll;
+    globalThis.scrollBy(0, wanted);
+    // Carry only what the browser rounded away, never what it refused: see
+    // carryRemainder, which is where the difference is spelled out and why
+    // banking a blocked scroll used to pin a viewer to one end of its script.
     const moved = globalThis.scrollY - before;
-    this.accumulatedScroll = Math.max(
-      -globalThis.innerHeight,
-      Math.min(globalThis.innerHeight, this.accumulatedScroll - moved),
-    );
+    this.accumulatedScroll = carryRemainder(wanted, moved);
     this.lastScrollTime = timestamp;
 
     requestAnimationFrame(this.smoothScroll.bind(this));

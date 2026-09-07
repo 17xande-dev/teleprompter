@@ -5,7 +5,6 @@ import { assert, assertAlmostEquals, assertEquals } from "jsr:@std/assert";
 import {
   type GamepadLike,
   newlyPressed,
-  nextCarry,
   PAD_BINDINGS,
   PAD_LABELS,
   type PadButton,
@@ -115,19 +114,6 @@ Deno.test("a frame with no time in it moves nothing", () => {
   // The first poll of a run has no previous timestamp to subtract.
   assertEquals(stickScroll(1, 0, 2000), 0);
   assertEquals(stickScroll(1, -5, 2000), 0);
-});
-
-Deno.test("sub-pixel movement accumulates instead of rounding away", () => {
-  // The browser quantises scrolling, so a third of a pixel a frame moves
-  // nothing at all and has to be carried until it is worth a whole one.
-  assertEquals(nextCarry(0.3, 0, 100), 0.3);
-  assertAlmostEquals(nextCarry(1.3, 1, 100), 0.3);
-  assertEquals(nextCarry(1, 1, 100), 0);
-});
-
-Deno.test("the carried debt is clamped so the end of a document can't snap back", () => {
-  assertEquals(nextCarry(5000, 0, 100), 100);
-  assertEquals(nextCarry(-5000, 0, 100), -100);
 });
 
 Deno.test("a held button is one press, not one per frame", () => {

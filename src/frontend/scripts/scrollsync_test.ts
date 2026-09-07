@@ -3,10 +3,12 @@
 // behaviors the echo-suppression logic depends on: a native "scroll" event
 // fires (asynchronously) both for a user scroll and for a programmatic
 // scrollTo(), and requestAnimationFrame runs after that.
-import { assertEquals } from "jsr:@std/assert";
+import { assertAlmostEquals, assertEquals } from "jsr:@std/assert";
 import {
+  carryRemainder,
   makeScrollSync,
   ratioOf,
+  scrollQuantum,
   type ScrollSync,
   setRatio,
 } from "./scrollsync.ts";
@@ -249,4 +251,68 @@ Deno.test("a ratio survives a round trip through a differently sized element", (
     ratioOf(tall as unknown as Element),
   );
   assertEquals(short.scrollTop, 324); // 0.36 of 900
+});
+
+// The carry. Pure arithmetic, so no fake element and no rAF — but it is where
+// the two reasons a viewport moves less than asked have to be told apart, and
+// getting that wrong pinned a viewer to one end of its script.
+
+Deno.test("sub-pixel movement is carried instead of being rounded away", () => {
+  // At a slow speed a frame asks for a fraction of a pixel and the viewport
+  // moves nothing. Dropping that outright means slow speeds never move at all.
+  assertEquals(carryRemainder(0.3, 0, 1), 0.3);
+  assertAlmostEquals(carryRemainder(1.3, 1, 1), 0.3);
+  assertEquals(carryRemainder(1, 1, 1), 0);
+});
+
+Deno.test("movement the viewport refused is dropped, not banked", () => {
+  // The regression. Held against the end of a document, a frame asks for a
+  // whole pixel or more and moves nothing — and that movement is never going
+  // to happen. Banking it built a debt of up to a screen height which the
+  // viewer then re-applied every frame *after* the speed was back at zero, so
+  // any position sent to it was undone on the next frame and "Send my
+  // position" silently did nothing.
+  assertEquals(carryRemainder(-500, 0, 1), -1);
+  assertEquals(carryRemainder(500, 0, 1), 1);
+  // Partly consumed at the end of the document: the rest is refusal too.
+  assertEquals(carryRemainder(-500, -20, 1), -1);
+});
+
+Deno.test("the carry never exceeds one quantum in either direction", () => {
+  // What makes the debt self-limiting rather than merely bounded: at most one
+  // quantum survives a frame, so the next frame spends it and it is gone.
+  for (const wanted of [-1e6, -3, -1.5, 0, 1.5, 3, 1e6]) {
+    const carry = carryRemainder(wanted, 0, 1);
+    assertEquals(Math.abs(carry) <= 1, true, `${wanted} carried ${carry}`);
+  }
+});
+
+Deno.test("the quantum never drops below a CSS pixel, but grows past one", () => {
+  // A dense display's grid is finer than a CSS pixel, so there is less to
+  // carry — but the cap stays at one whole CSS pixel there, as slack for a
+  // browser that quantises to CSS pixels regardless. Below 1x the grid really
+  // is coarser, and then the cap has to grow with it or a slow scroll on a
+  // zoomed-out page would never accumulate enough to move.
+  const dpr = (value: number) => {
+    (globalThis as unknown as { devicePixelRatio: number }).devicePixelRatio =
+      value;
+    return scrollQuantum();
+  };
+  assertEquals(dpr(3), 1);
+  assertEquals(dpr(2), 1);
+  assertEquals(dpr(1), 1);
+  assertEquals(dpr(0.5), 2);
+  assertEquals(dpr(0.25), 4);
+  // Absent, as in Deno, it must not produce NaN or Infinity.
+  delete (globalThis as unknown as { devicePixelRatio?: number })
+    .devicePixelRatio;
+  assertEquals(scrollQuantum(), 1);
+});
+
+Deno.test("the quantum is the default, so callers need not know it", () => {
+  // viewer.ts and gamepadControls.ts both call this with two arguments; a
+  // default that computed to NaN would silently poison every accumulator.
+  const carry = carryRemainder(0.25, 0);
+  assertEquals(Number.isFinite(carry), true);
+  assertEquals(carry, 0.25);
 });

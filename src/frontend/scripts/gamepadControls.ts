@@ -12,13 +12,13 @@
 import type { Command } from "./commands.ts";
 import {
   newlyPressed,
-  nextCarry,
   PAD_BINDINGS,
   type PadButton,
   readPad,
   speedFromTriggers,
   stickScroll,
 } from "./gamepad.ts";
+import { carryRemainder } from "./scrollsync.ts";
 
 /** A slider this drives. Web Awesome's wa-slider satisfies it, as does a stub. */
 interface Slider {
@@ -80,9 +80,6 @@ const SPEED_MAX = 500;
  * place in the script, not for reading along.
  */
 const STICK_MAX_PX_PER_SEC = 2500;
-
-/** Cap on the sub-pixel scroll debt, in pixels. */
-const CARRY_LIMIT = 200;
 
 export class GamepadControls {
   #host: GamepadHost;
@@ -227,6 +224,6 @@ export class GamepadControls {
     const wanted = stickScroll(stickY, dtMs, STICK_MAX_PX_PER_SEC) +
       this.#carry;
     const moved = this.#host.scrollOwnPane(wanted);
-    this.#carry = nextCarry(wanted, moved, CARRY_LIMIT);
+    this.#carry = carryRemainder(wanted, moved);
   }
 }

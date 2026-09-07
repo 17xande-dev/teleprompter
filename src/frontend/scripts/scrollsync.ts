@@ -51,6 +51,46 @@ export function setRatio(el: Element, ratio: number) {
   el.scrollTo({ top: ratio * max, behavior: "instant" });
 }
 
+/**
+ * The most a viewport can plausibly round away in one step, in CSS pixels.
+ *
+ * Scroll offsets are quantised to the physical pixel grid, so a fraction of a
+ * pixel moves nothing and has to be carried. On a dense display that grid is
+ * *finer* than a CSS pixel and there is less to carry — but this stays at one
+ * whole CSS pixel there rather than going below it, as slack for a browser
+ * that quantises to CSS pixels regardless. Below 1x the grid really is coarser
+ * than a CSS pixel, and then the quantum has to grow with it.
+ */
+export function scrollQuantum(): number {
+  return Math.max(1, 1 / (globalThis.devicePixelRatio || 1));
+}
+
+/**
+ * What to carry forward when a viewport moved less than it was asked to.
+ *
+ * Continuous scrolling has to accumulate: at 30px/s a frame asks for half a
+ * pixel, which moves nothing, and dropping that outright means slow speeds
+ * never move at all. So the shortfall is carried into the next frame.
+ *
+ * **But only ever a sub-pixel shortfall.** There are two reasons a viewport
+ * moves less than asked, and they need opposite treatment: quantising to the
+ * device pixel grid (carry it — it will be spent next frame) and running out
+ * of document (drop it — that movement is never going to happen). Banking the
+ * second is what used to pin a viewer to the top of its script: holding
+ * reverse against the top built a debt of up to a screen height, and since a
+ * blocked frame consumes none of it, the viewer went on asking to scroll by
+ * that debt every frame *after the speed was back at zero* — undoing any
+ * position sent to it on the very next frame, so "Send my position" silently
+ * did nothing until the debt happened to clear.
+ */
+export function carryRemainder(
+  wanted: number,
+  moved: number,
+  quantum = scrollQuantum(),
+): number {
+  return Math.max(-quantum, Math.min(quantum, wanted - moved));
+}
+
 export function makeScrollSync({ el, send }: ScrollSyncOptions): ScrollSync {
   // Scroll events for the document's scrolling element are dispatched at
   // the window, not at the element itself.

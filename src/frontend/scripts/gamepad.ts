@@ -132,23 +132,6 @@ export function stickScroll(
 }
 
 /**
- * What is left of a requested scroll after the browser had its way with it.
- *
- * The same reasoning as viewer.ts's auto-scroll accumulator: scrolling is
- * quantised to device pixels, so a slow drift asking for a third of a pixel a
- * frame would be rounded away to nothing every time instead of adding up. The
- * debt is clamped so reaching the end of the document can't build up an
- * arbitrarily large one that snaps back on the way out.
- */
-export function nextCarry(
-  wanted: number,
-  moved: number,
-  limit: number,
-): number {
-  return Math.max(-limit, Math.min(limit, wanted - moved));
-}
-
-/**
  * The buttons that went down between two frames.
  *
  * Polling means a held button is indistinguishable from a button pressed sixty
