@@ -94,6 +94,20 @@
           <span slot="reference">Smaller</span>
         </wa-slider>
       </fieldset>
+      <fieldset>
+        <legend>Clocks</legend>
+        <tp-clock-control id="tpClockControl" countdown="00:00:00"></tp-clock-control>
+        <time is="tp-clock" type="clock"></time>
+      </fieldset>
+      <fieldset>
+        <wa-input id="txtMessage" placeholder="Message" label="Message">
+          <wa-icon name="message" slot="end"></wa-icon>
+        </wa-input>
+        <wa-button id="btnMessage">
+          <wa-icon name="message" slot="end"></wa-icon>
+          Send Message
+        </wa-button>
+      </fieldset>
       <!-- The operator's pane is deliberately not scroll-synced, so these are
            the two ways to close the gap on purpose: fetch where the viewers
            are, or send them where you are. "Send" is what the audience sees. -->
@@ -112,20 +126,6 @@
         </wa-button>
         <wa-button id="btnSendScale" size="s" variant="warning">Send my size
           <wa-icon slot="start" name="text-height"></wa-icon>
-        </wa-button>
-      </fieldset>
-      <fieldset>
-        <legend>Clocks</legend>
-        <tp-clock-control id="tpClockControl" countdown="00:00:00"></tp-clock-control>
-        <time is="tp-clock" type="clock"></time>
-      </fieldset>
-      <fieldset>
-        <wa-input id="txtMessage" placeholder="Message" label="Message">
-          <wa-icon name="message" slot="end"></wa-icon>
-        </wa-input>
-        <wa-button id="btnMessage">
-          <wa-icon name="message" slot="end"></wa-icon>
-          Send Message
         </wa-button>
       </fieldset>
       <fieldset>
