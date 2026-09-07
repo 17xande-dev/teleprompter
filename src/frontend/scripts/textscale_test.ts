@@ -1,7 +1,7 @@
 // No DOM and no fakes: the whole point of splitting textscale.ts out of
 // teleprompter.ts is that the arithmetic behind "make these two read the same"
 // can be checked without a browser.
-import { assert, assertAlmostEquals, assertEquals } from "jsr:@std/assert";
+import { assert, assertAlmostEquals, assertEquals } from "@std/assert";
 import {
   clampTextScale,
   matchedEditorFontPx,

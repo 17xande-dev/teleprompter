@@ -2,7 +2,7 @@
 // list, the frame loop, the connect events, the slider, the pane — is a
 // constructor argument, so this runs with no DOM and no pad, and frames are
 // stepped by hand rather than waited on.
-import { assert, assertEquals } from "jsr:@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import type { Command } from "./commands.ts";
 import { GamepadControls } from "./gamepadControls.ts";
 

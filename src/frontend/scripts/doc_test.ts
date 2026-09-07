@@ -3,7 +3,7 @@
 // (The version of DocStorage these replaced was untestable for exactly the
 // lack of that seam.)
 
-import { assert, assertEquals, assertThrows } from "jsr:@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import {
   type Doc,
   DocStorage,

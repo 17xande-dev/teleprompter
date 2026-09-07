@@ -1,7 +1,7 @@
 // Tests for the gamepad arithmetic. No DOM and no fakes beyond a plain object
 // standing in for a Gamepad — the same reason textscale.ts was split out of
 // teleprompter.ts, with the extra one that a physical pad can't be held by CI.
-import { assert, assertAlmostEquals, assertEquals } from "jsr:@std/assert";
+import { assert, assertAlmostEquals, assertEquals } from "@std/assert";
 import {
   type GamepadLike,
   newlyPressed,

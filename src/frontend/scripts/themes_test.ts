@@ -2,7 +2,7 @@
 // ThemeStorage takes its Storage as a constructor argument so these can hand
 // it a plain object.
 
-import { assert, assertEquals, assertThrows } from "jsr:@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import {
   BUILTIN_LAYOUTS,
   DEFAULT_LAYOUT,

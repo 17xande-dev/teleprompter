@@ -3,7 +3,7 @@
 // behaviors the echo-suppression logic depends on: a native "scroll" event
 // fires (asynchronously) both for a user scroll and for a programmatic
 // scrollTo(), and requestAnimationFrame runs after that.
-import { assertAlmostEquals, assertEquals } from "jsr:@std/assert";
+import { assertAlmostEquals, assertEquals } from "@std/assert";
 import {
   carryRemainder,
   makeScrollSync,

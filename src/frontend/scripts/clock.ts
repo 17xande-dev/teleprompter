@@ -151,7 +151,10 @@ class TPClock extends HTMLTimeElement {
 
   // TODO: should this be an enum?
   type: string = "clock";
-  interval: number = -1;
+  // Not `number`: with the deno libs in play setInterval is typed as
+  // returning a Timeout. undefined is the "not running" sentinel that -1
+  // used to be — same shape themeControls.ts uses for its timer.
+  interval: ReturnType<typeof setInterval> | undefined;
   targetDate: Date = new Date();
   negative: boolean = false;
 
@@ -192,7 +195,7 @@ class TPClock extends HTMLTimeElement {
   }
 
   start() {
-    if (this.interval !== -1) return;
+    if (this.interval !== undefined) return;
     this.tick();
     this.interval = setInterval(() => {
       this.tick();
@@ -201,7 +204,7 @@ class TPClock extends HTMLTimeElement {
 
   stop() {
     clearInterval(this.interval);
-    this.interval = -1;
+    this.interval = undefined;
   }
 
   reset(strTime: string | null) {

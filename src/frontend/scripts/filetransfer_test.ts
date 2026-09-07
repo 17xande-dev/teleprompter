@@ -2,7 +2,7 @@
 // involved — the framing is deliberately separable from the transport so the
 // boundary cases can be checked here rather than by dropping ever-odder PDFs
 // into a browser.
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { chunkFile, makeReassembler } from "./filetransfer.ts";
 
 const CHUNK = 64;

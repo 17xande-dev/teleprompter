@@ -1,7 +1,7 @@
 // Tests for the command mechanism. No fakes and no DOM at all — that is what
 // the commands.ts / paletteControls.ts split buys, and it is why the real
 // command table is a plain array this file can import and check directly.
-import { assert, assertEquals } from "jsr:@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import {
   applyPadBindings,
   type Command,
