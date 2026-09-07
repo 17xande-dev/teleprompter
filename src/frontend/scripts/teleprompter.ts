@@ -32,6 +32,8 @@ import type { Doc } from "./doc.ts";
 import { DocControls } from "./docControls.ts";
 import { Wordgard } from "wordgard/editor";
 import { newEditor, restoreEditor, saveEditor } from "./editor.ts";
+import { buildCommands } from "./controlCommands.ts";
+import { PaletteControls } from "./paletteControls.ts";
 import { connectController, type ControllerLink } from "./webrtc.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
 import type { ControlMessage, ThemeMessage } from "./protocol.ts";
@@ -67,6 +69,7 @@ export class Teleprompter {
   lnkViewerLink: HTMLAnchorElement;
   controls: HTMLDivElement;
   btnPop: WaButton;
+  palette: PaletteControls;
 
   roomID: string;
   link: ControllerLink;
@@ -201,7 +204,12 @@ export class Teleprompter {
     this.#wirePdfDrop();
     this.#btnClosePdf.addEventListener("click", () => this.closePdf());
 
-    globalThis.addEventListener("keyup", this.listenKey.bind(this));
+    // Last, deliberately: the commands press the controls above, so every
+    // seam they reach for has to exist by now. The palette also installs the
+    // key bindings, which is why there is no keyup listener here any more.
+    this.palette = new PaletteControls(buildCommands(this), {
+      isEditorFocused: () => this.editor.hasFocus,
+    });
 
     this.ifrmPreview.addEventListener("load", () => {
       // The iframe starts on the built-in default in its own markup, so a
@@ -642,18 +650,10 @@ export class Teleprompter {
     this.#pushSettings({ textScale: this.rngScale.value / 10 });
   }
 
-  listenKey(ke: KeyboardEvent) {
-    if (this.editor.hasFocus) return;
-
-    switch (ke.code) {
-      case "Space":
-        ke.preventDefault();
-        this.#autoScrollRunning = !this.#autoScrollRunning;
-        this.#applyScrollRoles();
-        break;
-      default:
-        // ignore for now
-    }
+  /** The Space-bar action, and the palette's "Start / stop scrolling". */
+  toggleAutoScroll() {
+    this.#autoScrollRunning = !this.#autoScrollRunning;
+    this.#applyScrollRoles();
   }
 
   listenMessage() {

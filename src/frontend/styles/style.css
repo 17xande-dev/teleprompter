@@ -186,3 +186,58 @@ tp-clock-control {
 .content {
   font-size: var(--textScale);
 }
+
+/* Command palette (Ctrl+K) and the shortcut cheatsheet (Ctrl+/), which are
+   the same dialog. The rows are plain divs rather than wa-dropdown-items
+   because paletteControls.ts owns the arrow-key selection, and those bring
+   their own roving tabindex to fight with. */
+#dlgPalette {
+  --width: 32rem;
+}
+
+#dlgPalette #txtPalette {
+  width: 100%;
+}
+
+#divPaletteList {
+  display: flex;
+  flex-direction: column;
+  /* Tall enough to be worth scrolling, short enough that the dialog doesn't
+     resize as the operator types and the match count changes. */
+  max-height: 24rem;
+  overflow-y: auto;
+  margin-top: 0.5rem;
+}
+
+.palette-group {
+  color: var(--wa-color-text-quiet);
+  font-size: var(--wa-font-size-s);
+  padding: 0.5rem 0.5rem 0.25rem;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--wa-border-radius-s);
+  cursor: pointer;
+}
+
+/* Hover and the keyboard drive the same highlight, so there is one rule for
+   both — see #listenHover. */
+.palette-item[aria-selected="true"] {
+  background-color: var(--wa-color-neutral-fill-normal);
+}
+
+.palette-keys {
+  color: var(--wa-color-text-quiet);
+  font-size: var(--wa-font-size-s);
+  white-space: nowrap;
+}
+
+.palette-empty {
+  color: var(--wa-color-text-quiet);
+  padding: 0.75rem 0.5rem;
+}

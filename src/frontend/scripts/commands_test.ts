@@ -82,7 +82,10 @@ Deno.test("physical key names are not shown to the operator", () => {
   // KeyP and Digit0 exist so the binding survives a non-US layout and macOS's
   // Option-glyph substitution. The operator should still just see P and 0.
   assertEquals(formatShortcut("Mod+Alt+KeyP", { apple: false }), "Ctrl+Alt+P");
-  assertEquals(formatShortcut("Mod+Alt+Digit0", { apple: false }), "Ctrl+Alt+0");
+  assertEquals(
+    formatShortcut("Mod+Alt+Digit0", { apple: false }),
+    "Ctrl+Alt+0",
+  );
   assertEquals(formatShortcut("Mod+Alt+Equal", { apple: false }), "Ctrl+Alt+=");
   assertEquals(formatShortcut("Mod+Alt+Minus", { apple: false }), "Ctrl+Alt+-");
 });
@@ -137,7 +140,10 @@ Deno.test("searching is case-insensitive and covers keywords and groups", () => 
     cmd({ label: "Send message", group: "Message" }),
   ];
   assertEquals(filterCommands(commands, "SCROLL").length, 1);
-  assertEquals(filterCommands(commands, "pause")[0].label, "Start / stop scrolling");
+  assertEquals(
+    filterCommands(commands, "pause")[0].label,
+    "Start / stop scrolling",
+  );
   assertEquals(filterCommands(commands, "message").length, 1);
   assertEquals(filterCommands(commands, "nothing here").length, 0);
 });
@@ -167,7 +173,12 @@ Deno.test("equally good matches keep a stable order", () => {
 
 Deno.test("a table with nothing wrong with it reports no problems", () => {
   const specs: CommandSpec[] = [
-    { id: "scroll.toggle", label: "Start / stop", group: "Scroll", shortcut: "Space" },
+    {
+      id: "scroll.toggle",
+      label: "Start / stop",
+      group: "Scroll",
+      shortcut: "Space",
+    },
     {
       id: "palette.open",
       label: "Commands",
@@ -184,7 +195,12 @@ Deno.test("two commands cannot claim the same binding", () => {
   // The failure this check exists for: tinykeys binds both, only one ever
   // fires, and the palette goes on advertising each of them.
   const problems = validateCommands([
-    { id: "speed.up", label: "Faster", group: "Scroll", shortcut: "Mod+ArrowUp" },
+    {
+      id: "speed.up",
+      label: "Faster",
+      group: "Scroll",
+      shortcut: "Mod+ArrowUp",
+    },
     { id: "scale.up", label: "Bigger", group: "Text", shortcut: "Mod+ArrowUp" },
   ]);
   assertEquals(problems.length, 1);
@@ -242,7 +258,12 @@ Deno.test("a bare key may not fire while the operator is typing", () => {
 
 Deno.test("a palette-only command may not claim to fire while typing", () => {
   const problems = validateCommands([
-    { id: "pdf.close", label: "Close PDF", group: "Document", allowWhileTyping: true },
+    {
+      id: "pdf.close",
+      label: "Close PDF",
+      group: "Document",
+      allowWhileTyping: true,
+    },
   ]);
   assertEquals(problems.length, 1);
   assert(problems[0].includes("no shortcut"));

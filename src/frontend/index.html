@@ -134,6 +134,16 @@
     <wa-button name="cancel" slot="footer">Cancel</wa-button>
     <input type="hidden"></input>
   </wa-dialog>
+  <!-- The command palette (Ctrl+K), which doubles as the shortcut cheatsheet
+       (Ctrl+/) — same dialog, same list, filtered. The rows are rendered by
+       paletteControls.ts from the one command table the key bindings use, so
+       the shortcut shown here is always the shortcut that fires. -->
+  <wa-dialog id="dlgPalette" label="Commands" class="palette">
+    <wa-input id="txtPalette" placeholder="Type a command&hellip;" autofocus>
+      <wa-icon name="magnifying-glass" slot="start"></wa-icon>
+    </wa-input>
+    <div id="divPaletteList" role="listbox"></div>
+  </wa-dialog>
 </body>
 
 </html>
