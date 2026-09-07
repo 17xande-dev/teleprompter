@@ -112,7 +112,8 @@ export class ThemeControls {
     );
   }
 
-  #apply(layout: string) {
+  /** Put every viewer in this layout. Also a palette command. */
+  apply(layout: string) {
     if (!this.storage.has(layout)) return;
     this.storage.setLayout(layout);
     this.#renderTrigger();
@@ -124,12 +125,7 @@ export class ThemeControls {
     // closed menu: on a control page driving a live service, "which layout am
     // I on" has to be answerable without opening anything.
     const layout = this.storage.getLayout();
-    const name = isUserLayout(layout)
-      ? this.storage.get(layout)?.name ?? "Unknown"
-      : layout === DEFAULT_LAYOUT
-      ? "Clocks & Text"
-      : "Big Clocks";
-    this.#trigger.textContent = `Layout: ${name}`;
+    this.#trigger.textContent = `Layout: ${this.storage.layoutName(layout)}`;
     const icon = document.createElement("wa-icon");
     icon.setAttribute("slot", "start");
     icon.setAttribute("name", "window-maximize");
@@ -182,14 +178,14 @@ export class ThemeControls {
     // actions. Keyed on the slot rather than on the icon name so restyling a
     // built-in's icon can't silently turn it into a different action.
     if (item.slot !== "submenu") {
-      this.#apply(item.value);
+      this.apply(item.value);
       return;
     }
 
     const action = (<WaIcon> item.querySelector("wa-icon")).name;
     switch (action) {
       case "folder-open":
-        this.#apply(item.value);
+        this.apply(item.value);
         break;
       case "code":
         this.#openEdit(item.value);
@@ -249,7 +245,7 @@ export class ThemeControls {
     );
     this.#showProblems(theme.css);
     // Wear it while editing, so the preview shows what is being typed.
-    this.#apply(slug);
+    this.apply(slug);
   }
 
   #onCssChanged(text: string) {
@@ -315,7 +311,7 @@ export class ThemeControls {
     this.#renderItems();
     // Back to whatever was on screen before, and push it: viewers have been
     // wearing the abandoned edit this whole time.
-    this.#apply(this.#restoreLayout);
+    this.apply(this.#restoreLayout);
   }
 
   #closeDialog() {

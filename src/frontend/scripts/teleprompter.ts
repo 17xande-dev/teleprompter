@@ -32,7 +32,11 @@ import type { Doc } from "./doc.ts";
 import { DocControls } from "./docControls.ts";
 import { Wordgard } from "wordgard/editor";
 import { newEditor, restoreEditor, saveEditor } from "./editor.ts";
-import { buildCommands } from "./controlCommands.ts";
+import {
+  buildCommands,
+  documentCommands,
+  layoutCommands,
+} from "./controlCommands.ts";
 import { PaletteControls } from "./paletteControls.ts";
 import { connectController, type ControllerLink } from "./webrtc.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
@@ -209,6 +213,10 @@ export class Teleprompter {
     // key bindings, which is why there is no keyup listener here any more.
     this.palette = new PaletteControls(buildCommands(this), {
       isEditorFocused: () => this.editor.hasFocus,
+      providers: [
+        () => documentCommands(this.docControls),
+        () => layoutCommands(this.themeControls),
+      ],
     });
 
     this.ifrmPreview.addEventListener("load", () => {

@@ -237,6 +237,15 @@ tp-clock-control {
   white-space: nowrap;
 }
 
+/* Sits where the shortcut would, marking the open document and the layout
+   already being worn. */
+.palette-hint {
+  color: var(--wa-color-text-quiet);
+  font-size: var(--wa-font-size-s);
+  font-style: italic;
+  white-space: nowrap;
+}
+
 .palette-empty {
   color: var(--wa-color-text-quiet);
   padding: 0.75rem 0.5rem;

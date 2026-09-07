@@ -32,6 +32,19 @@ export const BUILTIN_LAYOUTS: readonly string[] = [
   "theme-big-clock",
 ];
 
+/**
+ * What each built-in layout is called in the UI.
+ *
+ * Here rather than at the point of use because three places need it now — the
+ * dropdown trigger, the static items in index.html and the command palette —
+ * and a display name that disagrees between them is a bug nobody notices for
+ * months.
+ */
+export const BUILTIN_LAYOUT_NAMES: Record<string, string> = {
+  [DEFAULT_LAYOUT]: "Clocks & Text",
+  "theme-big-clock": "Big Clocks",
+};
+
 // Every user theme's class name starts here. Two things depend on it: a user
 // theme can never collide with a built-in (so it can never accidentally
 // inherit the bundled @scope'd rules it is supposed to replace), and
@@ -218,6 +231,28 @@ export class ThemeStorage {
   /** User themes only, as [slug, theme] pairs in insertion order. */
   list(): [string, Theme][] {
     return Object.entries(this.#themes);
+  }
+
+  /** What to call a layout on screen, built-in or user-authored. */
+  layoutName(layout: string): string {
+    if (isUserLayout(layout)) return this.get(layout)?.name ?? "Unknown";
+    // Falling back to the class name keeps a layout that predates a rename
+    // nameable rather than blank.
+    return BUILTIN_LAYOUT_NAMES[layout] ?? layout;
+  }
+
+  /**
+   * Every layout that can be worn, as [layout, display name], built-ins
+   * first. The one list for anything offering a choice of layout.
+   */
+  layouts(): [string, string][] {
+    return [
+      ...BUILTIN_LAYOUTS.map((l): [string, string] => [l, this.layoutName(l)]),
+      ...this.list().map(([slug, theme]): [string, string] => [
+        slug,
+        theme.name,
+      ]),
+    ];
   }
 
   get(slug: string): Theme | undefined {

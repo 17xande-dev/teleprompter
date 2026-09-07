@@ -10,6 +10,7 @@ import { type KeyBindingMap, tinykeys } from "tinykeys";
 
 import {
   type Command,
+  type CommandProvider,
   type CommandSpec,
   filterCommands,
   formatShortcut,
@@ -27,6 +28,12 @@ interface PaletteOptions {
    * reporting the focus of an editor that is no longer on the page.
    */
   isEditorFocused(): boolean;
+  /**
+   * Sources of commands that come and go — the stored documents, the viewer
+   * layouts. Called on every open rather than cached, so the palette can't
+   * offer a document that has since been deleted.
+   */
+  providers?: CommandProvider[];
 }
 
 /**
@@ -82,6 +89,9 @@ export class PaletteControls {
   #list: HTMLDivElement;
 
   #commands: Command[];
+  #providers: CommandProvider[];
+  /** The dynamic commands as of the current open. Empty while closed. */
+  #dynamic: Command[] = [];
   #isEditorFocused: () => boolean;
   #apple = detectApple();
 
@@ -92,6 +102,7 @@ export class PaletteControls {
 
   constructor(commands: Command[], options: PaletteOptions) {
     this.#commands = commands;
+    this.#providers = options.providers ?? [];
     this.#isEditorFocused = options.isEditorFocused;
 
     this.#dlg = document.querySelector("#dlgPalette")!;
@@ -115,6 +126,9 @@ export class PaletteControls {
     // than from whatever the operator typed last time.
     this.#dlg.addEventListener("wa-after-hide", () => {
       this.#input.value = "";
+      // Dropped rather than kept: holding document names open would mean the
+      // next open briefly rendered a stale list before the providers ran.
+      this.#dynamic = [];
     });
 
     this.#bindShortcuts();
@@ -124,6 +138,13 @@ export class PaletteControls {
   /** Show the palette, either as the command list or as the cheatsheet. */
   open(mode: PaletteMode) {
     this.#mode = mode;
+    // Re-read every time, so the list matches storage rather than whatever it
+    // held when the page loaded. `shortcut` is stripped because these are
+    // never bound: advertising a key that does nothing is exactly the drift
+    // the one-list arrangement exists to prevent.
+    this.#dynamic = this.#providers
+      .flatMap((provider) => provider())
+      .map((command) => ({ ...command, shortcut: undefined }));
     this.#input.value = "";
     this.#input.hidden = mode === "shortcuts";
     this.#dlg.label = mode === "shortcuts" ? "Keyboard Shortcuts" : "Commands";
@@ -270,9 +291,11 @@ export class PaletteControls {
 
   /** One idempotent rebuild, as docControls does for its dropdown. */
   #renderList() {
+    // The cheatsheet lists bindings, and a dynamic command can never have
+    // one, so it is drawn from the static table alone.
     const pool = this.#mode === "shortcuts"
       ? this.#commands.filter((c) => c.shortcut)
-      : this.#commands;
+      : [...this.#commands, ...this.#dynamic];
     this.#shown = filterCommands(pool, this.#input.value ?? "");
     if (this.#selected >= this.#shown.length) {
       this.#selected = Math.max(0, this.#shown.length - 1);
@@ -291,13 +314,15 @@ export class PaletteControls {
         group = command.group;
         html += `<div class="palette-group">${escapeHtml(group)}</div>`;
       }
-      // Labels are escaped because the v2 dynamic commands will carry
-      // operator-typed document names, and the control page holds the room
-      // key — the same reasoning as dom.ts's own comment.
+      // Labels are escaped because the dynamic commands carry operator-typed
+      // document and theme names, and the control page holds the room key —
+      // the same reasoning as dom.ts's own comment.
       const keys = command.shortcut
         ? `<kbd class="palette-keys">${
           escapeHtml(formatShortcut(command.shortcut, { apple: this.#apple }))
         }</kbd>`
+        : command.hint
+        ? `<span class="palette-hint">${escapeHtml(command.hint)}</span>`
         : "";
       html +=
         `<div class="palette-item" role="option" data-palette-index="${index}" aria-selected="${

@@ -12,7 +12,11 @@ import {
   toTinykeys,
   validateCommands,
 } from "./commands.ts";
-import { COMMAND_SPECS } from "./controlCommands.ts";
+import {
+  COMMAND_SPECS,
+  documentCommands,
+  layoutCommands,
+} from "./controlCommands.ts";
 
 function cmd(spec: Partial<Command> & { label: string }): Command {
   return {
@@ -305,4 +309,108 @@ Deno.test("only Space is bound bare, and every other binding is a chord", () => 
     .filter((s) => s.shortcut && !shortcutHasModifier(s.shortcut))
     .map((s) => s.shortcut);
   assertEquals(bare, ["Space"]);
+});
+
+// The dynamic commands. Both providers are structural over their host, so
+// these run with no DOM and no localStorage — the same seam doc_test.ts's
+// fakeStore() gets from DocStorage.
+
+function fakeDocHost(current = "b") {
+  const loaded: string[] = [];
+  return {
+    loaded,
+    storage: {
+      list: (): [string, { name: string }][] => [
+        ["a", { name: "Sunday morning" }],
+        ["b", { name: "Notices" }],
+      ],
+      getCurrentID: () => current,
+    },
+    load: (id: string) => loaded.push(id),
+  };
+}
+
+function fakeLayoutHost(current = "theme-default") {
+  const applied: string[] = [];
+  return {
+    applied,
+    storage: {
+      layouts: (): [string, string][] => [
+        ["theme-default", "Clocks & Text"],
+        ["theme-big-clock", "Big Clocks"],
+        ["theme-user-mine", "Mine"],
+      ],
+      getLayout: () => current,
+    },
+    apply: (layout: string) => applied.push(layout),
+  };
+}
+
+Deno.test("there is one open command per stored document", () => {
+  const commands = documentCommands(fakeDocHost());
+  assertEquals(commands.map((c) => c.label), [
+    "Open: Sunday morning",
+    "Open: Notices",
+  ]);
+  assertEquals(commands.map((c) => c.id), [
+    "document.open.a",
+    "document.open.b",
+  ]);
+});
+
+Deno.test("the document already in the editor is marked", () => {
+  const commands = documentCommands(fakeDocHost("b"));
+  assertEquals(commands.map((c) => c.hint), [undefined, "open"]);
+});
+
+Deno.test("running a document command loads that document", () => {
+  const host = fakeDocHost();
+  documentCommands(host).find((c) => c.label === "Open: Notices")!.run();
+  assertEquals(host.loaded, ["b"]);
+});
+
+Deno.test("layouts cover the built-ins and the user's own", () => {
+  const commands = layoutCommands(fakeLayoutHost());
+  assertEquals(commands.map((c) => c.label), [
+    "Layout: Clocks & Text",
+    "Layout: Big Clocks",
+    "Layout: Mine",
+  ]);
+  assertEquals(commands.map((c) => c.hint), ["current", undefined, undefined]);
+});
+
+Deno.test("running a layout command wears that layout", () => {
+  const host = fakeLayoutHost();
+  layoutCommands(host).find((c) => c.label === "Layout: Mine")!.run();
+  assertEquals(host.applied, ["theme-user-mine"]);
+});
+
+Deno.test("a dynamic command never carries a shortcut", () => {
+  // The bindings are installed once, from the static table, so a shortcut on
+  // a command that comes and goes could never fire — and the palette would
+  // still print it. The palette strips these defensively; this is the check
+  // that the providers don't produce them in the first place.
+  const dynamic = [
+    ...documentCommands(fakeDocHost()),
+    ...layoutCommands(fakeLayoutHost()),
+  ];
+  assertEquals(dynamic.filter((c) => c.shortcut), []);
+});
+
+Deno.test("a dynamic command cannot collide with a static one", () => {
+  // Both lists are concatenated into one palette, and the ids are what
+  // distinguish rows. A document called "Close PDF" must not shadow the
+  // command, which the "Open: " prefix and the id namespaces prevent.
+  const ids = new Set(COMMAND_SPECS.map((s) => s.id));
+  const dynamic = [
+    ...documentCommands(fakeDocHost()),
+    ...layoutCommands(fakeLayoutHost()),
+  ];
+  for (const command of dynamic) {
+    assert(
+      !ids.has(command.id),
+      `${command.id} collides with a static command`,
+    );
+  }
+  assertEquals(validateCommands([...COMMAND_SPECS, ...dynamic]), []);
 });

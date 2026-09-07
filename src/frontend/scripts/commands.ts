@@ -14,6 +14,7 @@ export const COMMAND_GROUPS = [
   "Message",
   "Clocks",
   "Document",
+  "Layout",
   "Viewers",
   "Help",
 ] as const;
@@ -36,6 +37,12 @@ export interface CommandSpec {
   shortcut?: string;
   /** Search terms that aren't in the label — "play"/"pause" for a toggle. */
   keywords?: string[];
+  /**
+   * Secondary text shown beside the label, e.g. "open" against the document
+   * already in the editor. Display only — never searched, so it can't make a
+   * command findable by a word the operator can't see a reason for.
+   */
+  hint?: string;
   /**
    * Whether holding the key fires repeatedly. keydown repeats while held,
    * which is wanted for the speed and scale nudges and would make a toggle

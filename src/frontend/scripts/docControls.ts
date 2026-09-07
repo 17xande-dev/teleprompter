@@ -21,7 +21,7 @@ export class DocControls {
   #btnNew: WaButton;
   #dlgRename: WaDialog;
   #dlgDelete: WaDialog;
-  #storage = new DocStorage();
+  storage = new DocStorage();
 
   constructor() {
     this.#btnNew = document.querySelector("#btnNew")!;
@@ -55,9 +55,9 @@ export class DocControls {
     // is often the last callback a page gets. Deliberately not beforeunload /
     // unload: they don't reliably fire and they disqualify the page from the
     // back-forward cache.
-    addEventListener("pagehide", () => this.#storage.flush());
+    addEventListener("pagehide", () => this.storage.flush());
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") this.#storage.flush();
+      if (document.visibilityState === "hidden") this.storage.flush();
     });
 
     this.#renderItems();
@@ -70,21 +70,22 @@ export class DocControls {
 
   /** Open the stored current document, telling the control page to render it. */
   loadCurrent() {
-    this.#load(this.#storage.getCurrentID());
+    this.load(this.storage.getCurrentID());
   }
 
   /** Persist editor content into the open document. */
   setContent(content: string) {
-    this.#storage.setContent(content);
+    this.storage.setContent(content);
   }
 
-  #load(id: string) {
-    const doc = this.#storage.get(id);
+  /** Put a document in the editor. Also a palette command. */
+  load(id: string) {
+    const doc = this.storage.get(id);
     if (!doc) {
       console.warn(`failed to load document ${id} because it doesn't exist`);
       return;
     }
-    this.#storage.setCurrent(id);
+    this.storage.setCurrent(id);
     this.drpDocuments.dispatchEvent(
       new CustomEvent<Doc>("load", {
         detail: doc,
@@ -95,8 +96,8 @@ export class DocControls {
   }
 
   create() {
-    const id = this.#storage.create();
-    this.#storage.setCurrent(id);
+    const id = this.storage.create();
+    this.storage.setCurrent(id);
     this.#renderItems();
     // "new" means "give me a blank editor", as distinct from "load", which
     // carries content to restore.
@@ -117,7 +118,7 @@ export class DocControls {
     for (const el of this.drpDocuments.querySelectorAll("[data-doc-item]")) {
       el.remove();
     }
-    for (const [id, doc] of this.#storage.list()) {
+    for (const [id, doc] of this.storage.list()) {
       this.drpDocuments.appendChild(this.#genMenuItem(id, doc.name));
     }
   }
@@ -155,14 +156,14 @@ export class DocControls {
     // *parent* item the first element child is a submenu entry, which has no
     // `name`, so every top-level selection fell through to `throw`.
     if (item.slot !== "submenu") {
-      this.#load(item.value);
+      this.load(item.value);
       return;
     }
 
     const action = (<WaIcon> item.querySelector("wa-icon")).name;
     switch (action) {
       case "folder-open":
-        this.#load(item.value);
+        this.load(item.value);
         break;
       case "pencil":
         this.#openRename(item.value);
@@ -176,7 +177,7 @@ export class DocControls {
   }
 
   #openRename(id: string) {
-    const doc = this.#storage.get(id);
+    const doc = this.storage.get(id);
     if (!doc) return;
     const input = <WaInput> this.#dlgRename.querySelector("wa-input");
     const hidden = <HTMLInputElement> this.#dlgRename.querySelector("input");
@@ -191,16 +192,16 @@ export class DocControls {
     const input = <WaInput> this.#dlgRename.querySelector("wa-input");
     const id = hidden.value;
     this.#dlgRename.open = false;
-    if (!this.#storage.get(id)) return;
+    if (!this.storage.get(id)) return;
 
     // Storage trims and defaults the name, and renames in place — the id is
     // stable, so the open document is unaffected unless it *is* this one.
-    this.#storage.rename(id, input.value ?? "");
+    this.storage.rename(id, input.value ?? "");
     this.#renderItems();
   }
 
   #openDelete(id: string) {
-    const doc = this.#storage.get(id);
+    const doc = this.storage.get(id);
     if (!doc) return;
     const hidden = <HTMLInputElement> this.#dlgDelete.querySelector("input");
     hidden.value = id;
@@ -216,10 +217,10 @@ export class DocControls {
     this.#dlgDelete.open = false;
     if (!id) return;
 
-    const wasCurrent = this.#storage.getCurrentID() === id;
+    const wasCurrent = this.storage.getCurrentID() === id;
     // remove() repairs `current` for us — to a survivor, or to a freshly
     // seeded document if that was the last one.
-    this.#storage.remove(id);
+    this.storage.remove(id);
     this.#renderItems();
     // Deleting the document under the editor has to swap what's on screen,
     // or the next keystroke would write it straight back.

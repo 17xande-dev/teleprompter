@@ -166,6 +166,64 @@ export const COMMAND_SPECS: CommandSpec[] = [
 ];
 
 /**
+ * What the document commands need. `DocControls` satisfies it.
+ *
+ * Structural again, so a test can hand these providers a plain object and
+ * check what they produce without a DOM or a localStorage.
+ */
+export interface DocumentHost {
+  storage: {
+    list(): [string, { name: string }][];
+    getCurrentID(): string;
+  };
+  load(id: string): void;
+}
+
+/** What the layout commands need. `ThemeControls` satisfies it. */
+export interface LayoutHost {
+  storage: {
+    layouts(): [string, string][];
+    getLayout(): string;
+  };
+  apply(layout: string): void;
+}
+
+/**
+ * One "open this document" command per stored document.
+ *
+ * A provider rather than part of COMMAND_SPECS because the list changes as
+ * documents come and go, and it is re-read on every palette open so it cannot
+ * show a document that has been deleted. None of these carry a shortcut —
+ * that is the rule that lets the key bindings be installed exactly once.
+ */
+export function documentCommands(host: DocumentHost): Command[] {
+  const current = host.storage.getCurrentID();
+  return host.storage.list().map(([id, doc]): Command => ({
+    id: `document.open.${id}`,
+    // Prefixed so the whole set is reachable by typing "open", and so a
+    // document called "Scroll faster" can't be mistaken for the command.
+    label: `Open: ${doc.name}`,
+    group: "Document",
+    hint: id === current ? "open" : undefined,
+    keywords: ["document", "script"],
+    run: () => host.load(id),
+  }));
+}
+
+/** One "wear this layout" command per layout, built-in and user-authored. */
+export function layoutCommands(host: LayoutHost): Command[] {
+  const current = host.storage.getLayout();
+  return host.storage.layouts().map(([layout, name]): Command => ({
+    id: `layout.apply.${layout}`,
+    label: `Layout: ${name}`,
+    group: "Layout",
+    hint: layout === current ? "current" : undefined,
+    keywords: ["theme", "viewer"],
+    run: () => host.apply(layout),
+  }));
+}
+
+/**
  * Move a slider and tell the page, exactly as dragging it would.
  *
  * The "input" event is what listenRangeSpeed/listenRangeScale already listen
