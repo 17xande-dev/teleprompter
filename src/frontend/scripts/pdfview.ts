@@ -15,6 +15,8 @@ import type {
   RenderTask,
 } from "pdfjs-dist/types/src/pdf.d.ts";
 
+import { ratioOf, setRatio } from "./scrollsync.ts";
+
 export interface PdfView {
   /** Re-lay-out the pages at a new column width, keeping the scroll position. */
   setWidth(cssWidth: number): Promise<void>;
@@ -229,16 +231,6 @@ function scrollParent(el: HTMLElement): Element {
     node = node.parentElement;
   }
   return document.scrollingElement ?? document.documentElement;
-}
-
-function ratioOf(el: Element): number {
-  const max = Math.max(0, el.scrollHeight - el.clientHeight);
-  return max ? el.scrollTop / max : 0;
-}
-
-function setRatio(el: Element, ratio: number) {
-  const max = Math.max(0, el.scrollHeight - el.clientHeight);
-  el.scrollTo({ top: ratio * max, behavior: "instant" });
 }
 
 function isNear(el: HTMLElement, scroller: Element): boolean {

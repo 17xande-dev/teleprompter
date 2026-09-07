@@ -27,6 +27,30 @@ export interface ScrollSyncOptions {
   send: (ratio: number, seq: number) => void;
 }
 
+/**
+ * How far down its scrollable range an element sits, 0..1.
+ *
+ * A ratio rather than a pixel offset is the whole basis of the sync: viewers
+ * are different sizes and the same document is a different number of pixels
+ * tall on each. Recomputed from scratch every time, never cached — a PDF
+ * relayout or a font change moves the denominator.
+ *
+ * 0 when nothing overflows, which is also what stops the division by zero.
+ */
+export function ratioOf(el: Element): number {
+  const max = Math.max(0, el.scrollHeight - el.clientHeight);
+  return max ? el.scrollTop / max : 0;
+}
+
+/** Put an element at a ratio of its scrollable range. */
+export function setRatio(el: Element, ratio: number) {
+  const max = Math.max(0, el.scrollHeight - el.clientHeight);
+  // Instant, never smooth: a smooth scroll would still be animating when the
+  // next sample arrives, so the far end would lag further behind with every
+  // update instead of tracking.
+  el.scrollTo({ top: ratio * max, behavior: "instant" });
+}
+
 export function makeScrollSync({ el, send }: ScrollSyncOptions): ScrollSync {
   // Scroll events for the document's scrolling element are dispatched at
   // the window, not at the element itself.
@@ -39,15 +63,9 @@ export function makeScrollSync({ el, send }: ScrollSyncOptions): ScrollSync {
   let pending: number | null = null;
   let running = true;
 
-  const maxScroll = () => Math.max(0, el.scrollHeight - el.clientHeight);
-  const currentRatio = () => {
-    const max = maxScroll();
-    return max ? el.scrollTop / max : 0;
-  };
-
   target.addEventListener("scroll", () => {
     if (applyingRemote) return; // don't re-broadcast a position we just applied
-    pending = currentRatio();
+    pending = ratioOf(el);
   }, { passive: true });
 
   (function frame() {
@@ -62,7 +80,7 @@ export function makeScrollSync({ el, send }: ScrollSyncOptions): ScrollSync {
   return {
     applyRemote(ratio: number) {
       applyingRemote = true;
-      el.scrollTo({ top: ratio * maxScroll(), behavior: "instant" });
+      setRatio(el, ratio);
       // Release after the resulting scroll event has been dispatched.
       requestAnimationFrame(() => {
         applyingRemote = false;

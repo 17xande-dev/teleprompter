@@ -4,7 +4,12 @@
 // fires (asynchronously) both for a user scroll and for a programmatic
 // scrollTo(), and requestAnimationFrame runs after that.
 import { assertEquals } from "jsr:@std/assert";
-import { makeScrollSync, type ScrollSync } from "./scrollsync.ts";
+import {
+  makeScrollSync,
+  ratioOf,
+  type ScrollSync,
+  setRatio,
+} from "./scrollsync.ts";
 
 function installRAFPolyfill() {
   const raf = (cb: FrameRequestCallback) => {
@@ -182,4 +187,66 @@ Deno.test("re-applying a stored ratio re-anchors after the content changes heigh
     sync.applyRemote(0.5);
     assertEquals(el.scrollTop, 2000); // half of (4200 - 200)
   });
+});
+
+// ratioOf/setRatio are exported because the control page moves its own panes
+// by an explicit action rather than by syncing — it needs the ratio maths
+// without makeScrollSync's per-frame pump and scroll listener. pdfview.ts had
+// grown its own private copy of both before they were shared.
+
+Deno.test("a ratio is the fraction of the scrollable range, not of the height", () => {
+  // 1000 tall in a 400 box leaves 600 scrollable, so 150 down is a quarter.
+  const el = makeFakeElement({
+    scrollTop: 150,
+    scrollHeight: 1000,
+    clientHeight: 400,
+  });
+  assertEquals(ratioOf(el as unknown as Element), 0.25);
+});
+
+Deno.test("an element with nothing to scroll sits at 0 rather than dividing by zero", () => {
+  const el = makeFakeElement({
+    scrollTop: 0,
+    scrollHeight: 400,
+    clientHeight: 400,
+  });
+  assertEquals(ratioOf(el as unknown as Element), 0);
+  // And moving it is a no-op that leaves a number, not a NaN, behind.
+  setRatio(el as unknown as Element, 0.5);
+  assertEquals(el.scrollTop, 0);
+});
+
+Deno.test("the ends of the range are exactly 0 and 1", () => {
+  const el = makeFakeElement({
+    scrollTop: 0,
+    scrollHeight: 1000,
+    clientHeight: 400,
+  });
+  setRatio(el as unknown as Element, 1);
+  // The bottom is scrollHeight - clientHeight, never scrollHeight.
+  assertEquals(el.scrollTop, 600);
+  assertEquals(ratioOf(el as unknown as Element), 1);
+  setRatio(el as unknown as Element, 0);
+  assertEquals(el.scrollTop, 0);
+});
+
+Deno.test("a ratio survives a round trip through a differently sized element", () => {
+  // The point of ratios: the same position in a document that is a different
+  // number of pixels tall on another screen.
+  const tall = makeFakeElement({
+    scrollTop: 900,
+    scrollHeight: 3000,
+    clientHeight: 500,
+  });
+  const short = makeFakeElement({
+    scrollTop: 0,
+    scrollHeight: 1200,
+    clientHeight: 300,
+  });
+  setRatio(short as unknown as Element, ratioOf(tall as unknown as Element));
+  assertEquals(
+    ratioOf(short as unknown as Element),
+    ratioOf(tall as unknown as Element),
+  );
+  assertEquals(short.scrollTop, 324); // 0.36 of 900
 });
