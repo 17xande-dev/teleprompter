@@ -7,6 +7,11 @@ displays show it — a popup on a second monitor, a tablet on the floor, a lapto
 across the room. Scroll position, content, speed, text scale, layout, messages
 and clocks all stay in sync between them.
 
+The control page's own pane is deliberately _not_ scroll-synced — the operator
+reads ahead of, or behind, the viewers — so the **Sync** buttons close that gap
+on purpose in either direction, along with matching the text size so both ends
+put the same words on each line.
+
 ## Run
 
 The frontend is TypeScript, bundled by [Deno](https://deno.com) into
@@ -158,17 +163,17 @@ deno task check                         # type-check the frontend
 - [ ] Detect screen layout - display on second screen on full screen
 - [ ] Keep clocks running when refreshing the viewer window
 - [ ] Automatically invert dark text on paste
-- [ ] Keyboard shortcuts (clocks, font colour)
+- [x] Keyboard shortcuts and a command palette (Ctrl+K, with Ctrl+/ listing
+      every binding)
+- [ ] Font colour control
 - [ ] User accounts
 - [ ] Export/import documents
 - [ ] Game controller
 
 ## Bugs
 
-- [ ] Space bar is scrolling control interface
-- [ ] `deno task check` reports two pre-existing type errors (`clock.ts`
-      `setInterval` returning `Timeout`, `doc.ts` `remove(docName)` taking a
-      `string` where a `Doc` is declared)
+- [ ] `deno task check` reports one pre-existing type error (`clock.ts`
+      `setInterval` returning `Timeout` rather than `number`)
 
 ## Thoughts
 
