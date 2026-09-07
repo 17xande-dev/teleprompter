@@ -35,6 +35,15 @@ export interface CommandSpec {
   group: CommandGroup;
   /** Readable form, e.g. "Mod+K". Absent means palette-only. */
   shortcut?: string;
+  /**
+   * The game-controller button that runs this, e.g. "R1", for display beside
+   * the shortcut.
+   *
+   * Never written in the table by hand: applyPadBindings stamps it from the
+   * same map gamepadControls.ts dispatches on, so the button shown in the
+   * palette is the button that fires — the rule the shortcut already follows.
+   */
+  pad?: string;
   /** Search terms that aren't in the label — "play"/"pause" for a toggle. */
   keywords?: string[];
   /**
@@ -286,6 +295,33 @@ export function filterCommands(commands: Command[], query: string): Command[] {
 }
 
 /**
+ * Stamp each command with the controller button that runs it.
+ *
+ * The bindings are keyed by button and hold command *ids*, so this is the one
+ * direction the mapping can be read — and stamping rather than hand-writing
+ * `pad` on the specs is what stops the palette advertising a button the pad
+ * doesn't press. Same reasoning as the shortcut: one list feeds both.
+ *
+ * Keyed loosely on `string` so commands.ts needn't know about gamepad.ts; the
+ * caller passes the real tables.
+ */
+export function applyPadBindings(
+  specs: CommandSpec[],
+  bindings: Record<string, string>,
+  labels: Record<string, string>,
+): CommandSpec[] {
+  const byID = new Map<string, string>();
+  for (const [button, id] of Object.entries(bindings)) {
+    const label = labels[button];
+    if (label) byID.set(id, label);
+  }
+  return specs.map((spec) => {
+    const pad = byID.get(spec.id);
+    return pad ? { ...spec, pad } : spec;
+  });
+}
+
+/**
  * Everything wrong with a command table, as human-readable problems.
  *
  * Run over the real table by commands_test.ts. A duplicate shortcut is the
@@ -296,10 +332,22 @@ export function validateCommands(specs: CommandSpec[]): string[] {
   const problems: string[] = [];
   const seenIDs = new Set<string>();
   const seenBindings = new Map<string, string>();
+  const seenPads = new Map<string, string>();
 
   for (const spec of specs) {
     if (seenIDs.has(spec.id)) problems.push(`duplicate id ${spec.id}`);
     seenIDs.add(spec.id);
+
+    if (spec.pad !== undefined) {
+      // Same failure as a duplicate shortcut, from the other input: the pad
+      // dispatches one command per button, so the second one shown would
+      // simply never fire.
+      const owner = seenPads.get(spec.pad);
+      if (owner) {
+        problems.push(`${spec.id} and ${owner} both bind pad ${spec.pad}`);
+      }
+      seenPads.set(spec.pad, spec.id);
+    }
 
     if (!(COMMAND_GROUPS as readonly string[]).includes(spec.group)) {
       problems.push(`${spec.id} has unknown group ${spec.group}`);

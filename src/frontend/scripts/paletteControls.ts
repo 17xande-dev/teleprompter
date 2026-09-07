@@ -292,9 +292,11 @@ export class PaletteControls {
   /** One idempotent rebuild, as docControls does for its dropdown. */
   #renderList() {
     // The cheatsheet lists bindings, and a dynamic command can never have
-    // one, so it is drawn from the static table alone.
+    // one, so it is drawn from the static table alone. A controller button
+    // counts as a binding: it is a way to reach the command that the operator
+    // would otherwise have nowhere to look up.
     const pool = this.#mode === "shortcuts"
-      ? this.#commands.filter((c) => c.shortcut)
+      ? this.#commands.filter((c) => c.shortcut || c.pad)
       : [...this.#commands, ...this.#dynamic];
     this.#shown = filterCommands(pool, this.#input.value ?? "");
     if (this.#selected >= this.#shown.length) {
@@ -317,10 +319,23 @@ export class PaletteControls {
       // Labels are escaped because the dynamic commands carry operator-typed
       // document and theme names, and the control page holds the room key —
       // the same reasoning as dom.ts's own comment.
-      const keys = command.shortcut
+      const shortcut = command.shortcut
         ? `<kbd class="palette-keys">${
           escapeHtml(formatShortcut(command.shortcut, { apple: this.#apple }))
         }</kbd>`
+        : "";
+      // Shown alongside the shortcut rather than instead of it: both really do
+      // run the command, and a row that hid one of them would send the
+      // operator hunting for a binding that was there all along.
+      const pad = command.pad
+        ? `<kbd class="palette-keys palette-pad">${
+          escapeHtml(command.pad)
+        }</kbd>`
+        : "";
+      // Wrapped so the row stays label-then-bindings: .palette-item is
+      // space-between, which would otherwise push two chips to opposite ends.
+      const keys = shortcut || pad
+        ? `<span class="palette-binds">${pad}${shortcut}</span>`
         : command.hint
         ? `<span class="palette-hint">${escapeHtml(command.hint)}</span>`
         : "";

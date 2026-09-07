@@ -3,6 +3,7 @@
 // command table is a plain array this file can import and check directly.
 import { assert, assertEquals } from "jsr:@std/assert";
 import {
+  applyPadBindings,
   type Command,
   type CommandSpec,
   filterCommands,
@@ -18,6 +19,7 @@ import {
   documentCommands,
   layoutCommands,
 } from "./controlCommands.ts";
+import { PAD_BINDINGS, PAD_LABELS, type PadButton } from "./gamepad.ts";
 
 function cmd(spec: Partial<Command> & { label: string }): Command {
   return {
@@ -280,6 +282,58 @@ Deno.test("a palette-only command may not claim to fire while typing", () => {
 
 Deno.test("the real command table has nothing wrong with it", () => {
   assertEquals(validateCommands(COMMAND_SPECS), []);
+});
+
+Deno.test("every controller button runs a command that exists", () => {
+  // PAD_BINDINGS holds ids, and gamepadControls.ts looks them up in the bound
+  // table. A typo there would be a button that silently does nothing.
+  const ids = new Set(COMMAND_SPECS.map((s) => s.id));
+  for (const [button, id] of Object.entries(PAD_BINDINGS)) {
+    assert(ids.has(id), `${button} is bound to unknown command ${id}`);
+  }
+});
+
+Deno.test("the bound table shows the button that actually fires", () => {
+  // The pad label is stamped from PAD_BINDINGS rather than written by hand, so
+  // the palette can't advertise a button the pad doesn't press.
+  const stamped = buildCommands(fakeCommandHost());
+  for (const [button, id] of Object.entries(PAD_BINDINGS)) {
+    const command = stamped.find((c) => c.id === id)!;
+    assertEquals(command.pad, PAD_LABELS[button as PadButton]);
+  }
+  // And nothing else claims one.
+  assertEquals(
+    stamped.filter((c) => c.pad).length,
+    Object.keys(PAD_BINDINGS).length,
+  );
+  assertEquals(validateCommands(stamped), []);
+});
+
+Deno.test("two commands cannot claim the same controller button", () => {
+  // The same failure as a duplicate shortcut, from the other input device: the
+  // pad dispatches one command per button, so the second would never fire.
+  const specs = applyPadBindings(
+    [
+      { id: "a", label: "A", group: "Scroll" },
+      { id: "b", label: "B", group: "Scroll" },
+    ],
+    { r1: "a", l1: "b" },
+    { r1: "R1", l1: "R1" },
+  );
+  const problems = validateCommands(specs);
+  assertEquals(problems.length, 1);
+  assert(problems[0].includes("pad R1"));
+});
+
+Deno.test("a button bound to nothing stamps nothing", () => {
+  // applyPadBindings is fed the whole table, so a binding for a command that
+  // isn't in it must be dropped rather than invented as a row.
+  const specs = applyPadBindings(
+    [{ id: "a", label: "A", group: "Scroll" }],
+    { r1: "missing" },
+    { r1: "R1" },
+  );
+  assertEquals(specs.filter((s) => s.pad), []);
 });
 
 Deno.test("every real shortcut both binds and displays", () => {

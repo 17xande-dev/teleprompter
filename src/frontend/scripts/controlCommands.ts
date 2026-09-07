@@ -13,7 +13,13 @@
 // reason `deno test` runs --no-check. CommandHost describes what a command
 // needs instead, and Teleprompter satisfies it structurally.
 
-import type { Command, CommandSpec, PaletteMode } from "./commands.ts";
+import {
+  applyPadBindings,
+  type Command,
+  type CommandSpec,
+  type PaletteMode,
+} from "./commands.ts";
+import { PAD_BINDINGS, PAD_LABELS } from "./gamepad.ts";
 
 /** A slider the commands nudge. Web Awesome's wa-slider satisfies this. */
 interface Slider {
@@ -325,13 +331,18 @@ export function buildCommands(host: CommandHost): Command[] {
     "help.shortcuts": () => host.palette.open("shortcuts"),
   };
 
-  return COMMAND_SPECS.map((spec) => {
-    const run = actions[spec.id];
-    if (!run) {
-      // Reachable only by adding a spec and forgetting its action, in which
-      // case the palette would list a row that does nothing when picked.
-      throw new Error(`command ${spec.id} has no action`);
-    }
-    return { ...spec, run };
-  });
+  // The controller buttons are stamped on here rather than written into the
+  // table, so the button the palette shows is the button gamepadControls.ts
+  // actually dispatches.
+  return applyPadBindings(COMMAND_SPECS, PAD_BINDINGS, PAD_LABELS).map(
+    (spec) => {
+      const run = actions[spec.id];
+      if (!run) {
+        // Reachable only by adding a spec and forgetting its action, in which
+        // case the palette would list a row that does nothing when picked.
+        throw new Error(`command ${spec.id} has no action`);
+      }
+      return { ...spec, run };
+    },
+  );
 }
