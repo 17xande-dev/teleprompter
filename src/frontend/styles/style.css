@@ -28,6 +28,20 @@ html {
   font-size: 2rem;
 }
 
+/* The space the preview is allowed to occupy. #applyPreviewScale measures
+   *this* box and fits the viewer's aspect ratio inside it, so the preview
+   grows and shrinks with the sidebar instead of sitting at a fixed 300px.
+   The height is viewport-relative for the same reason: it is the one
+   dimension the sidebar's stack won't decide on its own, and a preview that
+   ate the controls below it would be worse than a small one. */
+#divPreviewBox {
+  inline-size: 100%;
+  block-size: clamp(120px, 30vh, 600px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* The preview iframe is rendered at the previewed viewer's *real* pixel
    size and then CSS-scaled down (see #applyPreviewScale in teleprompter.ts),
    so text wraps identically and vi-based sizing matches what that viewer

@@ -46,8 +46,14 @@
       <!-- Preview component -->
       <fieldset id="divPreview">
         <legend>Preview</legend>
-        <div id="divIFrameContainer">
-          <iframe id="ifrmPreview"></iframe>
+        <!-- divPreviewBox is the space the preview may use; the container
+             inside it is sized by JS to the previewed viewer's aspect ratio
+             and centred. Measuring the box rather than a constant is what
+             lets the preview grow with the sidebar. -->
+        <div id="divPreviewBox">
+          <div id="divIFrameContainer">
+            <iframe id="ifrmPreview"></iframe>
+          </div>
         </div>
         <wa-dropdown id="drpLayouts">
           <wa-button slot="trigger" with-caret>Viewer Layout

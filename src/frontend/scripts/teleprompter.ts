@@ -56,8 +56,10 @@ interface ViewerEntry {
 }
 
 export class Teleprompter {
-  // The preview is rendered at a viewer's real pixel size and scaled down to
-  // fit inside this box, so it stays a true miniature of that viewer.
+  // What the preview falls back to when its box cannot be measured — before
+  // first layout, or if the sidebar is collapsed to nothing. The real limits
+  // are #divPreviewBox's own size, which is what lets the preview grow with
+  // the sidebar rather than sitting at whatever looked right once.
   static readonly MAX_PREVIEW_WIDTH = 300;
   static readonly MAX_PREVIEW_HEIGHT = 450;
   // What the preview falls back to before any viewer has reported its size.
@@ -114,6 +116,10 @@ export class Teleprompter {
   #pdfBytes: ArrayBuffer | null = null;
   #pdfView: PdfView | null = null;
   #pdfResize: ResizeObserver | null = null;
+  #previewBox: HTMLElement;
+  // The editor's mount, which carries the operator's reading size — it
+  // outlives any one Wordgard instance, so the size survives a document load.
+  #editorMount: HTMLElement;
   #pdfPane: HTMLDivElement;
   #pdfPages: HTMLElement;
   #btnClosePdf: WaButton;
@@ -141,6 +147,8 @@ export class Teleprompter {
     this.ifrmPreview = <HTMLIFrameElement> document.querySelector(
       "#ifrmPreview",
     );
+    this.#previewBox = <HTMLElement> document.querySelector("#divPreviewBox");
+    this.#editorMount = <HTMLElement> document.querySelector("#editor");
     this.divViewers = <HTMLDivElement> document.querySelector("#divViewers");
     this.lnkViewerLink = <HTMLAnchorElement> document.querySelector(
       "#lnkViewerLink",
@@ -287,6 +295,16 @@ export class Teleprompter {
       });
       this.updateMain();
     });
+
+    // The preview fits the box it is given, so it has to be refitted whenever
+    // that box changes size — dragging the split panel, resizing the window,
+    // or the sidebar reflowing as viewer rows come and go. A ResizeObserver
+    // catches all three; a window resize listener would catch only one. It
+    // cannot loop: the box's size is CSS's, and #applyPreviewScale only ever
+    // writes to the container inside it.
+    new ResizeObserver(() => this.#applyPreviewScale()).observe(
+      this.#previewBox,
+    );
 
     this.#applyPreviewScale();
     this.#renderViewers();
@@ -549,10 +567,17 @@ export class Teleprompter {
     const dims = (source && this.viewers.get(source)?.dims) ||
       Teleprompter.DEFAULT_PREVIEW_DIMS;
 
-    const scale = Math.min(
-      Teleprompter.MAX_PREVIEW_WIDTH / dims.width,
-      Teleprompter.MAX_PREVIEW_HEIGHT / dims.height,
-    );
+    // Fit inside the box CSS gave us rather than a fixed maximum, so the
+    // preview is as large as the sidebar can afford. Both axes are honoured
+    // and the smaller factor wins, which is what keeps the aspect ratio the
+    // previewed viewer's — the whole point of rendering at its real size.
+    // A box that measures 0 hasn't been laid out yet; fall back rather than
+    // scaling the preview out of existence.
+    const box = this.#previewBox.getBoundingClientRect();
+    const maxWidth = box.width || Teleprompter.MAX_PREVIEW_WIDTH;
+    const maxHeight = box.height || Teleprompter.MAX_PREVIEW_HEIGHT;
+
+    const scale = Math.min(maxWidth / dims.width, maxHeight / dims.height);
 
     const container = <HTMLDivElement> this.ifrmPreview.parentElement;
     container.style.width = `${dims.width * scale}px`;
