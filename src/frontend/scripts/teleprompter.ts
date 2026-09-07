@@ -48,6 +48,7 @@ import {
   layoutCommands,
 } from "./controlCommands.ts";
 import { PaletteControls } from "./paletteControls.ts";
+import { SettingsControls } from "./settingsControls.ts";
 import { GamepadControls } from "./gamepadControls.ts";
 import { connectController, type ControllerLink } from "./webrtc.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
@@ -60,6 +61,7 @@ import {
   tenthsToRem,
 } from "./textscale.ts";
 import type { ControlMessage, ThemeMessage } from "./protocol.ts";
+import { wheelStep } from "./settings.ts";
 import { ThemeControls } from "./themeControls.ts";
 
 interface ViewerEntry {
@@ -102,6 +104,7 @@ export class Teleprompter {
   btnSendScale: WaButton;
   palette: PaletteControls;
   padControls: GamepadControls;
+  settings: SettingsControls;
 
   roomID: string;
   link: ControllerLink;
@@ -235,6 +238,9 @@ export class Teleprompter {
       this.saveEditorContent.bind(this),
     );
     this.docControls = new DocControls();
+    // Before the commands are built, which take it on the host — and before
+    // any wheel event, which asks it which way to move a thumb.
+    this.settings = new SettingsControls();
 
     // Event listeners.
     // TODO: when docControls becomes a WebComponent, listen directly to it.
@@ -967,9 +973,17 @@ export class Teleprompter {
     }
   }
 
+  /**
+   * The wheel over a slider. All three go through `wheelStep`, so which way a
+   * scroll moves a thumb is one answer for the whole page — and one the
+   * operator can flip in Settings, because whether a scroll away from them
+   * arrives as a positive or a negative deltaY is decided by their pointing
+   * device and their "natural scrolling" setting, neither of which this page
+   * can see.
+   */
   listenSpeedWheel(e: WheelEvent) {
     e.preventDefault();
-    this.rngSpeed.value += -e.deltaY;
+    this.rngSpeed.value += wheelStep(e.deltaY, this.settings.invertWheel);
     this.#pushSettings({ speed: -this.rngSpeed.value });
   }
 
@@ -979,7 +993,8 @@ export class Teleprompter {
 
   listenScaleWheel(e: WheelEvent) {
     e.preventDefault();
-    const scale = this.rngScale.value += -e.deltaY / 30;
+    const scale = this.rngScale.value +=
+      wheelStep(e.deltaY, this.settings.invertWheel) / 30;
     this.rngScale.value = scale;
     this.#pushSettings({ textScale: scale / 10 });
   }
@@ -990,7 +1005,7 @@ export class Teleprompter {
 
   listenEditorWheel(e: WheelEvent) {
     e.preventDefault();
-    this.rngEditor.value += -e.deltaY / 30;
+    this.rngEditor.value += wheelStep(e.deltaY, this.settings.invertWheel) / 30;
     this.#applyEditorScale();
   }
 

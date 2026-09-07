@@ -391,6 +391,7 @@ function fakeCommandHost() {
     docControls: { create: () => clicked.push("newDoc") },
     lnkViewerLink: { href: "" },
     palette: { open: () => clicked.push("palette") },
+    settings: { open: () => clicked.push("settings") },
     closePdf: () => clicked.push("closePdf"),
     toggleAutoScroll: () => clicked.push("toggleAutoScroll"),
     resetSliders: () => clicked.push("resetSliders"),
@@ -413,6 +414,12 @@ Deno.test("the editor size commands are not inverted the way speed is", () => {
   host.rngEditor.value = 20;
   run("editor.down");
   assert(host.rngEditor.value < 20, "editor.down must make the script smaller");
+});
+
+Deno.test("Settings is opened by the page's own dialog controller", () => {
+  const host = fakeCommandHost();
+  buildCommands(host).find((c) => c.id === "settings.open")!.run();
+  assertEquals(host.clicked, ["settings"]);
 });
 
 Deno.test("resetting the sliders goes through the page, not the sliders", () => {

@@ -55,6 +55,7 @@ export interface CommandHost {
   docControls: { create(): void };
   lnkViewerLink: { href: string };
   palette: { open(mode: PaletteMode): void };
+  settings: { open(): void };
   closePdf(): void;
   toggleAutoScroll(): void;
   resetSliders(): void;
@@ -228,6 +229,14 @@ export const COMMAND_SPECS: CommandSpec[] = [
     keywords: ["share", "url"],
   },
   {
+    // Reachable from the palette as well as the app bar, because an operator
+    // whose scroll direction is backwards is already reaching for the keyboard.
+    id: "settings.open",
+    label: "Settings",
+    group: "Help",
+    keywords: ["preferences", "options", "scroll", "wheel", "invert"],
+  },
+  {
     id: "palette.open",
     label: "Command palette",
     group: "Help",
@@ -370,6 +379,7 @@ export function buildCommands(host: CommandHost): Command[] {
       navigator.clipboard.writeText(host.lnkViewerLink.href),
     // Read through the host when the key fires, not now: the palette is
     // constructed *from* this list, so it does not exist yet.
+    "settings.open": () => host.settings.open(),
     "palette.open": () => host.palette.open("all"),
     "help.shortcuts": () => host.palette.open("shortcuts"),
   };

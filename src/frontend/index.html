@@ -72,6 +72,10 @@
           <wa-icon slot="start" name="magnifying-glass"></wa-icon>
           <span class="btn-label">Commands</span>
         </wa-button>
+        <wa-button id="btnSettings" size="s" appearance="outlined" title="Settings">
+          <wa-icon slot="start" name="gear"></wa-icon>
+          <span class="btn-label">Settings</span>
+        </wa-button>
         <wa-button id="btnPop" size="s" appearance="outlined" title="Open a viewer window">
           <span class="btn-label">Popup</span>
           <wa-icon slot="end" name="arrow-right-from-bracket"></wa-icon>
@@ -285,6 +289,15 @@
     <wa-button name="delete" slot="footer" variant="primary">Delete</wa-button>
     <wa-button name="cancel" slot="footer">Cancel</wa-button>
     <input type="hidden"></input>
+  </wa-dialog>
+  <!-- The operator's own preferences for this browser. No save step: each
+       control persists as it is changed, because everything in here takes
+       effect on the next gesture and there is nothing to commit. -->
+  <wa-dialog id="dlgSettings" label="Settings">
+    <wa-switch id="swInvertWheel" hint="Flip which way a wheel or trackpad moves a slider's thumb. Turn this on if scrolling down moves a slider up.">
+      Reverse slider scrolling
+    </wa-switch>
+    <wa-button name="close" slot="footer" variant="primary">Done</wa-button>
   </wa-dialog>
   <!-- The command palette (Ctrl+K), which doubles as the shortcut cheatsheet
        (Ctrl+/) — same dialog, same list, filtered. The rows are rendered by
