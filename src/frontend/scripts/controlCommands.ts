@@ -34,6 +34,8 @@ interface Clickable {
 export interface CommandHost {
   btnPop: Clickable;
   btnMessage: Clickable;
+  btnGoToViewers: Clickable;
+  btnSendPosition: Clickable;
   rngSpeed: Slider;
   rngScale: Slider;
   tpClockControl: {
@@ -98,6 +100,22 @@ export const COMMAND_SPECS: CommandSpec[] = [
     group: "Scroll",
     shortcut: "Mod+Alt+Digit0",
     keywords: ["stop", "halt", "still"],
+  },
+  {
+    // The operator's pane reads ahead of the viewers on purpose, so these two
+    // are how the gap gets closed deliberately in either direction.
+    id: "position.get",
+    label: "Go to viewers' position",
+    group: "Scroll",
+    shortcut: "Mod+Alt+KeyG",
+    keywords: ["jump", "catch up", "where", "sync"],
+  },
+  {
+    id: "position.send",
+    label: "Send my position to viewers",
+    group: "Scroll",
+    shortcut: "Mod+Alt+KeyJ",
+    keywords: ["jump", "cue", "skip", "sync"],
   },
   {
     id: "scale.up",
@@ -255,6 +273,8 @@ export function buildCommands(host: CommandHost): Command[] {
       host.rngSpeed.value = 0;
       host.rngSpeed.dispatchEvent(new Event("input"));
     },
+    "position.get": () => host.btnGoToViewers.click(),
+    "position.send": () => host.btnSendPosition.click(),
     "scale.up": () => nudge(host.rngScale, SCALE_STEP),
     "scale.down": () => nudge(host.rngScale, -SCALE_STEP),
     "message.send": () => host.btnMessage.click(),

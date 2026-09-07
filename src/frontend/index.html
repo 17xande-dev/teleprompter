@@ -84,6 +84,18 @@
           <span slot="reference">Smaller</span>
         </wa-slider>
       </fieldset>
+      <!-- The operator's pane is deliberately not scroll-synced, so these are
+           the two ways to close the gap on purpose: fetch where the viewers
+           are, or send them where you are. "Send" is what the audience sees. -->
+      <fieldset class="wa-stack" id="divSync">
+        <legend>Sync</legend>
+        <wa-button id="btnGoToViewers" size="s">Go to viewers
+          <wa-icon slot="start" name="arrow-down-to-line"></wa-icon>
+        </wa-button>
+        <wa-button id="btnSendPosition" size="s" variant="warning">Send my position
+          <wa-icon slot="start" name="arrow-up-from-line"></wa-icon>
+        </wa-button>
+      </fieldset>
       <fieldset>
         <legend>Clocks</legend>
         <tp-clock-control id="tpClockControl" countdown="00:00:00"></tp-clock-control>

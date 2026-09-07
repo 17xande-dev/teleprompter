@@ -40,6 +40,7 @@ import {
 import { PaletteControls } from "./paletteControls.ts";
 import { connectController, type ControllerLink } from "./webrtc.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
+import { ratioOf, setRatio } from "./scrollsync.ts";
 import type { ControlMessage, ThemeMessage } from "./protocol.ts";
 import { ThemeControls } from "./themeControls.ts";
 
@@ -73,6 +74,8 @@ export class Teleprompter {
   lnkViewerLink: HTMLAnchorElement;
   controls: HTMLDivElement;
   btnPop: WaButton;
+  btnGoToViewers: WaButton;
+  btnSendPosition: WaButton;
   palette: PaletteControls;
 
   roomID: string;
@@ -100,6 +103,7 @@ export class Teleprompter {
   #pdfView: PdfView | null = null;
   #pdfResize: ResizeObserver | null = null;
   #pdfPane: HTMLDivElement;
+  #pdfPages: HTMLElement;
   #btnClosePdf: WaButton;
 
   constructor() {
@@ -109,6 +113,8 @@ export class Teleprompter {
 
     // Select elements.
     this.btnPop = document.querySelector("#btnPop")!;
+    this.btnGoToViewers = document.querySelector("#btnGoToViewers")!;
+    this.btnSendPosition = document.querySelector("#btnSendPosition")!;
     this.splitPanel = document.querySelector("wa-split-panel")!;
     this.btnMessage = document.querySelector("#btnMessage")!;
     this.rngSpeed = document.querySelector("#rngSpeed")!;
@@ -116,6 +122,7 @@ export class Teleprompter {
     this.controls = document.querySelector("#controls")!;
     this.tpClockControl = document.querySelector("#tpClockControl")!;
     this.#pdfPane = <HTMLDivElement> document.querySelector("#pdfPane");
+    this.#pdfPages = <HTMLElement> document.querySelector("#pdfPages");
     this.#btnClosePdf = document.querySelector("#btnClosePdf")!;
     this.ifrmPreview = <HTMLIFrameElement> document.querySelector(
       "#ifrmPreview",
@@ -197,6 +204,11 @@ export class Teleprompter {
 
     this.btnPop.addEventListener("click", this.listenPop.bind(this));
     this.btnMessage.addEventListener("click", this.listenMessage.bind(this));
+    this.btnGoToViewers.addEventListener(
+      "click",
+      () => this.goToViewerPosition(),
+    );
+    this.btnSendPosition.addEventListener("click", () => this.sendMyPosition());
     this.rngSpeed.addEventListener("wheel", this.listenSpeedWheel.bind(this), {
       passive: false,
     });
@@ -345,7 +357,7 @@ export class Teleprompter {
     document.querySelector("#pdfName")!.textContent = name;
 
     this.#pdfView?.destroy();
-    const pages = <HTMLElement> document.querySelector("#pdfPages");
+    const pages = this.#pdfPages;
     this.#pdfView = await renderPdf(pages, bytes, pages.clientWidth);
 
     // The operator's pane always fits the width — it isn't scroll-synced, so
@@ -695,6 +707,47 @@ export class Teleprompter {
   toggleAutoScroll() {
     this.#autoScrollRunning = !this.#autoScrollRunning;
     this.#applyScrollRoles();
+  }
+
+  /**
+   * The pane the operator is reading — the PDF column or the editor.
+   *
+   * Resolved on every call, never cached: `editor` is replaced wholesale each
+   * time a document loads, and a PDF can arrive or close at any point.
+   */
+  #ownScroller(): Element {
+    return this.#pdfBytes ? this.#pdfPages : this.editor.scrollDOM;
+  }
+
+  /**
+   * Jump this page to where the viewers are.
+   *
+   * `#lastRatio` is the pacer's latest sample, and every viewer sits at that
+   * same ratio — the controller relays one position to all of them — so it is
+   * also the position of whichever viewer the preview is mirroring.
+   */
+  goToViewerPosition() {
+    setRatio(this.#ownScroller(), this.#lastRatio);
+  }
+
+  /**
+   * Move every viewer to where this page is.
+   *
+   * Audience-visible, and the only coherent reading of "put the viewers where
+   * I am": the preview is a passive mirror of the pacer, so a position set on
+   * it alone is overwritten by the pacer's next sample within a frame.
+   *
+   * The pacer applies this like any other remote scroll — its echo guard
+   * swallows the resulting event — and then carries on from the new position,
+   * so this works while the scroll is running.
+   */
+  sendMyPosition() {
+    const ratio = ratioOf(this.#ownScroller());
+    // Cached so a viewer joining later is caught up to here by #onViewerJoined,
+    // which is otherwise only ever fed by the pacer.
+    this.#lastRatio = ratio;
+    this.link.sendScroll(ratio);
+    this.#postToPreview({ type: "scroll", r: ratio, s: 0 });
   }
 
   listenMessage() {
