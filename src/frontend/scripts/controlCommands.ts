@@ -282,10 +282,17 @@ function nudge(slider: Slider, delta: number) {
 export function buildCommands(host: CommandHost): Command[] {
   const actions: Record<string, () => void | Promise<void>> = {
     "scroll.toggle": () => host.toggleAutoScroll(),
-    "speed.up": () => nudge(host.rngSpeed, SPEED_STEP),
-    "speed.down": () => nudge(host.rngSpeed, -SPEED_STEP),
-    "speed.up.large": () => nudge(host.rngSpeed, SPEED_STEP_LARGE),
-    "speed.down.large": () => nudge(host.rngSpeed, -SPEED_STEP_LARGE),
+    // A *negative* step is faster. Wire speed is `-rngSpeed.value`, which is
+    // what puts Forward at the bottom of the vertical slider so the thumb
+    // travels the way the text does (the same metaphor as listenSpeedWheel's
+    // `value += -e.deltaY`). These commands are named for the speed the
+    // operator wants, not the direction the thumb moves — so Mod+ArrowUp means
+    // faster and drives the thumb downward. The two used to disagree, and
+    // "Scroll faster" scrolled backwards; commands_test.ts guards the sign.
+    "speed.up": () => nudge(host.rngSpeed, -SPEED_STEP),
+    "speed.down": () => nudge(host.rngSpeed, SPEED_STEP),
+    "speed.up.large": () => nudge(host.rngSpeed, -SPEED_STEP_LARGE),
+    "speed.down.large": () => nudge(host.rngSpeed, SPEED_STEP_LARGE),
     "speed.zero": () => {
       host.rngSpeed.value = 0;
       host.rngSpeed.dispatchEvent(new Event("input"));

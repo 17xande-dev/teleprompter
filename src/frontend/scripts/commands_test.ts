@@ -13,6 +13,7 @@ import {
   validateCommands,
 } from "./commands.ts";
 import {
+  buildCommands,
   COMMAND_SPECS,
   documentCommands,
   layoutCommands,
@@ -299,6 +300,68 @@ Deno.test("every real shortcut both binds and displays", () => {
       `${spec.id}: ${spec.shortcut} does not display on a Mac`,
     );
   }
+});
+
+// buildCommands is structural over CommandHost, so the bound table can be
+// exercised with stubs — no DOM, no Teleprompter. Only message.clear reaches
+// for `document`, and only when it is actually run.
+
+function fakeCommandHost() {
+  const clicked: string[] = [];
+  const click = (name: string) => ({ click: () => clicked.push(name) });
+  return {
+    clicked,
+    btnPop: click("pop"),
+    btnMessage: click("message"),
+    btnGoToViewers: click("goToViewers"),
+    btnSendPosition: click("sendPosition"),
+    btnMatchScale: click("matchScale"),
+    btnSendScale: click("sendScale"),
+    rngSpeed: { value: 0, dispatchEvent: () => true },
+    rngScale: { value: 30, dispatchEvent: () => true },
+    tpClockControl: {
+      btnStart: click("clockStart"),
+      btnStop: click("clockStop"),
+      btnReset: click("clockReset"),
+    },
+    docControls: { create: () => clicked.push("newDoc") },
+    lnkViewerLink: { href: "" },
+    palette: { open: () => clicked.push("palette") },
+    closePdf: () => clicked.push("closePdf"),
+    toggleAutoScroll: () => clicked.push("toggleAutoScroll"),
+  };
+}
+
+Deno.test("faster means forward, which is a step toward the slider's minimum", () => {
+  // The regression this exists for: "Scroll faster" on Mod+ArrowUp nudged the
+  // slider *up*, and because wire speed is -rngSpeed.value, up is Reverse — so
+  // the command labelled faster scrolled the show backwards. The slider is
+  // inverted on purpose (Forward at the bottom, thumb travelling with the
+  // text), so the commands have to carry the sign.
+  const host = fakeCommandHost();
+  const commands = buildCommands(host);
+  const run = (id: string) => commands.find((c) => c.id === id)!.run();
+
+  run("speed.up");
+  assert(host.rngSpeed.value < 0, "speed.up must move toward Forward");
+  const oneStep = host.rngSpeed.value;
+
+  host.rngSpeed.value = 0;
+  run("speed.down");
+  assert(host.rngSpeed.value > 0, "speed.down must move toward Reverse");
+
+  // The large variants go the same way, only further.
+  host.rngSpeed.value = 0;
+  run("speed.up.large");
+  assert(host.rngSpeed.value < oneStep, "the large step must be larger");
+
+  host.rngSpeed.value = 0;
+  run("speed.down.large");
+  assert(host.rngSpeed.value > -oneStep);
+
+  // speed.zero assigns outright, so it is unaffected by any of this.
+  run("speed.zero");
+  assertEquals(host.rngSpeed.value, 0);
 });
 
 Deno.test("only Space is bound bare, and every other binding is a chord", () => {
