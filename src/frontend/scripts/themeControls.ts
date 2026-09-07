@@ -192,7 +192,9 @@ export class ThemeControls {
         break;
       case "trash": {
         this.#dlgDelete.open = true;
-        const hidden = <HTMLInputElement> this.#dlgDelete.querySelector("input");
+        const hidden = <HTMLInputElement> this.#dlgDelete.querySelector(
+          "input",
+        );
         hidden.value = item.value;
         break;
       }

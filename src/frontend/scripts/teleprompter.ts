@@ -117,9 +117,13 @@ export class Teleprompter {
     this.tpClockControl = document.querySelector("#tpClockControl")!;
     this.#pdfPane = <HTMLDivElement> document.querySelector("#pdfPane");
     this.#btnClosePdf = document.querySelector("#btnClosePdf")!;
-    this.ifrmPreview = <HTMLIFrameElement> document.querySelector("#ifrmPreview");
+    this.ifrmPreview = <HTMLIFrameElement> document.querySelector(
+      "#ifrmPreview",
+    );
     this.divViewers = <HTMLDivElement> document.querySelector("#divViewers");
-    this.lnkViewerLink = <HTMLAnchorElement> document.querySelector("#lnkViewerLink");
+    this.lnkViewerLink = <HTMLAnchorElement> document.querySelector(
+      "#lnkViewerLink",
+    );
 
     this.roomID = this.#ensureRoomID();
     const viewerURL = `${location.origin}/html/viewer.html?room=${this.roomID}`;
@@ -129,21 +133,25 @@ export class Teleprompter {
     // a WebRTC peer — it joins nothing and never appears in `viewers`.
     this.ifrmPreview.src = "/html/viewer.html";
 
-    this.link = connectController(this.roomID, this.#ensureControlKey(this.roomID), {
-      onViewerJoined: this.#onViewerJoined.bind(this),
-      onViewerLeft: this.#onViewerLeft.bind(this),
-      onViewerControl: this.#onViewerControl.bind(this),
-      onViewerScroll: this.#onViewerScroll.bind(this),
-      onViewerState: this.#onViewerState.bind(this),
-      onSignalingStatus: (status) => {
-        document.documentElement.dataset.signaling = status;
-        if (status === "denied") {
-          console.error(
-            `another control page already holds room ${this.roomID}`,
-          );
-        }
+    this.link = connectController(
+      this.roomID,
+      this.#ensureControlKey(this.roomID),
+      {
+        onViewerJoined: this.#onViewerJoined.bind(this),
+        onViewerLeft: this.#onViewerLeft.bind(this),
+        onViewerControl: this.#onViewerControl.bind(this),
+        onViewerScroll: this.#onViewerScroll.bind(this),
+        onViewerState: this.#onViewerState.bind(this),
+        onSignalingStatus: (status) => {
+          document.documentElement.dataset.signaling = status;
+          if (status === "denied") {
+            console.error(
+              `another control page already holds room ${this.roomID}`,
+            );
+          }
+        },
       },
-    });
+    );
 
     this.editor = newEditor(
       document.querySelector("#editor")!,
@@ -198,8 +206,14 @@ export class Teleprompter {
     this.rngSpeed.addEventListener("input", this.listenRangeSpeed.bind(this));
     this.rngScale.addEventListener("input", this.listenRangeScale.bind(this));
 
-    this.tpClockControl.addEventListener("start", () => this.#pushClock({ type: "clock", action: "start" }));
-    this.tpClockControl.addEventListener("stop", () => this.#pushClock({ type: "clock", action: "stop" }));
+    this.tpClockControl.addEventListener(
+      "start",
+      () => this.#pushClock({ type: "clock", action: "start" }),
+    );
+    this.tpClockControl.addEventListener(
+      "stop",
+      () => this.#pushClock({ type: "clock", action: "stop" }),
+    );
     this.tpClockControl.addEventListener("reset", (event) => {
       const ev = event as ResetEvent;
       this.#pushClock({ type: "clock", action: "reset", time: ev.detail.time });
@@ -404,7 +418,10 @@ export class Teleprompter {
     if (this.#pdfBytes) {
       this.link.sendFileTo(id, this.#pdfName ?? "document.pdf", this.#pdfBytes);
     } else {
-      this.link.sendTo(id, { type: "content", html: this.editor.contentDOM.innerHTML });
+      this.link.sendTo(id, {
+        type: "content",
+        html: this.editor.contentDOM.innerHTML,
+      });
     }
     this.link.sendTo(id, {
       type: "settings",
@@ -565,7 +582,9 @@ export class Teleprompter {
 
       const label = document.createElement("span");
       label.className = "viewer-id";
-      const dims = entry.dims ? `${entry.dims.width}×${entry.dims.height}` : "…";
+      const dims = entry.dims
+        ? `${entry.dims.width}×${entry.dims.height}`
+        : "…";
       label.textContent = `${id.slice(0, 6)} (${dims})`;
       row.appendChild(label);
 
@@ -624,7 +643,12 @@ export class Teleprompter {
     const screenDetails = await self.getScreenDetails();
     const secondary = screenDetails.screens.find((s) => !s.isPrimary);
     const dims = secondary
-      ? { width: secondary.width, height: secondary.height, x: secondary.left, y: secondary.top }
+      ? {
+        width: secondary.width,
+        height: secondary.height,
+        x: secondary.left,
+        y: secondary.top,
+      }
       : { width: 800, height: 600, x: 100, y: 100 };
 
     const win = self.open(
