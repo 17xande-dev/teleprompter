@@ -84,6 +84,20 @@ body {
 
 /* ---------------------------------------------------------------- sidebar */
 
+/* A floor under the sidebar, and deliberately none under the script pane. The
+   divider's position is a percentage, so on a narrow window the sidebar's 25%
+   share came out at 223px — narrower than the cards' own content, which then
+   overflowed into a horizontal scrollbar. --max caps the *primary* (start)
+   panel, which is how you express "the sidebar never gets thinner than this";
+   it clamps on window resize as well as on drag (verified at 900px and 600px).
+
+   No --min to match, because the script pane genuinely does not need one: text
+   reflows to whatever width it is given and a PDF just zooms out, so an
+   operator who wants the script narrow should be allowed to drag it there. */
+wa-split-panel {
+  --max: calc(100% - 20rem);
+}
+
 /* Its own scroll container, which is the whole point: the sidebar is taller
    than the viewport on any real setup, and while the *document* was the
    thing that scrolled, reaching the viewer list dragged the script pane off
