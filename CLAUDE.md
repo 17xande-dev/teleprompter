@@ -150,6 +150,10 @@ WebSocket relay, `ice.go` STUN/TURN config.
   is matched is font size over content width, i.e. characters per line, because
   the panes are different widths and equal pixels would wrap differently.
 - `protocol.ts` — the control-channel message union, shared by both transports.
+- `settings.ts` / `settingsControls.ts` — the operator's own preferences for
+  this browser (currently just the wheel direction), split DOM-free half from
+  dialog half like the two below. Nothing in here is on the wire, and nothing in
+  it belongs to a document or a room.
 - `doc.ts` / `themes.ts` — the two localStorage-backed collections (script
   documents; user viewer layouts), both deliberately **DOM-free** so they can be
   unit-tested, both taking their `Storage` as a constructor argument.
@@ -311,6 +315,15 @@ WebSocket relay, `ice.go` STUN/TURN config.
   metaphor: faster is `Mod+ArrowDown` because scrolling forward is scrolling
   _down_ the script. Two independent things to get backwards, so both are
   asserted.
+- **Which way a wheel moves a slider is not knowable from the page**, so it is a
+  setting rather than a constant someone has to be right about: whether a scroll
+  away from the operator arrives as a positive or a negative `deltaY` is decided
+  by the pointing device and the "natural scrolling" preference above the
+  browser. The default has the thumb follow the fingers on a naturally scrolling
+  system, and Settings' "Reverse slider scrolling" flips it. All three wheel
+  handlers go through `wheelStep`, so the direction is one answer for the whole
+  page — and the setting is read per event, never cached, or the switch and the
+  sliders disagree until a reload.
 - **A connected gamepad must not write the speed slider while untouched.**
   Polling is per-frame, so a pad sitting on the desk would broadcast a speed
   sixty times a second and stamp on the wheel or the arrow keys the moment the
