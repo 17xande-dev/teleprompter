@@ -1,5 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" class="wa-theme-shoelace wa-palette-shoelace wa-brand-blue wa-dark">
+<!-- data-pane is the mobile layout's state: below 48rem only one of the two
+     panes is on screen at a time and this says which. Defaults to the controls,
+     because a phone is a thing you reach for to run the show, not to write the
+     script. Ignored entirely above that width. -->
+<html lang="en" class="wa-theme-shoelace wa-palette-shoelace wa-brand-blue wa-dark" data-pane="controls">
 
 <head>
   <meta charset="UTF-8">
@@ -24,16 +28,31 @@
       <!-- Script-level actions, grouped because they are one subject: the
            document being prompted. -->
       <wa-button-group label="Document">
-        <wa-button id="btnNew" size="s" appearance="outlined">New
+        <wa-button id="btnNew" size="s" appearance="outlined" title="New document">
           <wa-icon slot="start" name="file-circle-plus"></wa-icon>
+          <span class="btn-label">New</span>
         </wa-button>
         <wa-dropdown id="drpDocuments">
-          <wa-button slot="trigger" size="s" appearance="outlined" with-caret>Documents
+          <wa-button slot="trigger" size="s" appearance="outlined" with-caret title="Documents">
             <wa-icon slot="start" name="file"></wa-icon>
+            <span class="btn-label">Documents</span>
           </wa-button>
         </wa-dropdown>
       </wa-button-group>
     </div>
+    <!-- Mobile only: which pane is on screen. A tab-like pair rather than one
+         toggling button, so the operator can see both destinations and which
+         one they are on without reading a label that changes meaning. -->
+    <wa-button-group id="grpPane" class="mobile-only" label="Pane">
+      <wa-button id="btnPaneScript" size="s" appearance="outlined" title="Script">
+        <wa-icon slot="start" name="file-lines"></wa-icon>
+        <span class="btn-label">Script</span>
+      </wa-button>
+      <wa-button id="btnPaneControls" size="s" appearance="outlined" title="Controls">
+        <wa-icon slot="start" name="sliders"></wa-icon>
+        <span class="btn-label">Controls</span>
+      </wa-button>
+    </wa-button-group>
     <div class="bar-group">
       <!-- Room id and connection state. Both are filled in by
            teleprompter.ts: the id from the one it resolved for the URL, the
@@ -51,9 +70,10 @@
       <wa-button-group label="Session">
         <wa-button id="btnPalette" size="s" appearance="outlined" title="Commands (Ctrl+K)">
           <wa-icon slot="start" name="magnifying-glass"></wa-icon>
-          Commands
+          <span class="btn-label">Commands</span>
         </wa-button>
-        <wa-button id="btnPop" size="s" appearance="outlined">Popup
+        <wa-button id="btnPop" size="s" appearance="outlined" title="Open a viewer window">
+          <span class="btn-label">Popup</span>
           <wa-icon slot="end" name="arrow-right-from-bracket"></wa-icon>
         </wa-button>
       </wa-button-group>

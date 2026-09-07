@@ -127,6 +127,9 @@ export class Teleprompter {
   #pdfView: PdfView | null = null;
   #pdfResize: ResizeObserver | null = null;
   #previewBox: HTMLElement;
+  // Where the divider sits when not in the mobile one-pane-at-a-time layout,
+  // which overwrites `position` with 0 or 100. Seeded in #wirePaneToggle.
+  #desktopSplit = 0;
   // The app bar's status half. All four are display-only — nothing reads back
   // out of them — so they are looked up once and written to.
   #bdgSignaling: WaBadge;
@@ -337,9 +340,83 @@ export class Teleprompter {
       () => this.palette.open("all"),
     );
 
+    this.#wirePaneToggle();
+
     this.#applyPreviewScale();
     this.#renderViewers();
     this.#renderTransport();
+  }
+
+  /**
+   * The mobile layout's pane toggle: below 48rem the two panes are shown one at
+   * a time instead of side by side.
+   *
+   * The split panel is *asked* for that rather than overridden. It writes its
+   * grid columns as an inline style computed from `position`, so a stylesheet
+   * could only beat it with !important — but setting `position` to 0 or 100 is
+   * the component's own way of giving one pane everything, and needs no fight.
+   * CSS then hides the other pane's content (see the mobile section of
+   * style.css); the attribute on <html> is what those rules key off.
+   *
+   * The desktop position is saved on the way into mobile and put back on the
+   * way out, so a divider the operator had dragged survives a rotation — and,
+   * more to the point, returning from mobile can't leave the script pane at
+   * zero width with no divider left on screen to drag it back.
+   */
+  #wirePaneToggle() {
+    const script = document.querySelector<WaButton>("#btnPaneScript")!;
+    const controls = document.querySelector<WaButton>("#btnPaneControls")!;
+    // Kept in step with the breakpoint in style.css's mobile section.
+    const mobile = matchMedia("(width < 48rem)");
+
+    // Read off the attribute rather than the property: this runs at the end of
+    // the constructor, where the component may not have upgraded and parsed one
+    // into the other yet. Taken from the markup either way, so the starting
+    // split is written down once — 50 is wa-split-panel's own default, for the
+    // case where the attribute is dropped.
+    this.#desktopSplit = Number(
+      this.splitPanel.getAttribute("position") ?? 50,
+    );
+
+    const apply = () => {
+      const pane = document.documentElement.dataset.pane === "script"
+        ? "script"
+        : "controls";
+      // Filled *and* branded: outlined-blue against outlined-grey is a
+      // difference an operator has to look for, and a neutral fill reads as
+      // disabled. This is the control that says which half of the app they are
+      // in, so it gets the loudest state the theme has.
+      for (
+        const [btn, on] of [[script, pane === "script"], [
+          controls,
+          pane === "controls",
+        ]] as const
+      ) {
+        btn.appearance = on ? "accent" : "outlined";
+        btn.variant = on ? "brand" : "neutral";
+        btn.setAttribute("aria-pressed", String(on));
+      }
+      this.splitPanel.position = mobile.matches
+        ? (pane === "script" ? 100 : 0)
+        : this.#desktopSplit;
+    };
+
+    const show = (pane: "script" | "controls") => {
+      document.documentElement.dataset.pane = pane;
+      apply();
+    };
+
+    script.addEventListener("click", () => show("script"));
+    controls.addEventListener("click", () => show("controls"));
+    mobile.addEventListener("change", (e) => {
+      // Read before apply() overwrites it with an all-or-nothing position.
+      if (e.matches) this.#desktopSplit = this.splitPanel.position;
+      apply();
+    });
+
+    // Takes the starting pane from the markup rather than choosing one here, so
+    // the attribute and this cannot disagree about which comes up first.
+    apply();
   }
 
   #ensureRoomID(): string {

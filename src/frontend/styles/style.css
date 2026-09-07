@@ -82,6 +82,72 @@ body {
   }
 }
 
+/* ----------------------------------------------------------------- mobile */
+
+/* A phone cannot show a 75/25 split of a prompter script and a control panel
+   usefully — at 390px the sidebar's share is under 100px. So below 48rem the
+   two panes stop being side by side and become one at a time, chosen by the
+   toggle in the app bar and remembered in <html data-pane>.
+
+   The split panel is driven through its own API rather than overridden: it
+   writes grid-template-columns as an *inline* style on the host (computed from
+   `position`), so a stylesheet cannot win against it without !important — but
+   it does not need to. #wirePaneToggle sets `position` to 0 or 100, which is
+   the component's own way of giving one pane everything, and the two knobs
+   below are custom properties this file already owns. --max has to be relaxed
+   because the desktop rule above caps the primary panel to leave the sidebar
+   room, which would stop `position: 100` handing the script the full width. */
+.mobile-only {
+  display: none;
+}
+
+@media (width < 48rem) {
+  .mobile-only {
+    display: flex;
+  }
+
+  wa-split-panel {
+    --max: 100%;
+    /* Nothing to drag when a pane is all or nothing, and at 0 the divider's
+       grid track collapses with it. */
+    --divider-width: 0;
+  }
+
+  /* The inactive pane's *content* goes too. Its slot keeps a zero-width track,
+     and a 2rem prompter font in a 0px box would otherwise overflow sideways. */
+  html[data-pane="controls"] #mainEditor,
+  html[data-pane="script"] #controls {
+    display: none;
+  }
+
+  /* Six labelled buttons do not fit in a phone's app bar, so the whole bar
+     goes icon-only in one rule. The labels stay in the DOM as the buttons'
+     accessible names — each also carries a title for a long-press tooltip. */
+  .btn-label {
+    display: none;
+  }
+
+  /* Nothing to pop out to on a phone: window.open would land on top of the
+     control page, which is the one thing the operator needs to keep. */
+  #btnPop {
+    display: none;
+  }
+
+  /* The sidebar has the whole width now, so the sliders get room to sit apart
+     rather than being squeezed into a 300px column. */
+  .divSliders {
+    justify-content: space-around;
+  }
+}
+
+/* Under ~26rem even the icons compete with the status. The viewer count is the
+   most easily recovered of them — the Viewers card lists them in full. */
+@media (width < 26rem) {
+  #spnViewerCount {
+    display: none;
+  }
+}
+
 /* ---------------------------------------------------------------- sidebar */
 
 /* A floor under the sidebar, and deliberately none under the script pane. The
