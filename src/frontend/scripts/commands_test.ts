@@ -95,6 +95,14 @@ Deno.test("physical key names are not shown to the operator", () => {
   );
   assertEquals(formatShortcut("Mod+Alt+Equal", { apple: false }), "Ctrl+Alt+=");
   assertEquals(formatShortcut("Mod+Alt+Minus", { apple: false }), "Ctrl+Alt+-");
+  assertEquals(
+    formatShortcut("Mod+Alt+BracketRight", { apple: false }),
+    "Ctrl+Alt+]",
+  );
+  assertEquals(
+    formatShortcut("Mod+Alt+BracketLeft", { apple: false }),
+    "Ctrl+Alt+[",
+  );
 });
 
 Deno.test("an unparseable shortcut formats as nothing rather than as itself", () => {

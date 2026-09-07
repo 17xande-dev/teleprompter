@@ -171,6 +171,8 @@ const KEY_LABELS: Record<string, string> = {
   ArrowRight: "→",
   Equal: "=",
   Minus: "-",
+  BracketLeft: "[",
+  BracketRight: "]",
   Escape: "Esc",
 };
 
