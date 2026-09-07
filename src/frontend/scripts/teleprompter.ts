@@ -746,6 +746,25 @@ export class Teleprompter {
   }
 
   /**
+   * Scroll the operator's own pane, returning the pixels it actually moved.
+   *
+   * Deliberately silent. The operator's pane is not scroll-synced — that is
+   * what lets them read ahead of the viewers — so moving it must not report a
+   * position, and the two Sync buttons stay the only way to close the gap.
+   *
+   * The return value is what it moved, not what was asked for: the browser
+   * quantises scrolling and the ends of the document clamp it, and a
+   * continuous input needs to know so it can carry the remainder rather than
+   * have slow drift rounded away every frame.
+   */
+  scrollOwnPane(px: number): number {
+    const el = this.#ownScroller();
+    const before = el.scrollTop;
+    el.scrollTop = before + px;
+    return el.scrollTop - before;
+  }
+
+  /**
    * Jump this page to where the viewers are.
    *
    * `#lastRatio` is the pacer's latest sample, and every viewer sits at that
