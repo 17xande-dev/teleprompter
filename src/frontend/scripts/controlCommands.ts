@@ -46,6 +46,7 @@ export interface CommandHost {
   btnSendScale: Clickable;
   rngSpeed: Slider;
   rngScale: Slider;
+  rngEditor: Slider;
   tpClockControl: {
     btnStart: Clickable;
     btnStop: Clickable;
@@ -56,12 +57,16 @@ export interface CommandHost {
   palette: { open(mode: PaletteMode): void };
   closePdf(): void;
   toggleAutoScroll(): void;
+  resetSliders(): void;
 }
 
 /** How far one nudge moves each slider. */
 const SPEED_STEP = 10;
 const SPEED_STEP_LARGE = 50;
 const SCALE_STEP = 5;
+// Tenths of a rem, so two is 0.2rem — a smaller step than the viewers' because
+// the operator is looking straight at the result and nudges it to taste.
+const EDITOR_STEP = 2;
 
 export const COMMAND_SPECS: CommandSpec[] = [
   {
@@ -160,6 +165,34 @@ export const COMMAND_SPECS: CommandSpec[] = [
     label: "Send my text size to viewers",
     group: "Text",
     keywords: ["sync", "size", "font", "push"],
+  },
+  {
+    // The operator's own pane, not the viewers': same group because "Text" is
+    // where an operator looks for a size, and the labels say whose text it is.
+    id: "editor.up",
+    label: "Bigger editor text",
+    group: "Text",
+    // Mod+Alt+Equal/Minus are the viewers' size; the brackets are free.
+    // Physical key names, as anything carrying Alt must be.
+    shortcut: "Mod+Alt+BracketRight",
+    keywords: ["zoom", "larger", "script", "mine", "editor"],
+    repeatable: true,
+  },
+  {
+    id: "editor.down",
+    label: "Smaller editor text",
+    group: "Text",
+    shortcut: "Mod+Alt+BracketLeft",
+    keywords: ["zoom", "script", "mine", "editor"],
+    repeatable: true,
+  },
+  {
+    // No shortcut: a right-click on a slider is the gesture, and this is how an
+    // operator finds out that it exists.
+    id: "transport.reset",
+    label: "Reset sliders to defaults",
+    group: "Scroll",
+    keywords: ["default", "zero", "slider", "speed", "size"],
   },
   {
     // The one binding that earns its keep most: type the message, send it
@@ -312,6 +345,11 @@ export function buildCommands(host: CommandHost): Command[] {
     "position.send": () => host.btnSendPosition.click(),
     "scale.up": () => nudge(host.rngScale, SCALE_STEP),
     "scale.down": () => nudge(host.rngScale, -SCALE_STEP),
+    // No sign inversion on this one, unlike speed.*: the editor slider is
+    // max-at-top like any other, and bigger text is a bigger number.
+    "editor.up": () => nudge(host.rngEditor, EDITOR_STEP),
+    "editor.down": () => nudge(host.rngEditor, -EDITOR_STEP),
+    "transport.reset": () => host.resetSliders(),
     "scale.match": () => host.btnMatchScale.click(),
     "scale.send": () => host.btnSendScale.click(),
     "message.send": () => host.btnMessage.click(),

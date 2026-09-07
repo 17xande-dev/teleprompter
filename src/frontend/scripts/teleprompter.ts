@@ -56,6 +56,8 @@ import {
   clampTextScale,
   matchedEditorFontPx,
   matchedViewerTextScale,
+  pxToTenths,
+  tenthsToRem,
 } from "./textscale.ts";
 import type { ControlMessage, ThemeMessage } from "./protocol.ts";
 import { ThemeControls } from "./themeControls.ts";
@@ -74,6 +76,8 @@ export class Teleprompter {
   static readonly MAX_PREVIEW_HEIGHT = 450;
   // What the preview falls back to before any viewer has reported its size.
   static readonly DEFAULT_PREVIEW_DIMS = { width: 1920, height: 1080 };
+  // Where the operator's own reading size is remembered between sessions.
+  static readonly EDITOR_SCALE_KEY = "teleprompter.editorScale";
   // Text Scale slider position that means "fit the PDF to the viewer's width"
   // — the slider reports tenths, and viewer.ts reads a textScale of 1 as fit.
   static readonly PDF_FIT_SCALE = 10;
@@ -84,6 +88,7 @@ export class Teleprompter {
   editor: Wordgard;
   rngSpeed: WaSlider;
   rngScale: WaSlider;
+  rngEditor: WaSlider;
   themeControls: ThemeControls;
   tpClockControl: TPClockControl;
   ifrmPreview: HTMLIFrameElement;
@@ -136,6 +141,12 @@ export class Teleprompter {
   #spnViewerNum: HTMLElement;
   #outSpeed: HTMLOutputElement;
   #outScale: HTMLOutputElement;
+  #outEditor: HTMLOutputElement;
+  // Where each slider goes back to on a right-click. Read out of the markup
+  // once, in the constructor, so the HTML stays the single source of the
+  // defaults — and captured *before* the stored editor size is applied, or
+  // "reset" would return to whatever the operator last dragged to.
+  #sliderDefaults = new Map<WaSlider, number>();
   #pdfPane: HTMLDivElement;
   #pdfPages: HTMLElement;
   #btnClosePdf: WaButton;
@@ -155,6 +166,7 @@ export class Teleprompter {
     this.btnMessage = document.querySelector("#btnMessage")!;
     this.rngSpeed = document.querySelector("#rngSpeed")!;
     this.rngScale = document.querySelector("#rngScale")!;
+    this.rngEditor = document.querySelector("#rngEditor")!;
     this.controls = document.querySelector("#controls")!;
     this.tpClockControl = document.querySelector("#tpClockControl")!;
     this.#pdfPane = <HTMLDivElement> document.querySelector("#pdfPane");
@@ -172,6 +184,12 @@ export class Teleprompter {
     this.#spnViewerNum = <HTMLElement> document.querySelector("#spnViewerNum");
     this.#outSpeed = <HTMLOutputElement> document.querySelector("#outSpeed");
     this.#outScale = <HTMLOutputElement> document.querySelector("#outScale");
+    this.#outEditor = <HTMLOutputElement> document.querySelector("#outEditor");
+
+    for (const slider of [this.rngSpeed, this.rngScale, this.rngEditor]) {
+      this.#sliderDefaults.set(slider, slider.value);
+    }
+    this.#restoreEditorScale();
 
     this.roomID = this.#ensureRoomID();
     document.querySelector("#tagRoom")!.textContent = this.roomID;
@@ -268,8 +286,23 @@ export class Teleprompter {
     this.rngScale.addEventListener("wheel", this.listenScaleWheel.bind(this), {
       passive: false,
     });
+    this.rngEditor.addEventListener(
+      "wheel",
+      this.listenEditorWheel.bind(this),
+      { passive: false },
+    );
     this.rngSpeed.addEventListener("input", this.listenRangeSpeed.bind(this));
     this.rngScale.addEventListener("input", this.listenRangeScale.bind(this));
+    this.rngEditor.addEventListener("input", () => this.#applyEditorScale());
+    // Right-click resets a slider. There is nothing else a context menu on a
+    // slider could usefully offer, and the palette's "Reset sliders" covers
+    // the operator who never thinks to try it.
+    for (const slider of this.#sliderDefaults.keys()) {
+      slider.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        this.resetSlider(slider);
+      });
+    }
 
     this.tpClockControl.addEventListener(
       "start",
@@ -807,6 +840,7 @@ export class Teleprompter {
     const speed = -this.rngSpeed.value;
     this.#outSpeed.textContent = `${Math.round(speed)}`;
     this.#outScale.textContent = (this.rngScale.value / 10).toFixed(1);
+    this.#outEditor.textContent = tenthsToRem(this.rngEditor.value).toFixed(1);
   }
 
   #renderViewers() {
@@ -917,6 +951,81 @@ export class Teleprompter {
     this.#pushSettings({ textScale: this.rngScale.value / 10 });
   }
 
+  listenEditorWheel(e: WheelEvent) {
+    e.preventDefault();
+    this.rngEditor.value += -e.deltaY / 30;
+    this.#applyEditorScale();
+  }
+
+  /**
+   * The editor's own reading size, which goes nowhere near the wire.
+   *
+   * The one funnel for this slider, the way #pushSettings is the funnel for the
+   * other two — but deliberately *not* that one: this changes what the operator
+   * sees and nothing a viewer does. Sending it would resize every display when
+   * someone leaned into their own screen.
+   *
+   * The size is applied as a custom property rather than an inline font-size so
+   * style.css's rule stays the one place the editor's font is declared, and its
+   * 2rem fallback still holds before this ever runs.
+   */
+  #applyEditorScale() {
+    const tenths = this.rngEditor.value;
+    (<HTMLElement> document.querySelector("#editor")).style.setProperty(
+      "--editor-scale",
+      `${tenthsToRem(tenths)}rem`,
+    );
+    try {
+      localStorage.setItem(Teleprompter.EDITOR_SCALE_KEY, `${tenths}`);
+    } catch {
+      // Private mode or blocked storage: the size holds for this session and
+      // comes back at the default next load. Nothing else depends on it.
+    }
+    this.#renderTransport();
+  }
+
+  // How big the operator had their own text last time. An ergonomics
+  // preference rather than show state, so it is remembered across a reload the
+  // way the control key is — and validated against the slider's own range,
+  // because a hand-edited or stale value must not collapse the script pane.
+  #restoreEditorScale() {
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem(Teleprompter.EDITOR_SCALE_KEY);
+    } catch {
+      // Nothing to restore; the markup default stands.
+    }
+    const tenths = Number(stored);
+    if (
+      stored && Number.isFinite(tenths) &&
+      tenths >= this.rngEditor.min && tenths <= this.rngEditor.max
+    ) {
+      this.rngEditor.value = tenths;
+    }
+    this.#applyEditorScale();
+  }
+
+  /**
+   * Put one slider back where the markup had it.
+   *
+   * Through a synthetic "input" event, like controlCommands.ts's `nudge`: a
+   * reset then lands in the same handler as a drag, so it cannot forget to
+   * tell the viewers (or, for the editor slider, to persist).
+   */
+  resetSlider(slider: WaSlider) {
+    const value = this.#sliderDefaults.get(slider);
+    if (value === undefined) return;
+    slider.value = value;
+    slider.dispatchEvent(new Event("input"));
+  }
+
+  /** The palette's "Reset sliders to defaults" — all three at once. */
+  resetSliders() {
+    for (const slider of this.#sliderDefaults.keys()) {
+      this.resetSlider(slider);
+    }
+  }
+
   /** The Space-bar action, and the palette's "Start / stop scrolling". */
   toggleAutoScroll() {
     this.#autoScrollRunning = !this.#autoScrollRunning;
@@ -1008,10 +1117,12 @@ export class Teleprompter {
   /**
    * Resize the editor's text to read like the viewers' does.
    *
-   * Equal characters per line rather than equal pixels — see textscale.ts. Set
-   * inline, so it overrides the starting size in style.css and survives the
-   * editor being rebuilt on the next document load only until that happens,
-   * which is the right lifetime for a "match it now" action.
+   * Equal characters per line rather than equal pixels — see textscale.ts.
+   * Applied through the Editor Text slider rather than straight onto the
+   * element, so that slider stays the single answer to how big the script is:
+   * the thumb and the readout follow, and the match is remembered like any
+   * other size the operator chose. The slider's step is what pxToTenths rounds
+   * to.
    */
   matchTextScaleFromViewers() {
     const px = matchedEditorFontPx(
@@ -1022,8 +1133,10 @@ export class Teleprompter {
     // 0 means a width wasn't known yet; leave the text as it is rather than
     // collapsing it.
     if (px <= 0) return;
-    (<HTMLElement> document.querySelector("#editor")).style.fontSize =
-      `${px}px`;
+    // Clamping is the component's, as it is for the wheel handlers and the
+    // slider commands.
+    this.rngEditor.value = pxToTenths(px);
+    this.rngEditor.dispatchEvent(new Event("input"));
   }
 
   /**

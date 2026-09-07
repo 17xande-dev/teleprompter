@@ -63,3 +63,21 @@ export function matchedViewerTextScale(
 export function clampTextScale(textScale: number): number {
   return Math.min(10, Math.max(0.1, textScale));
 }
+
+/**
+ * The editor slider's position for a pixel font size, and back again.
+ *
+ * Both sliders count in tenths of a rem — one grid for two panes, so "editor
+ * 2.0, viewers 3.0" is a comparison and not two units side by side. The
+ * rounding is the slider's `step="1"`: a position it cannot hold would be
+ * quantised by the component anyway, and rounding here keeps the readout and
+ * the applied size agreeing about which position was chosen.
+ */
+export function pxToTenths(px: number): number {
+  return Math.round((px / REM_PX) * 10);
+}
+
+/** The rem length a slider position stands for, e.g. 20 is 2rem. */
+export function tenthsToRem(tenths: number): number {
+  return tenths / 10;
+}

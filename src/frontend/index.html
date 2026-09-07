@@ -143,7 +143,7 @@
           <div class="slider-column">
             <output id="outSpeed" class="transport-readout" for="rngSpeed">0</output>
             <wa-slider id="rngSpeed" label="Scroll Speed" min="-500" max="500" step="0.1" value="0"
-              orientation="vertical" indicator-offset="0" with-tooltip>
+              orientation="vertical" indicator-offset="0" with-tooltip title="Right-click to reset">
               <span slot="reference">Reverse</span>
               <span slot="reference">Stop</span>
               <span slot="reference">Forward</span>
@@ -156,7 +156,19 @@
           <div class="slider-column">
             <output id="outScale" class="transport-readout" for="rngScale">3.0</output>
             <wa-slider id="rngScale" label="Text Scale" min="1" max="100" step="1" value="30" orientation="vertical"
-              with-markers with-tooltip>
+              with-markers with-tooltip title="Right-click to reset">
+              <span slot="reference">Larger</span>
+              <span slot="reference">Smaller</span>
+            </wa-slider>
+          </div>
+          <!-- The operator's own reading size, in the same tenths of a rem as
+               Text Scale beside it so the two numbers compare directly. Local
+               to this page: nothing here reaches a viewer, which is why it is
+               the one slider that does not go through #pushSettings. -->
+          <div class="slider-column">
+            <output id="outEditor" class="transport-readout" for="rngEditor">2.0</output>
+            <wa-slider id="rngEditor" label="Editor Text" min="5" max="80" step="1" value="20"
+              orientation="vertical" with-tooltip title="Right-click to reset">
               <span slot="reference">Larger</span>
               <span slot="reference">Smaller</span>
             </wa-slider>

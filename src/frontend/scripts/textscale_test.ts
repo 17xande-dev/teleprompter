@@ -6,7 +6,9 @@ import {
   clampTextScale,
   matchedEditorFontPx,
   matchedViewerTextScale,
+  pxToTenths,
   REM_PX,
+  tenthsToRem,
   viewerFontPx,
 } from "./textscale.ts";
 
@@ -66,4 +68,26 @@ Deno.test("a computed scale is clamped to a position the slider can hold", () =>
   assertEquals(clampTextScale(40), 10);
   assertEquals(clampTextScale(0.01), 0.1);
   assertEquals(clampTextScale(3), 3);
+});
+
+Deno.test("the editor slider counts in tenths of a rem, like the viewers' one", () => {
+  assertEquals(tenthsToRem(20), 2);
+  assertEquals(pxToTenths(32), 20);
+  assertEquals(pxToTenths(REM_PX), 10);
+});
+
+Deno.test("a slider position round-trips through pixels", () => {
+  for (const tenths of [5, 11, 20, 47, 80]) {
+    assertEquals(pxToTenths(tenthsToRem(tenths) * REM_PX), tenths);
+  }
+});
+
+Deno.test("a matched font size lands on a position the slider has", () => {
+  // What "Match viewers' text size" now does: a px size from the widths, then
+  // the slider position that stands for it. step="1", so it must be an integer.
+  const px = matchedEditorFontPx(3, 1395, 1896);
+  const tenths = pxToTenths(px);
+  assertEquals(tenths, Math.trunc(tenths));
+  // And it is still the same reading size, to within the slider's own grid.
+  assertAlmostEquals(tenthsToRem(tenths) * REM_PX, px, REM_PX / 20);
 });

@@ -95,6 +95,7 @@ Deno.test("physical key names are not shown to the operator", () => {
   );
   assertEquals(formatShortcut("Mod+Alt+Equal", { apple: false }), "Ctrl+Alt+=");
   assertEquals(formatShortcut("Mod+Alt+Minus", { apple: false }), "Ctrl+Alt+-");
+  // The editor-size chords, which read as "BracketRight" without a label.
   assertEquals(
     formatShortcut("Mod+Alt+BracketRight", { apple: false }),
     "Ctrl+Alt+]",
@@ -381,6 +382,7 @@ function fakeCommandHost() {
     btnSendScale: click("sendScale"),
     rngSpeed: { value: 0, dispatchEvent: () => true },
     rngScale: { value: 30, dispatchEvent: () => true },
+    rngEditor: { value: 20, dispatchEvent: () => true },
     tpClockControl: {
       btnStart: click("clockStart"),
       btnStop: click("clockStop"),
@@ -391,8 +393,36 @@ function fakeCommandHost() {
     palette: { open: () => clicked.push("palette") },
     closePdf: () => clicked.push("closePdf"),
     toggleAutoScroll: () => clicked.push("toggleAutoScroll"),
+    resetSliders: () => clicked.push("resetSliders"),
   };
 }
+
+Deno.test("the editor size commands are not inverted the way speed is", () => {
+  // The editor slider is an ordinary max-at-top one — nothing about it is
+  // negated on the way to the wire, because it never reaches the wire. So
+  // "bigger" is a bigger number here, the opposite of speed.up. Both signs are
+  // asserted precisely because the two sit next to each other and read as
+  // plausible either way.
+  const host = fakeCommandHost();
+  const commands = buildCommands(host);
+  const run = (id: string) => commands.find((c) => c.id === id)!.run();
+
+  run("editor.up");
+  assert(host.rngEditor.value > 20, "editor.up must make the script bigger");
+
+  host.rngEditor.value = 20;
+  run("editor.down");
+  assert(host.rngEditor.value < 20, "editor.down must make the script smaller");
+});
+
+Deno.test("resetting the sliders goes through the page, not the sliders", () => {
+  // One host call rather than three assignments here: the defaults live in the
+  // markup and only the page has read them, and a reset has to travel the same
+  // "input" path a drag does so the viewers are told.
+  const host = fakeCommandHost();
+  buildCommands(host).find((c) => c.id === "transport.reset")!.run();
+  assertEquals(host.clicked, ["resetSliders"]);
+});
 
 Deno.test("faster means forward, which is a step toward the slider's minimum", () => {
   // The regression this exists for: "Scroll faster" on Mod+ArrowUp nudged the

@@ -209,8 +209,11 @@ wa-split-panel {
 
 /* -------------------------------------------------------------- transport */
 
+/* Wrapping, because there are three vertical sliders and their labels in a
+   sidebar the operator is free to drag down to nothing. */
 .divSliders {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-evenly;
   gap: var(--wa-space-m);
 }
@@ -309,7 +312,11 @@ tp-clock-control time {
    The editor's *height* comes from Wordgard.scrolling() in editor.ts, not from
    here: the scroll container is inside the editor's own shadow-free DOM. */
 #editor {
-  font-size: 2rem;
+  /* The starting size, and the fallback that holds before any script runs. The
+     Editor Text slider sets --editor-scale from here on; it is deliberately
+     *not* @property-registered, for the reason given on --textScale in
+     viewerThemes.css. */
+  font-size: var(--editor-scale, 2rem);
 }
 
 /* The space the preview is allowed to occupy. #applyPreviewScale measures
