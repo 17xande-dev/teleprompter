@@ -36,5 +36,4 @@ src/backend/dist/*
 .wrangler
 
 .crush
-CLAUDE.md
 src/backend/tmp/
