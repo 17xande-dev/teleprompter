@@ -381,6 +381,32 @@ tp-clock-control time {
   outline-offset: -4px;
 }
 
+/* Wordgard themes itself through --wg-* custom properties and ships a dark
+   variant, which editor.ts now selects (Wordgard.colorScheme). These lines are
+   the whole job: line that variant's surfaces up with the Web Awesome surface
+   around it rather than its own near-black.
+
+   Set the library's variables rather than override its rules. Doing the latter
+   went wrong in a way worth recording: `wg-menu-spacer` is a 7px-wide *empty
+   gap*, not a divider, so giving it a background turned every group separator
+   into a solid block.
+
+   Targeted at the editor element itself, not #mainEditor: Wordgard puts its own
+   palette rules on that element via a generated class, and a custom property
+   set on an ancestor loses to one set on the element. */
+#editor wordgard-editor {
+  --wg-panel-color: var(--wa-color-surface-raised);
+  --wg-border-color: var(--wa-color-surface-border);
+  --wg-highlight-color: var(--wa-color-brand-fill-loud);
+}
+
+/* The toolbar lives *inside* the editor element, so it inherited #editor's 2rem
+   prompter font and rendered at 28.8px — a "Paragraph" dropdown taller than the
+   app bar. The script wants that size; the chrome around it does not. */
+#mainEditor wg-menubar {
+  font-size: 1rem;
+}
+
 /* See the note in viewerBase.css: page height and the gap below it are both
    set in pixels by pdfview.ts and scale with the column, which is what keeps a
    scroll ratio meaning the same thing at every viewer size. Nothing here may

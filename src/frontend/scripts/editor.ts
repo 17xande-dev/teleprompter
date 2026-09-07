@@ -15,6 +15,13 @@ function buildConfig(onUpdate?: (wg: Wordgard) => void) {
     fullSchema(),
     history(),
     menuBar(),
+    // Wordgard's palette is "auto", i.e. it follows prefers-color-scheme — so
+    // on a machine set to light it drew its toolbar from the light variant
+    // and put a white bar across the top of a page that is dark
+    // unconditionally (<html class="wa-dark">). Pinned rather than left to the
+    // OS, and style.css lines the resulting dark variant's --wg-* colours up
+    // with the Web Awesome surface around it.
+    Wordgard.colorScheme.of("dark"),
     // Without this the editor grows to fit its content, the whole control page
     // scrolls instead, and scrollDOM's scrollHeight equals its clientHeight —
     // so the pane has no scroll position of its own to read or set, which the
