@@ -291,7 +291,27 @@ WebSocket relay, `ice.go` STUN/TURN config.
   `@property syntax: "<number>"` — two such rules used to sit in the
   stylesheets, declaring the literal ident `number`, which never parsed and so
   were ignored; correcting them would have made `setProperty` reject the `rem`
-  value and compute `font-size: 0`.
+  value and compute `font-size: 0`. `--editor-scale`, the control page's own
+  reading size, is the same shape and stays unregistered for the same reason.
+- **The Editor Text slider is the one slider that is _not_ on the wire.** It is
+  the operator's own reading size, so it goes through `#applyEditorScale`
+  (custom property, `localStorage`, readout) and must never reach
+  `#pushSettings` — sending it would resize every display because someone
+  leaned into their own screen. It is still the single source of truth for how
+  big the script is: "Match viewers' text size" drives the _slider_ rather than
+  writing a font size onto the element, so the thumb, the readout and the
+  remembered size cannot disagree with what is on screen.
+- **The sliders' defaults are read out of the markup**, once, in the
+  constructor — that is what a right-click (and the palette's "Reset sliders to
+  defaults") returns them to. The capture has to happen _before_
+  `#restoreEditorScale` writes the stored editor size, or "reset" would put
+  back whatever the operator last dragged to rather than the default. A reset
+  dispatches a synthetic `input`, like `controlCommands.ts`'s `nudge`, so it
+  travels the same path a drag does and cannot forget to tell the viewers.
+- **`keyLabel` needs an entry for every physical key name a shortcut uses.**
+  Anything carrying `Alt` is written as a `code` (`BracketRight`), and without a
+  `KEY_LABELS` entry the palette advertises the chord as literally
+  "Ctrl+Alt+BracketRight". Type-checking cannot see this; the palette can.
 - **The preview iframe only knows what it is told on `load`.** It is not a
   WebRTC peer, so it misses `#onViewerJoined`'s catch-up snapshot entirely —
   anything a joining viewer is sent has to be posted to the iframe in that
