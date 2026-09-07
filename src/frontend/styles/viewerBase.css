@@ -12,9 +12,30 @@ html {
   font-optical-sizing: auto;
 }
 
+/* A viewer is a display, not a document: the controller owns the position, so
+   a stray wheel or touch must not move it and there is no scrollbar to show.
+   Note this locks the *viewport*, not the body — `html` is `visible`, so the
+   used overflow of the viewport is taken from the body element. Programmatic
+   movement is unaffected, which is why the sync path never noticed: scrollTo
+   works fine on an overflow-hidden viewport, and only user gestures are
+   refused. */
 body {
   font-family: var(--sl-font-mono);
   overflow: hidden;
+}
+
+/* The exception, toggled by viewer.ts from the controller's set-driver
+   message: the viewer the operator has given drive to is the one they scrub
+   the script from by hand, and its position feeds back through the controller
+   to everyone else. Still no scrollbar — this is a display being driven, not a
+   document being read. */
+html.can-drive body {
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+html.can-drive body::-webkit-scrollbar {
+  display: none;
 }
 
 /* Every dimension of a page box, the gap below it included, is set in pixels

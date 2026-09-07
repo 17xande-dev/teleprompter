@@ -165,7 +165,7 @@ export class Viewer {
         }
         break;
       case "set-driver":
-        this.canDrive = msg.canDrive;
+        this.setCanDrive(msg.canDrive);
         break;
       case "scroll":
         this.#applyRemoteScroll(msg.r);
@@ -281,6 +281,24 @@ export class Viewer {
 
   setSpeed(speed: number) {
     this.scrollSpeed = speed;
+  }
+
+  /**
+   * Whether this viewer may be scrolled by hand.
+   *
+   * The grant has to reach CSS, not just this field: the viewport's overflow
+   * is taken from the body element (`html` is `visible`), and viewerBase.css
+   * locks it so a stray wheel or touch can't move a display. Without lifting
+   * that lock the grant meant nothing — the field was set and never read, so
+   * "allow drive" looked like it did something and didn't.
+   *
+   * Nothing gates the *reporting* of a position: the viewer sends its scroll
+   * unconditionally and the controller ignores everyone but the driver, so
+   * revoking drive can't leave a stale sender fighting the new one.
+   */
+  setCanDrive(canDrive: boolean) {
+    this.canDrive = canDrive;
+    document.documentElement.classList.toggle("can-drive", canDrive);
   }
 
   setTextScale(scale: number) {
