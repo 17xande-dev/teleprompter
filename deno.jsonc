@@ -41,14 +41,23 @@
     // src/backend/.air.toml); it replaces `go run`, which had to be killed and
     // re-run by hand. The frontend half is unchanged: bundle-watch rewrites
     // dist/ and -dev makes the server read it off disk.
-    "dev": "deno task bundle-watch & (cd src/backend && air)",
-    "build": "deno task bundle",
+    "dev": "deno task clean && (deno task bundle-watch & (cd src/backend && air))",
+    // Cleans first, deliberately. `deno bundle` content-hashes its output
+    // names, so every rebuild writes a new index-<hash>.js plus its sourcemap
+    // (~3.6MB — it inlines the whole dependency graph) and leaves every
+    // previous one behind. Nothing serves them — index.html names exactly one
+    // — but go:embed takes the whole directory, so they all end up in the
+    // binary. Left alone over a session's worth of rebuilds this had grown
+    // dist/ to 232MB, of which 223MB was stale output, and the binary with it.
+    "build": "deno task clean && deno task bundle",
     "check": "deno check src/frontend/scripts",
     // --no-check: `deno task check` already covers types; without it, `deno
     // test`'s type-check pass pulls in the whole configured project graph
     // (including teleprompter.ts's raw CSS imports, which only the bundler
     // knows how to resolve) even for a test file that doesn't import it.
     "test": "deno test --no-check src/frontend/scripts/*_test.ts",
+    // The glob skips dotfiles, so dist/.gitkeep — tracked so a fresh checkout
+    // has something for go:embed to find — survives this.
     "clean": "rm -rf src/backend/dist/*",
     "bundle": "deno task bundle-app && deno task bundle-pdfjs && deno task bundle-pdfworker && deno task copy-pdfjs-assets && deno task copy-icons",
     "bundle-app": "deno bundle src/frontend/index.html src/frontend/html/viewer.html --code-splitting --platform browser --sourcemap=linked --outdir src/backend/dist",
