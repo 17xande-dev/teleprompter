@@ -3,9 +3,12 @@ import { fullSchema } from "wordgard/schema";
 import { history } from "wordgard/history";
 import { GardState } from "wordgard/state";
 
-// The editor pane's height, matching #pdfPane so the two modes occupy the
-// same box.
-const EDITOR_HEIGHT = "92vh";
+// The editor pane's height, matching #pdfPane so the two modes occupy the same
+// box — and now literally the same declaration, since both read the token
+// style.css defines. Wordgard.scrolling() drops the string straight into a
+// `height:` in a rule it injects into document.head, where a :root custom
+// property is in scope, so a var() reference resolves normally.
+const EDITOR_HEIGHT = "var(--pane-height)";
 
 function buildConfig(onUpdate?: (wg: Wordgard) => void) {
   return [

@@ -1,21 +1,225 @@
 :root {
-  --sidebar-width: 300px;
-  --background-color: hsl(240, 5.9%, 11%);
-  --border-width: 1px;
-  --border-color: hsl(240, 5.9%, 11%);
+  --app-bar-height: 3rem;
+
+  /* The height of both panes, and the one definition of it. The editor gets
+     it through Wordgard.scrolling() (see editor.ts) and #pdfPane through the
+     rule below, so the two modes occupy exactly the same box — they used to
+     say "92vh" separately and could drift apart. dvh rather than vh because
+     a mobile browser's toolbar would otherwise push the sidebar's last card
+     under the chrome. */
+  --pane-height: calc(100dvh - var(--app-bar-height));
 }
 
 html {
-  /* color: white; */
-  /* background-color: var(--background-color); */
-  /* font-family: "Fira Code", monospace; */
   font-optical-sizing: auto;
 }
 
-/* #controls { */
-/*   position: sticky; */
-/*   height: 98vh; */
-/* } */
+/* The page itself never scrolls: the two panes are exactly the viewport minus
+   the app bar and each scrolls inside itself. Reaching the bottom of the
+   sidebar used to scroll the *document*, dragging the script pane off screen
+   mid-service. */
+body {
+  margin: 0;
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------- app bar */
+
+#appBar {
+  block-size: var(--app-bar-height);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wa-space-m);
+  padding-inline: var(--wa-space-m);
+  background-color: var(--wa-color-surface-raised);
+  border-block-end: 1px solid var(--wa-color-surface-border);
+}
+
+.bar-group {
+  display: flex;
+  align-items: center;
+  gap: var(--wa-space-s);
+  /* The bar must never grow past its own height, or the panes below it —
+     sized as the viewport minus exactly that — would overflow the page. */
+  min-inline-size: 0;
+}
+
+#spnBrand {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: var(--wa-font-weight-semibold);
+  white-space: nowrap;
+  /* The one place the brand colour is used as ink rather than as a fill: the
+     icon marks the app, the word beside it stays plain text. */
+  wa-icon {
+    color: var(--wa-color-brand-fill-loud);
+  }
+}
+
+#tagRoom {
+  font-family: var(--wa-font-family-code, monospace);
+}
+
+.bar-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--wa-color-text-quiet);
+  font-size: var(--wa-font-size-s);
+  white-space: nowrap;
+}
+
+/* The bar is the session's status line, so the room id and the connection
+   badge are the first things to go when it runs out of room — the buttons
+   beside them are actions and have to stay clickable. */
+@media (width < 60rem) {
+  #tagRoom,
+  #spnBrand {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------- sidebar */
+
+/* Its own scroll container, which is the whole point: the sidebar is taller
+   than the viewport on any real setup, and while the *document* was the
+   thing that scrolled, reaching the viewer list dragged the script pane off
+   screen. */
+#controls {
+  box-sizing: border-box;
+  block-size: var(--pane-height);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wa-space-s);
+  padding: var(--wa-space-s);
+}
+
+/* Tighter than a card's default: there are six of these stacked in a narrow
+   column, and the default spacing spent most of the sidebar on padding. */
+#controls wa-card {
+  --spacing: var(--wa-space-s);
+  flex: 0 0 auto;
+}
+
+/* Cards hold a heading each, so the sections are legible without the UA
+   fieldset border these replaced. */
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: var(--wa-font-size-s);
+  font-weight: var(--wa-font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--wa-color-text-quiet);
+}
+
+/* Every card body in the sidebar is a stack of full-width controls. Declared
+   once here rather than as a utility class per card, since there is no case
+   in this column that wants anything else. */
+#controls wa-card::part(body) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wa-space-s);
+}
+
+/* -------------------------------------------------------------- transport */
+
+.divSliders {
+  display: flex;
+  justify-content: space-evenly;
+  gap: var(--wa-space-m);
+}
+
+.slider-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--wa-space-s);
+}
+
+/* The number an operator actually watches. Tabular figures so it doesn't
+   jitter sideways as the value changes — it changes every frame while a
+   wheel or a stick is moving. */
+.transport-readout {
+  font-family: var(--wa-font-family-code, monospace);
+  font-size: var(--wa-font-size-l, 1.125rem);
+  font-variant-numeric: tabular-nums;
+  color: var(--wa-color-text-normal);
+}
+
+/* No height here on purpose. A vertical wa-slider's track is a fixed 200px
+   whatever the host is sized to (measured — 176px, 300px and 360px all gave a
+   200px track), so setting one only adds empty space, and setting one *under*
+   the natural height pushes the component's own label out through the bottom
+   of the card. Let it size itself. */
+
+/* ----------------------------------------------------------------- clocks */
+
+.clock-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--wa-space-s);
+}
+
+.clock-label {
+  color: var(--wa-color-text-quiet);
+  font-size: var(--wa-font-size-s);
+}
+
+.clock-row time,
+tp-clock-control time {
+  font-family: var(--wa-font-family-code, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------- sync */
+
+/* The pairs are one decision each, so each group fills the card's width and
+   splits it evenly rather than sizing to its labels. */
+.sync-pair {
+  display: flex;
+
+  wa-button {
+    flex: 1 1 0;
+    min-inline-size: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- viewers */
+
+#divViewerLink {
+  display: flex;
+  align-items: center;
+  gap: var(--wa-space-s);
+}
+
+/* The URL is long and the sidebar is narrow, so it truncates rather than
+   wrapping to three lines or forcing the column wider. The copy button
+   beside it is how it is meant to be used anyway. */
+#lnkViewerLink {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--wa-font-family-code, monospace);
+  font-size: var(--wa-font-size-s);
+}
+
+#qrViewerLink {
+  /* The code has to be light-on-dark's opposite: a scanner wants a white
+     quiet zone around dark modules, and inverting it stops some phones
+     recognising it at all. */
+  background-color: white;
+  padding: var(--wa-space-s);
+  border-radius: var(--wa-border-radius-m);
+}
 
 /* The script is read at arm's length off a second screen, so the editor is a
    prompter pane rather than a document: it starts far larger than the 16px it
@@ -98,8 +302,14 @@ html {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.25rem 0.5rem;
-  font-size: 0.85rem;
-  padding: 0.25rem 0;
+  font-size: var(--wa-font-size-s);
+  padding: 0.35rem 0.5rem;
+  /* Bounded rows rather than a run of text: a service can have several
+     displays and the operator is picking one out of the list under time
+     pressure. */
+  background-color: var(--wa-color-neutral-fill-quiet);
+  border: 1px solid var(--wa-color-neutral-border-quiet);
+  border-radius: var(--wa-border-radius-m);
 }
 
 .viewer-row .viewer-id {
@@ -142,7 +352,7 @@ html {
 #pdfPane {
   display: flex;
   flex-direction: column;
-  height: 92vh;
+  height: var(--pane-height);
 }
 
 #pdfPaneBar {
@@ -181,12 +391,31 @@ html {
 }
 
 tp-clock-control {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wa-space-s);
+
   .wrapper {
     display: flex;
+    align-items: center;
+    gap: 0.25rem;
 
     wa-input {
-      width: 5rem;
+      /* Three two-digit fields sharing the row, so they size to the row
+         rather than to a fixed width that overflowed the narrower card. */
+      flex: 1 1 0;
+      min-inline-size: 0;
     }
+  }
+
+  /* The countdown reads out beside the buttons that drive it, which is the
+     pairing an operator looks for — it used to sit on a line of its own
+     below them. */
+  .timer-transport {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--wa-space-s);
   }
 }
 

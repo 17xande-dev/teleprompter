@@ -41,23 +41,28 @@ class TPClockControl extends HTMLElement {
 
   connectedCallback() {
     // TODO: import that html template literal function from the vanilla website.
+    // No heading of its own: the card this sits in is titled "Clocks", and
+    // the timer's own <h3> read as a second, competing section header.
     this.innerHTML = `
-    <h3>Timer Control</h3>
     <div class="wrapper">
     <wa-input id="inHour" type="number" value="00"></wa-input><span>:</span>
     <wa-input id="inMinute" type="number" value="00"></wa-input><span>:</span>
     <wa-input id="inSecond" type="number" value="00"></wa-input>
     </div>
-		<wa-button id="btnCountdownReset" value="reset" title="Reset">
+    <div class="timer-transport">
+    <wa-button-group label="Timer">
+		<wa-button id="btnCountdownReset" size="s" appearance="outlined" value="reset" title="Reset">
     <wa-icon name="clock-rotate-left" label="Reset"></wa-icon>
     </wa-button>
-		<wa-button id="btnCountdownStart" value="start" title="Start">
+		<wa-button id="btnCountdownStart" size="s" appearance="outlined" value="start" title="Start">
     <wa-icon name="play" label="Start"></wa-icon>
     </wa-button>
-		<wa-button id="btnCountdownStop" value="stop" title="Stop">
+		<wa-button id="btnCountdownStop" size="s" appearance="outlined" value="stop" title="Stop">
     <wa-icon name="stop" label="Stop"></wa-icon>
     </wa-button>
+    </wa-button-group>
 		<time is="tp-clock" id="timeCountdown" type="timer" timer="00:00:00"></time>
+    </div>
 `;
 
     this.update();

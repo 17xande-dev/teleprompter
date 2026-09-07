@@ -10,6 +10,55 @@
 </head>
 
 <body>
+  <!-- The app bar carries what is true of the whole session rather than of any
+       one pane: which document is open, which room this is, whether signaling
+       is up, and how many displays are attached. The status half is the part
+       that did not exist before — `data-signaling` was already being set on
+       <html> and nothing showed it. -->
+  <header id="appBar">
+    <div class="bar-group">
+      <span id="spnBrand">
+        <wa-icon name="tv"></wa-icon>
+        Teleprompter
+      </span>
+      <!-- Script-level actions, grouped because they are one subject: the
+           document being prompted. -->
+      <wa-button-group label="Document">
+        <wa-button id="btnNew" size="s" appearance="outlined">New
+          <wa-icon slot="start" name="file-circle-plus"></wa-icon>
+        </wa-button>
+        <wa-dropdown id="drpDocuments">
+          <wa-button slot="trigger" size="s" appearance="outlined" with-caret>Documents
+            <wa-icon slot="start" name="file"></wa-icon>
+          </wa-button>
+        </wa-dropdown>
+      </wa-button-group>
+    </div>
+    <div class="bar-group">
+      <!-- Room id and connection state. Both are filled in by
+           teleprompter.ts: the id from the one it resolved for the URL, the
+           badge from the signaling callback that already ran. -->
+      <wa-tag id="tagRoom" size="s" appearance="outlined" title="Room"></wa-tag>
+      <wa-badge id="bdgSignaling" variant="neutral" pill>Connecting</wa-badge>
+      <span id="spnViewerCount" class="bar-stat" title="Connected viewers">
+        <wa-icon name="display"></wa-icon>
+        <span id="spnViewerNum">0</span>
+      </span>
+      <!-- The gamepad icon appears only while a pad is connected, which is
+           also the only feedback the operator gets that the browser has
+           noticed it — Chrome hides a pad until a button is pressed. -->
+      <wa-icon id="icnGamepad" class="bar-stat" name="gamepad" title="Game controller connected" hidden></wa-icon>
+      <wa-button-group label="Session">
+        <wa-button id="btnPalette" size="s" appearance="outlined" title="Commands (Ctrl+K)">
+          <wa-icon slot="start" name="magnifying-glass"></wa-icon>
+          Commands
+        </wa-button>
+        <wa-button id="btnPop" size="s" appearance="outlined">Popup
+          <wa-icon slot="end" name="arrow-right-from-bracket"></wa-icon>
+        </wa-button>
+      </wa-button-group>
+    </div>
+  </header>
   <wa-split-panel position="75">
     <div slot="start" id="mainEditor">
       <div id="toolbar"></div>
@@ -21,31 +70,20 @@
       <div id="pdfPane" hidden>
         <div id="pdfPaneBar">
           <span id="pdfName"></span>
-          <wa-button id="btnClosePdf" size="s">Close PDF
+          <wa-button id="btnClosePdf" size="s" appearance="outlined">Close PDF
             <wa-icon slot="start" name="xmark"></wa-icon>
           </wa-button>
         </div>
         <div id="pdfPages"></div>
       </div>
     </div>
-    <div slot="end" id="controls" class="wa-stack">
-      <fieldset class="wa-cluster">
-        <legend>Documents</legend>
-        <wa-button id="btnNew">New
-          <wa-icon slot="start" name="file-circle-plus"></wa-icon>
-        </wa-button>
-        <wa-dropdown id="drpDocuments">
-          <wa-button slot="trigger" with-caret>Documents
-            <wa-icon slot="start" name="file"></wa-icon>
-          </wa-button>
-        </wa-dropdown>
-        <wa-button id="btnPop">Popup
-          <wa-icon slot="end" name="arrow-right-from-bracket"></wa-icon>
-        </wa-button>
-      </fieldset>
+    <div slot="end" id="controls">
       <!-- Preview component -->
-      <fieldset id="divPreview">
-        <legend>Preview</legend>
+      <wa-card id="divPreview" appearance="outlined" with-header with-footer>
+        <span slot="header" class="card-title">
+          <wa-icon name="eye"></wa-icon>
+          Preview
+        </span>
         <!-- divPreviewBox is the space the preview may use; the container
              inside it is sized by JS to the previewed viewer's aspect ratio
              and centred. Measuring the box rather than a constant is what
@@ -55,11 +93,11 @@
             <iframe id="ifrmPreview"></iframe>
           </div>
         </div>
-        <wa-dropdown id="drpLayouts">
-          <wa-button slot="trigger" with-caret>Viewer Layout
+        <wa-dropdown id="drpLayouts" slot="footer">
+          <wa-button slot="trigger" size="s" appearance="outlined" with-caret>Viewer Layout
             <wa-icon slot="start" name="window-maximize"></wa-icon>
           </wa-button>
-          <wa-dropdown-item value="theme-default">Clocks & Text
+          <wa-dropdown-item value="theme-default">Clocks &amp; Text
             <wa-icon slot="icon" name="window-maximize"></wa-icon>
           </wa-dropdown-item>
           <wa-dropdown-item value="theme-big-clock">Big Clocks
@@ -71,70 +109,115 @@
             <wa-icon slot="icon" name="plus"></wa-icon>
           </wa-dropdown-item>
         </wa-dropdown>
-      </fieldset>
-      <fieldset class="wa-cluster divSliders">
-        <!-- The gamepad icon appears only while a pad is connected, which is
-             also the only feedback the operator gets that the browser has
-             noticed it — Chrome hides a pad until a button is pressed. -->
-        <legend>Controls <wa-icon id="icnGamepad" name="gamepad" title="Game controller connected" hidden></wa-icon>
-        </legend>
-        <wa-slider id="rngSpeed" label="Scroll Speed" min="-500" max="500" step="0.1" value="0" orientation="vertical"
-          indicator-offset="0" with-tooltip>
-          <span slot="reference">Reverse</span>
-          <span slot="reference">Stop</span>
-          <span slot="reference">Forward</span>
-        </wa-slider>
-        <!-- Tenths of a rem of viewer text, so 30 is 3rem. step="1" because
-             step counts from min: with step="5" the grid was 1, 6, 11 … which
-             put 10 — the fit-to-width position a PDF uses, PDF_FIT_SCALE —
-             out of reach of the slider and settable only from code. -->
-        <wa-slider id="rngScale" label="Text Scale" min="1" max="100" step="1" value="30" orientation="vertical"
-          with-markers with-tooltip>
-          <span slot="reference">Larger</span>
-          <span slot="reference">Smaller</span>
-        </wa-slider>
-      </fieldset>
-      <fieldset>
-        <legend>Clocks</legend>
+      </wa-card>
+      <wa-card id="divTransport" appearance="outlined" with-header>
+        <span slot="header" class="card-title">
+          <wa-icon name="sliders"></wa-icon>
+          Transport
+        </span>
+        <div class="divSliders">
+          <!-- The numeric readouts. The sliders are the control, but the
+               numbers are what an operator watches and reports ("take it to
+               sixty"), and neither value was legible anywhere before. Both
+               are written by #renderTransport, which reads the sliders. -->
+          <div class="slider-column">
+            <output id="outSpeed" class="transport-readout" for="rngSpeed">0</output>
+            <wa-slider id="rngSpeed" label="Scroll Speed" min="-500" max="500" step="0.1" value="0"
+              orientation="vertical" indicator-offset="0" with-tooltip>
+              <span slot="reference">Reverse</span>
+              <span slot="reference">Stop</span>
+              <span slot="reference">Forward</span>
+            </wa-slider>
+          </div>
+          <!-- Tenths of a rem of viewer text, so 30 is 3rem. step="1" because
+               step counts from min: with step="5" the grid was 1, 6, 11 … which
+               put 10 — the fit-to-width position a PDF uses, PDF_FIT_SCALE —
+               out of reach of the slider and settable only from code. -->
+          <div class="slider-column">
+            <output id="outScale" class="transport-readout" for="rngScale">3.0</output>
+            <wa-slider id="rngScale" label="Text Scale" min="1" max="100" step="1" value="30" orientation="vertical"
+              with-markers with-tooltip>
+              <span slot="reference">Larger</span>
+              <span slot="reference">Smaller</span>
+            </wa-slider>
+          </div>
+        </div>
+      </wa-card>
+      <wa-card appearance="outlined" with-header>
+        <span slot="header" class="card-title">
+          <wa-icon name="clock"></wa-icon>
+          Clocks
+        </span>
         <tp-clock-control id="tpClockControl" countdown="00:00:00"></tp-clock-control>
-        <time is="tp-clock" type="clock"></time>
-      </fieldset>
-      <fieldset>
-        <wa-input id="txtMessage" placeholder="Message" label="Message">
-          <wa-icon name="message" slot="end"></wa-icon>
+        <div class="clock-row">
+          <span class="clock-label">Time of day</span>
+          <time is="tp-clock" type="clock"></time>
+        </div>
+      </wa-card>
+      <wa-card appearance="outlined" with-header>
+        <span slot="header" class="card-title">
+          <wa-icon name="comment"></wa-icon>
+          Message
+        </span>
+        <!-- No `label`: the card is titled "Message" and the field repeated it
+             directly underneath. The placeholder carries the hint and
+             aria-label keeps the accessible name. -->
+        <wa-input id="txtMessage" placeholder="Message for the talent" aria-label="Message">
+          <wa-icon name="message" slot="start"></wa-icon>
         </wa-input>
-        <wa-button id="btnMessage">
-          <wa-icon name="message" slot="end"></wa-icon>
+        <wa-button id="btnMessage" size="s" variant="brand" appearance="outlined">
+          <wa-icon name="paper-plane" slot="start"></wa-icon>
           Send Message
         </wa-button>
-      </fieldset>
+      </wa-card>
       <!-- The operator's pane is deliberately not scroll-synced, so these are
            the two ways to close the gap on purpose: fetch where the viewers
-           are, or send them where you are. "Send" is what the audience sees. -->
-      <fieldset class="wa-stack" id="divSync">
-        <legend>Sync</legend>
-        <wa-button id="btnGoToViewers" size="s">Go to viewers
-          <wa-icon slot="start" name="download"></wa-icon>
-        </wa-button>
-        <wa-button id="btnSendPosition" size="s" variant="warning">Send my position
-          <wa-icon slot="start" name="upload"></wa-icon>
-        </wa-button>
+           are, or send them where you are. "Send" is what the audience sees,
+           so it is the accented half of each pair. Grouped in twos because
+           each pair is one question asked in both directions. -->
+      <wa-card id="divSync" appearance="outlined" with-header>
+        <span slot="header" class="card-title">
+          <wa-icon name="right-left"></wa-icon>
+          Sync
+        </span>
+        <wa-button-group label="Scroll position" class="sync-pair">
+          <wa-button id="btnGoToViewers" size="s" appearance="outlined">Go to viewers
+            <wa-icon slot="start" name="download"></wa-icon>
+          </wa-button>
+          <wa-button id="btnSendPosition" size="s" variant="brand">Send my position
+            <wa-icon slot="start" name="upload"></wa-icon>
+          </wa-button>
+        </wa-button-group>
         <!-- Text size, so the two panes put the same words on each line and the
              position buttons above land somewhere recognisable. -->
-        <wa-button id="btnMatchScale" size="s">Match viewers' size
-          <wa-icon slot="start" name="text-height"></wa-icon>
-        </wa-button>
-        <wa-button id="btnSendScale" size="s" variant="warning">Send my size
-          <wa-icon slot="start" name="text-height"></wa-icon>
-        </wa-button>
-      </fieldset>
-      <fieldset>
-        <legend>Viewers</legend>
-        <p>Share this link with a viewer device (or use Popup for this machine):</p>
-        <a id="lnkViewerLink" target="_blank" rel="noopener"></a>
+        <wa-button-group label="Text size" class="sync-pair">
+          <wa-button id="btnMatchScale" size="s" appearance="outlined">Match viewers' size
+            <wa-icon slot="start" name="text-height"></wa-icon>
+          </wa-button>
+          <wa-button id="btnSendScale" size="s" variant="brand">Send my size
+            <wa-icon slot="start" name="text-height"></wa-icon>
+          </wa-button>
+        </wa-button-group>
+      </wa-card>
+      <wa-card id="divViewersCard" appearance="outlined" with-header>
+        <span slot="header" class="card-title">
+          <wa-icon name="display"></wa-icon>
+          Viewers
+        </span>
+        <!-- The link a viewer device opens. The anchor stays the one source of
+             the URL — the copy button and the QR code below are both handed the
+             same string — so none of the three can drift from the others. -->
+        <div id="divViewerLink">
+          <a id="lnkViewerLink" target="_blank" rel="noopener"></a>
+          <wa-copy-button id="btnCopyLink" value=""></wa-copy-button>
+        </div>
+        <!-- Collapsed by default: on a phone this is faster than typing the
+             URL, but it is only needed while a display is being set up. -->
+        <wa-details id="dtlQr" summary="Scan to join">
+          <wa-qr-code id="qrViewerLink" value="" size="160" label="Viewer link"></wa-qr-code>
+        </wa-details>
         <div id="divViewers"></div>
-      </fieldset>
-
+      </wa-card>
     </div>
   </wa-split-panel>
   <wa-dialog id="dlgRename" label="Rename Document" class="dialog-focus">

@@ -6,22 +6,32 @@ import {
 } from "./clock.ts";
 
 import WaSplitPanel from "@awesome.me/webawesome/dist/components/split-panel/split-panel.js";
+import WaBadge from "@awesome.me/webawesome/dist/components/badge/badge.js";
 import WaButton from "@awesome.me/webawesome/dist/components/button/button.js";
+import WaButtonGroup from "@awesome.me/webawesome/dist/components/button-group/button-group.js";
 import WaCallout from "@awesome.me/webawesome/dist/components/callout/callout.js";
+import WaCard from "@awesome.me/webawesome/dist/components/card/card.js";
+import WaCopyButton from "@awesome.me/webawesome/dist/components/copy-button/copy-button.js";
+import WaDetails from "@awesome.me/webawesome/dist/components/details/details.js";
 import WaDialog from "@awesome.me/webawesome/dist/components/dialog/dialog.js";
 import WaDivider from "@awesome.me/webawesome/dist/components/divider/divider.js";
 import WaDropdown from "@awesome.me/webawesome/dist/components/dropdown/dropdown.js";
 import WaDropdownItem from "@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js";
 import WaIcon from "@awesome.me/webawesome/dist/components/icon/icon.js";
 import WaInput from "@awesome.me/webawesome/dist/components/input/input.js";
+import WaQrCode from "@awesome.me/webawesome/dist/components/qr-code/qr-code.js";
 import WaSlider from "@awesome.me/webawesome/dist/components/slider/slider.js";
+import WaTag from "@awesome.me/webawesome/dist/components/tag/tag.js";
 
-// Prevent treeshaking so that these elements are initialised.
+// Prevent treeshaking so that these elements are initialised. `void` rather
+// than the console.log this used to end in, which printed "true" into the
+// operator's console on every page load; referencing the bindings is the part
+// that does the work.
 // TODO: Find a better way to do this.
-const check = WaSplitPanel && WaButton && WaCallout && WaDialog && WaDivider &&
-  WaDropdown && WaDropdownItem && WaIcon &&
-  WaInput && WaSlider;
-console.log(check != undefined);
+void (WaSplitPanel && WaBadge && WaButton && WaButtonGroup && WaCallout &&
+  WaCard && WaCopyButton && WaDetails && WaDialog && WaDivider &&
+  WaDropdown && WaDropdownItem && WaIcon && WaInput && WaQrCode && WaSlider &&
+  WaTag);
 
 // CSS imports
 import "@awesome.me/webawesome/dist/styles/themes/shoelace.css";
@@ -117,6 +127,12 @@ export class Teleprompter {
   #pdfView: PdfView | null = null;
   #pdfResize: ResizeObserver | null = null;
   #previewBox: HTMLElement;
+  // The app bar's status half. All four are display-only — nothing reads back
+  // out of them — so they are looked up once and written to.
+  #bdgSignaling: WaBadge;
+  #spnViewerNum: HTMLElement;
+  #outSpeed: HTMLOutputElement;
+  #outScale: HTMLOutputElement;
   #pdfPane: HTMLDivElement;
   #pdfPages: HTMLElement;
   #btnClosePdf: WaButton;
@@ -149,11 +165,21 @@ export class Teleprompter {
     this.lnkViewerLink = <HTMLAnchorElement> document.querySelector(
       "#lnkViewerLink",
     );
+    this.#bdgSignaling = document.querySelector("#bdgSignaling")!;
+    this.#spnViewerNum = <HTMLElement> document.querySelector("#spnViewerNum");
+    this.#outSpeed = <HTMLOutputElement> document.querySelector("#outSpeed");
+    this.#outScale = <HTMLOutputElement> document.querySelector("#outScale");
 
     this.roomID = this.#ensureRoomID();
+    document.querySelector("#tagRoom")!.textContent = this.roomID;
     const viewerURL = `${location.origin}/html/viewer.html?room=${this.roomID}`;
     this.lnkViewerLink.href = viewerURL;
     this.lnkViewerLink.textContent = viewerURL;
+    // The copy button and the QR code are handed the anchor's URL rather than
+    // building their own, so the three can never disagree about which room a
+    // display would be joining.
+    (<WaCopyButton> document.querySelector("#btnCopyLink")).value = viewerURL;
+    (<WaQrCode> document.querySelector("#qrViewerLink")).value = viewerURL;
     // The iframe preview is a same-page mirror driven over postMessage, not
     // a WebRTC peer — it joins nothing and never appears in `viewers`.
     this.ifrmPreview.src = "/html/viewer.html";
@@ -169,6 +195,7 @@ export class Teleprompter {
         onViewerState: this.#onViewerState.bind(this),
         onSignalingStatus: (status) => {
           document.documentElement.dataset.signaling = status;
+          this.#renderSignaling(status);
           if (status === "denied") {
             console.error(
               `another control page already holds room ${this.roomID}`,
@@ -302,8 +329,17 @@ export class Teleprompter {
       this.#previewBox,
     );
 
+    // Same entry point Ctrl+K uses (see controlCommands.ts), so the bar button
+    // and the shortcut cannot open different things. Wired after the palette
+    // is constructed, for the same reason the commands read through the host.
+    document.querySelector("#btnPalette")!.addEventListener(
+      "click",
+      () => this.palette.open("all"),
+    );
+
     this.#applyPreviewScale();
     this.#renderViewers();
+    this.#renderTransport();
   }
 
   #ensureRoomID(): string {
@@ -440,6 +476,13 @@ export class Teleprompter {
   #settingsFrame = 0;
 
   #pushSettings(patch: Omit<ControlMessage & { type: "settings" }, "type">) {
+    // Hooked here rather than onto the sliders' `input` event because this is
+    // the one funnel every path to a new speed or scale already reaches: the
+    // input listeners (and so the commands and the gamepad, which dispatch
+    // one), both wheel handlers, "match viewers' size" and the PDF's
+    // fit-to-width. It reads the sliders, so the numbers cannot disagree with
+    // the thumbs whichever way the value arrived.
+    this.#renderTransport();
     this.#pendingSettings = { ...this.#pendingSettings, ...patch };
     if (this.#settingsFrame) return;
 
@@ -652,7 +695,45 @@ export class Teleprompter {
     this.#renderViewers();
   }
 
+  /**
+   * The app bar's connection badge.
+   *
+   * Deliberately worded as what the operator can and cannot do rather than as
+   * a transport state: "denied" means another control page holds this room, so
+   * this one will never drive anything, and that is a different problem from a
+   * dropped socket that is already reconnecting on its own.
+   */
+  #renderSignaling(status: "connected" | "disconnected" | "denied") {
+    const shown = {
+      connected: { variant: "success", text: "Live", attention: "pulse" },
+      disconnected: {
+        variant: "warning",
+        text: "Reconnecting",
+        attention: "none",
+      },
+      denied: { variant: "danger", text: "No control", attention: "none" },
+    }[status];
+    this.#bdgSignaling.variant = <WaBadge["variant"]> shown.variant;
+    this.#bdgSignaling.attention = <WaBadge["attention"]> shown.attention;
+    this.#bdgSignaling.textContent = shown.text;
+  }
+
+  /**
+   * The numeric readouts above the two sliders.
+   *
+   * Speed is shown as the number that goes on the wire — `-rngSpeed.value`,
+   * where positive is forward — and not as the slider's own value, whose sign
+   * is inverted for the geometric reason documented on `listenSpeedWheel`.
+   * Showing the raw slider value would put a minus sign in front of forward.
+   */
+  #renderTransport() {
+    const speed = -this.rngSpeed.value;
+    this.#outSpeed.textContent = `${Math.round(speed)}`;
+    this.#outScale.textContent = (this.rngScale.value / 10).toFixed(1);
+  }
+
   #renderViewers() {
+    this.#spnViewerNum.textContent = `${this.viewers.size}`;
     this.divViewers.innerHTML = "";
     const previewID = this.#previewID();
     const driverID = this.#driverID();
