@@ -41,6 +41,11 @@ import { PaletteControls } from "./paletteControls.ts";
 import { connectController, type ControllerLink } from "./webrtc.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
 import { ratioOf, setRatio } from "./scrollsync.ts";
+import {
+  clampTextScale,
+  matchedEditorFontPx,
+  matchedViewerTextScale,
+} from "./textscale.ts";
 import type { ControlMessage, ThemeMessage } from "./protocol.ts";
 import { ThemeControls } from "./themeControls.ts";
 
@@ -76,6 +81,8 @@ export class Teleprompter {
   btnPop: WaButton;
   btnGoToViewers: WaButton;
   btnSendPosition: WaButton;
+  btnMatchScale: WaButton;
+  btnSendScale: WaButton;
   palette: PaletteControls;
 
   roomID: string;
@@ -115,6 +122,8 @@ export class Teleprompter {
     this.btnPop = document.querySelector("#btnPop")!;
     this.btnGoToViewers = document.querySelector("#btnGoToViewers")!;
     this.btnSendPosition = document.querySelector("#btnSendPosition")!;
+    this.btnMatchScale = document.querySelector("#btnMatchScale")!;
+    this.btnSendScale = document.querySelector("#btnSendScale")!;
     this.splitPanel = document.querySelector("wa-split-panel")!;
     this.btnMessage = document.querySelector("#btnMessage")!;
     this.rngSpeed = document.querySelector("#rngSpeed")!;
@@ -209,6 +218,11 @@ export class Teleprompter {
       () => this.goToViewerPosition(),
     );
     this.btnSendPosition.addEventListener("click", () => this.sendMyPosition());
+    this.btnMatchScale.addEventListener(
+      "click",
+      () => this.matchTextScaleFromViewers(),
+    );
+    this.btnSendScale.addEventListener("click", () => this.sendMyTextScale());
     this.rngSpeed.addEventListener("wheel", this.listenSpeedWheel.bind(this), {
       passive: false,
     });
@@ -748,6 +762,70 @@ export class Teleprompter {
     this.#lastRatio = ratio;
     this.link.sendScroll(ratio);
     this.#postToPreview({ type: "scroll", r: ratio, s: 0 });
+  }
+
+  /**
+   * The editor's text column width, which is what a font size has to be
+   * measured against — not the pane, which includes the scrollbar and the
+   * content element's own padding.
+   */
+  #editorTextWidth(): number {
+    const content = this.editor.contentDOM;
+    const style = getComputedStyle(content);
+    const padding = parseFloat(style.paddingLeft) +
+      parseFloat(style.paddingRight);
+    return content.clientWidth - padding;
+  }
+
+  /**
+   * The width of the viewer the preview is mirroring, read the same way
+   * #applyPreviewScale reads it so both agree on which viewer is being matched.
+   */
+  #previewedViewerWidth(): number {
+    const dims = this.viewers.get(this.#previewID() ?? "")?.dims;
+    return (dims ?? Teleprompter.DEFAULT_PREVIEW_DIMS).width;
+  }
+
+  /**
+   * Resize the editor's text to read like the viewers' does.
+   *
+   * Equal characters per line rather than equal pixels — see textscale.ts. Set
+   * inline, so it overrides the starting size in style.css and survives the
+   * editor being rebuilt on the next document load only until that happens,
+   * which is the right lifetime for a "match it now" action.
+   */
+  matchTextScaleFromViewers() {
+    const px = matchedEditorFontPx(
+      this.rngScale.value / 10,
+      this.#editorTextWidth(),
+      this.#previewedViewerWidth(),
+    );
+    // 0 means a width wasn't known yet; leave the text as it is rather than
+    // collapsing it.
+    if (px <= 0) return;
+    (<HTMLElement> document.querySelector("#editor")).style.fontSize =
+      `${px}px`;
+  }
+
+  /**
+   * Push the operator's reading size out to the viewers.
+   *
+   * Through the slider rather than straight to #pushSettings, so this and a
+   * slider drag remain one code path — and so the slider goes on showing what
+   * the viewers were actually told.
+   */
+  sendMyTextScale() {
+    const fontPx = parseFloat(
+      getComputedStyle(this.editor.contentDOM).fontSize,
+    );
+    const scale = matchedViewerTextScale(
+      fontPx,
+      this.#editorTextWidth(),
+      this.#previewedViewerWidth(),
+    );
+    if (scale <= 0) return;
+    this.rngScale.value = clampTextScale(scale) * 10;
+    this.rngScale.dispatchEvent(new Event("input"));
   }
 
   listenMessage() {

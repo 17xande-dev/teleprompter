@@ -90,10 +90,18 @@
       <fieldset class="wa-stack" id="divSync">
         <legend>Sync</legend>
         <wa-button id="btnGoToViewers" size="s">Go to viewers
-          <wa-icon slot="start" name="arrow-down-to-line"></wa-icon>
+          <wa-icon slot="start" name="download"></wa-icon>
         </wa-button>
         <wa-button id="btnSendPosition" size="s" variant="warning">Send my position
-          <wa-icon slot="start" name="arrow-up-from-line"></wa-icon>
+          <wa-icon slot="start" name="upload"></wa-icon>
+        </wa-button>
+        <!-- Text size, so the two panes put the same words on each line and the
+             position buttons above land somewhere recognisable. -->
+        <wa-button id="btnMatchScale" size="s">Match viewers' size
+          <wa-icon slot="start" name="text-height"></wa-icon>
+        </wa-button>
+        <wa-button id="btnSendScale" size="s" variant="warning">Send my size
+          <wa-icon slot="start" name="text-height"></wa-icon>
         </wa-button>
       </fieldset>
       <fieldset>

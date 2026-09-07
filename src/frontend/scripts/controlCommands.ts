@@ -36,6 +36,8 @@ export interface CommandHost {
   btnMessage: Clickable;
   btnGoToViewers: Clickable;
   btnSendPosition: Clickable;
+  btnMatchScale: Clickable;
+  btnSendScale: Clickable;
   rngSpeed: Slider;
   rngScale: Slider;
   tpClockControl: {
@@ -132,6 +134,21 @@ export const COMMAND_SPECS: CommandSpec[] = [
     shortcut: "Mod+Alt+Minus",
     keywords: ["zoom", "scale"],
     repeatable: true,
+  },
+  {
+    // No shortcut on either: they are set-up actions taken once before a
+    // service, not things reached for mid-scroll, and the chord set is already
+    // long enough to have to be looked up.
+    id: "scale.match",
+    label: "Match viewers' text size",
+    group: "Text",
+    keywords: ["sync", "size", "font", "same"],
+  },
+  {
+    id: "scale.send",
+    label: "Send my text size to viewers",
+    group: "Text",
+    keywords: ["sync", "size", "font", "push"],
   },
   {
     // The one binding that earns its keep most: type the message, send it
@@ -277,6 +294,8 @@ export function buildCommands(host: CommandHost): Command[] {
     "position.send": () => host.btnSendPosition.click(),
     "scale.up": () => nudge(host.rngScale, SCALE_STEP),
     "scale.down": () => nudge(host.rngScale, -SCALE_STEP),
+    "scale.match": () => host.btnMatchScale.click(),
+    "scale.send": () => host.btnSendScale.click(),
     "message.send": () => host.btnMessage.click(),
     "message.clear": () => {
       // Queried here rather than held on the host because that is what
