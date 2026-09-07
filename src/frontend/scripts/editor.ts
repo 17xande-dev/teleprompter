@@ -52,9 +52,21 @@ export function restoreEditor(
   // out of the load handler and leaving the page with no document at all.
   if (!json.trim()) return newEditor(el, onUpdate);
 
-  const parsed = JSON.parse(json);
   const config = buildConfig(onUpdate);
-  const state = GardState.fromJSON(parsed, config, { history: history.field });
+  let state;
+  try {
+    state = GardState.fromJSON(JSON.parse(json), config, {
+      history: history.field,
+    });
+  } catch (err) {
+    // Same reasoning as the empty case, for content this editor can't read at
+    // all: browsers still carry documents seeded before the Wordgard migration
+    // (a Quill delta, which fromJSON rejects as "Invalid document JSON"), and
+    // throwing here leaves the page with no editor rather than a usable one.
+    // Nothing is overwritten by this — a save only happens on the next edit.
+    console.warn("unreadable document content, starting a fresh editor", err);
+    return newEditor(el, onUpdate);
+  }
   clearMount(el);
   return Wordgard.create({ parent: el, state });
 }

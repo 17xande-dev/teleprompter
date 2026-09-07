@@ -11,8 +11,18 @@
 // ever negotiates with the controller.
 
 import type { ControlMessage } from "./protocol.ts";
+import { chunkFile, type Frame, makeReassembler } from "./filetransfer.ts";
 
 type ConnState = "waiting" | "connecting" | "connected" | "disconnected";
+
+// Stop pumping file chunks once this much is queued in the channel, resume
+// when it drains to the low threshold. Without this a multi-megabyte PDF goes
+// into the send buffer as fast as the loop can push it, and even though the
+// file has a stream of its own the shared SCTP association ends up carrying a
+// backlog that the scroll samples have to queue behind — which shows up as
+// exactly the stutter the rest of this codebase works to avoid.
+const FILE_BUFFER_HIGH = 1024 * 1024;
+const FILE_BUFFER_LOW = 256 * 1024;
 
 function wsURL(
   room: string,
@@ -50,6 +60,7 @@ interface Link {
   onSignal(msg: SignalEnvelope): Promise<void>;
   sendScroll(ratio: number, seq: number): void;
   sendControl(msg: ControlMessage): void;
+  sendFile(name: string, bytes: ArrayBuffer): void;
   close(): void;
 }
 
@@ -59,6 +70,7 @@ interface LinkOptions {
   sendSignal: (msg: SignalEnvelope) => void;
   onScroll: (ratio: number, seq: number) => void;
   onControl: (msg: ControlMessage) => void;
+  onFile?: (name: string, data: ArrayBuffer) => void;
   onStateChange?: (state: RTCPeerConnectionState) => void;
 }
 
@@ -69,6 +81,7 @@ function makeLink(opts: LinkOptions): Link {
   let pc: RTCPeerConnection | null = null;
   let scrollCh: RTCDataChannel | null = null;
   let controlCh: RTCDataChannel | null = null;
+  let fileCh: RTCDataChannel | null = null;
   let makingOffer = false;
   let ignoreOffer = false;
   let lastScrollSeq = 0;
@@ -77,6 +90,14 @@ function makeLink(opts: LinkOptions): Link {
   // this newcomer up to date") can reasonably send control messages before
   // that finishes, so queue them rather than silently drop them.
   const pendingControl: ControlMessage[] = [];
+  // The same problem for files, but a *slot* rather than a queue: the newcomer
+  // catch-up in teleprompter.ts fires at peer-joined, well before the channel
+  // opens, and only the latest PDF is worth anything. Queuing would send
+  // megabytes of superseded document.
+  let pendingFile: { name: string; bytes: ArrayBuffer } | null = null;
+  // Cancels an in-flight pump when the file it is sending is superseded or the
+  // link closes, so two pumps can't interleave chunks on the same channel.
+  let fileGeneration = 0;
 
   function ensurePeerConnection() {
     if (pc) return;
@@ -93,12 +114,33 @@ function makeLink(opts: LinkOptions): Link {
       id: 1,
       ordered: true,
     });
+    // Bulk file transfer gets its own stream rather than riding "control" as
+    // base64. SCTP schedules between streams, so a multi-megabyte PDF doesn't
+    // park settings and content messages behind it — and raw ArrayBuffers
+    // avoid base64's 33% inflation.
+    fileCh = pc.createDataChannel("file", {
+      negotiated: true,
+      id: 2,
+      ordered: true,
+    });
+    fileCh.binaryType = "arraybuffer";
 
     controlCh.onopen = () => {
       for (const msg of pendingControl.splice(0)) {
         controlCh!.send(JSON.stringify(msg));
       }
     };
+
+    fileCh.onopen = () => {
+      const file = pendingFile;
+      pendingFile = null;
+      if (file) pumpFile(file.name, file.bytes);
+    };
+
+    if (opts.onFile) {
+      const reassemble = makeReassembler(opts.onFile);
+      fileCh.onmessage = (e: MessageEvent) => reassemble(e.data as Frame);
+    }
 
     scrollCh.onmessage = (e: MessageEvent) => {
       const { r, s } = JSON.parse(e.data) as { r: number; s: number };
@@ -136,6 +178,36 @@ function makeLink(opts: LinkOptions): Link {
     }
   }
 
+  // Walks the frames of one file onto the channel, pausing whenever the send
+  // buffer is full and resuming on "bufferedamountlow". Async rather than a
+  // callback chain so the generator's position is just a local — nothing to
+  // reset between transfers, and abandoning one is a generation bump.
+  async function pumpFile(name: string, bytes: ArrayBuffer) {
+    const ch = fileCh;
+    if (!ch) return;
+    const generation = ++fileGeneration;
+    ch.bufferedAmountLowThreshold = FILE_BUFFER_LOW;
+
+    for (const frame of chunkFile(name, bytes)) {
+      if (generation !== fileGeneration || ch.readyState !== "open") return;
+      if (ch.bufferedAmount > FILE_BUFFER_HIGH) {
+        await new Promise<void>((resolve) => {
+          ch.addEventListener("bufferedamountlow", () => resolve(), { once: true });
+        });
+        if (generation !== fileGeneration || ch.readyState !== "open") return;
+      }
+      // The channel can still close between the check and the send (the viewer
+      // closes its tab mid-transfer); that throws, and it isn't an error worth
+      // propagating out of a fire-and-forget pump.
+      try {
+        if (typeof frame === "string") ch.send(frame);
+        else ch.send(frame);
+      } catch {
+        return;
+      }
+    }
+  }
+
   async function onSignal(msg: SignalEnvelope) {
     ensurePeerConnection();
     if (msg.description) {
@@ -167,13 +239,30 @@ function makeLink(opts: LinkOptions): Link {
       }
     },
     sendControl(msg) {
+      // A "pdf" carries an ArrayBuffer, which JSON.stringify flattens to `{}`
+      // — the viewer would get a message of the right shape with no document
+      // in it and nothing would report an error. Fail loudly instead.
+      if (msg.type === "pdf") {
+        throw new Error("send a pdf with sendFile, not sendControl");
+      }
       if (controlCh?.readyState === "open") {
         controlCh.send(JSON.stringify(msg));
       } else {
         pendingControl.push(msg);
       }
     },
+    sendFile(name, bytes) {
+      if (fileCh?.readyState === "open") {
+        pumpFile(name, bytes);
+      } else {
+        pendingFile = { name, bytes };
+      }
+    },
     close() {
+      // Abandon any pump in flight before tearing the connection down, so it
+      // doesn't wake from its bufferedamountlow wait onto a dead channel.
+      fileGeneration++;
+      pendingFile = null;
       pc?.close();
       pc = null;
       pendingControl.length = 0;
@@ -203,6 +292,8 @@ export interface ControllerCallbacks {
 export interface ControllerLink {
   broadcast(msg: ControlMessage): void;
   sendTo(id: string, msg: ControlMessage): void;
+  broadcastFile(name: string, bytes: ArrayBuffer): void;
+  sendFileTo(id: string, name: string, bytes: ArrayBuffer): void;
   sendScroll(ratio: number): void;
   sendScrollTo(id: string, ratio: number): void;
   viewers(): string[];
@@ -300,6 +391,12 @@ export function connectController(
     sendTo(id, msg) {
       links.get(id)?.sendControl(msg);
     },
+    broadcastFile(name, bytes) {
+      for (const link of links.values()) link.sendFile(name, bytes);
+    },
+    sendFileTo(id, name, bytes) {
+      links.get(id)?.sendFile(name, bytes);
+    },
     sendScroll(ratio) {
       scrollSeq++;
       for (const link of links.values()) link.sendScroll(ratio, scrollSeq);
@@ -326,6 +423,7 @@ export function connectController(
 export interface ViewerCallbacks {
   onControl?(msg: ControlMessage): void;
   onScroll?(ratio: number, seq: number): void;
+  onFile?(name: string, data: ArrayBuffer): void;
   onStatus?(status: ConnState): void;
 }
 
@@ -388,6 +486,7 @@ export function connectViewer(room: string, cb: ViewerCallbacks): ViewerLink {
               sendSignal: (m) => ws?.send(JSON.stringify({ ...m, to: controllerID })),
               onScroll: (r, s) => cb.onScroll?.(r, s),
               onControl: (m) => cb.onControl?.(m),
+              onFile: (n, d) => cb.onFile?.(n, d),
               onStateChange: (state) => {
                 if (state === "connected") cb.onStatus?.("connected");
                 else if (state === "disconnected" || state === "failed") {

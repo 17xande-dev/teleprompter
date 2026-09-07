@@ -49,9 +49,16 @@ func frontendHandler(dev bool) http.Handler {
 // change) applies inline styles and fetches its icon SVGs remotely at
 // runtime — neither is under this app's control without replacing that
 // library. Recorded as a deliberate trade-off, not an oversight.
+//
+// script-src needs 'wasm-unsafe-eval' for pdf.js, whose image decoders and
+// colour management are WebAssembly; Chromium refuses WebAssembly.instantiate
+// under a bare script-src 'self'. It does *not* need any blob: relaxation:
+// pdf.js only falls back to its blob: worker wrapper when workerSrc is
+// cross-origin, and /pdfworker.js is served from here — which is precisely
+// why the worker gets its own un-hashed bundle output (see deno.jsonc).
 func securityHeaders(next http.Handler) http.Handler {
 	const csp = "default-src 'self'; " +
-		"script-src 'self'; " +
+		"script-src 'self' 'wasm-unsafe-eval'; " +
 		"style-src 'self' 'unsafe-inline'; " +
 		"connect-src 'self' https://ka-f.fontawesome.com data:; " +
 		"img-src 'self' data:; " +

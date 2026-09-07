@@ -15,6 +15,18 @@
       <div id="toolbar"></div>
       <div id="editor">
       </div>
+      <!-- Shown in place of the editor while a PDF is loaded. Scrolls on its
+           own and reports nothing, so the operator can read ahead of the
+           viewers without moving them. -->
+      <div id="pdfPane" hidden>
+        <div id="pdfPaneBar">
+          <span id="pdfName"></span>
+          <wa-button id="btnClosePdf" size="s">Close PDF
+            <wa-icon slot="start" name="xmark"></wa-icon>
+          </wa-button>
+        </div>
+        <div id="pdfPages"></div>
+      </div>
     </div>
     <div slot="end" id="controls" class="wa-stack">
       <fieldset class="wa-cluster">
@@ -46,6 +58,11 @@
           </wa-dropdown-item>
           <wa-dropdown-item value="theme-big-clock">Big Clocks
             <wa-icon slot="icon" name="clock"></wa-icon>
+          </wa-dropdown-item>
+          <!-- User themes are inserted here at runtime, above the divider. -->
+          <wa-divider id="divThemeSplit"></wa-divider>
+          <wa-dropdown-item id="mniNewTheme" value="">New Theme&hellip;
+            <wa-icon slot="icon" name="plus"></wa-icon>
           </wa-dropdown-item>
         </wa-dropdown>
       </fieldset>
@@ -93,7 +110,26 @@
     <wa-button name="cancel" slot="footer">Cancel</wa-button>
   </wa-dialog>
   <wa-dialog id="dlgDelete" label="Delete Document" class="dialog-focus">
-    Are you sure you want to delete document
+    <!-- Filled in by docControls so the prompt names the document. -->
+    <p id="pDeleteDoc"></p>
+    <wa-button name="delete" slot="footer" variant="danger">Delete</wa-button>
+    <wa-button name="cancel" slot="footer">Cancel</wa-button>
+    <input type="hidden"></input>
+  </wa-dialog>
+  <!-- The theme editor. The hidden input carries the slug being edited, the
+       same identity idiom as the document dialogs above. Edits are pushed to
+       viewers live while this is open, so the preview beside it is the
+       feedback loop — there is no separate "apply" step. -->
+  <wa-dialog id="dlgTheme" label="Edit Theme">
+    <wa-input id="txtThemeName" label="Name" autofocus></wa-input>
+    <input type="hidden"></input>
+    <div id="divThemeEditor"></div>
+    <div id="divThemeProblems" hidden></div>
+    <wa-button name="save" slot="footer" variant="primary">Save</wa-button>
+    <wa-button name="cancel" slot="footer">Cancel</wa-button>
+  </wa-dialog>
+  <wa-dialog id="dlgThemeDelete" label="Delete Theme" class="dialog-focus">
+    Are you sure you want to delete theme
     <wa-button name="delete" slot="footer" variant="primary">Delete</wa-button>
     <wa-button name="cancel" slot="footer">Cancel</wa-button>
     <input type="hidden"></input>

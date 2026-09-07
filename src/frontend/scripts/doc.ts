@@ -1,349 +1,258 @@
-import WaButton from "@awesome.me/webawesome/dist/components/button/button.js";
-import WaDropdown from "@awesome.me/webawesome/dist/components/dropdown/dropdown.js";
-import WaDialog from "@awesome.me/webawesome/dist/components/dialog/dialog.js";
-import WaInput from "@awesome.me/webawesome/dist/components/input/input.js";
-import WaDropdownItem from "@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js";
-import WaIcon from "@awesome.me/webawesome/dist/components/icon/icon.js";
-import type { WaSelectEvent } from "@awesome.me/webawesome";
+// The operator's script documents, held in localStorage.
+//
+// DOM-free on purpose: this is the storage and validation half, and staying
+// DOM-free is what makes it testable (see doc_test.ts). docControls.ts is the
+// DOM half — dropdown, dialogs, events. Same split, and for the same reason,
+// as themes.ts / themeControls.ts.
 
-export class Doc {
+export type Doc = {
+  // Display name, editable. Identity is the id, not this.
   name: string;
+  // A Wordgard state JSON blob, or "" for a document never edited — which
+  // restoreEditor reads as "no content yet" and starts a fresh editor from.
   content: string;
+};
 
-  constructor(name: string, content: string = "") {
-    this.name = name;
-    this.content = content;
+// The slice of localStorage this needs, injected so tests can hand it a plain
+// object instead of a real Storage.
+export interface DocStore {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+// Namespaced, matching #ensureControlKey and themes.ts. The bare "documents"
+// and "currentDocument" these replace were two very generic keys on a shared
+// origin.
+const DOCS_KEY = "teleprompter.documents";
+const CURRENT_KEY = "teleprompter.currentDocument";
+
+// How long content edits may sit in memory before being written.
+//
+// This is a throttle, not a true debounce: the window is *not* restarted by
+// each keystroke, so a write always lands within this long of any edit. A
+// debounce would write nothing at all while someone types continuously —
+// which, for an operator drafting a script, could be minutes of work held
+// only in memory. Same "coalesce, last value wins" reasoning as
+// #pushSettings, just at a coarser grain, because the cost being avoided
+// here is a synchronous localStorage write of the whole collection on every
+// keypress rather than a data channel flood.
+const CONTENT_SAVE_MS = 500;
+
+/** A timestamp suffix for generated names. Takes its clock for testability. */
+export function formatDateTime(d: Date = new Date()): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+
+  return `${yyyy}${mm}${dd}-${hh}${min}${ss}`;
+}
+
+export function newDocName(d?: Date): string {
+  return `document_${formatDateTime(d)}`;
+}
+
+/**
+ * Read a stored document map, tolerating anything. Corrupt or half-written
+ * localStorage yields an empty map rather than an exception: everything here
+ * runs from the control page's constructor, which runs from a bare top-level
+ * `new Teleprompter()` in app.ts, so a throw means the page never boots. That
+ * has already happened once in this codebase — a Quill delta left in storage
+ * after the Wordgard migration threw out of the load handler on every
+ * first-ever page load.
+ */
+export function parseDocs(raw: string | null): Record<string, Doc> {
+  if (!raw) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    console.warn("stored documents are not valid JSON, starting empty");
+    return {};
   }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return {};
+  }
+
+  const docs: Record<string, Doc> = {};
+  for (const [id, value] of Object.entries(parsed)) {
+    // Drop entries one at a time: one unreadable document shouldn't cost the
+    // operator the rest of their scripts.
+    if (typeof value !== "object" || value === null) continue;
+    const { name, content } = value as Partial<Doc>;
+    if (typeof name !== "string") continue;
+    docs[id] = { name, content: typeof content === "string" ? content : "" };
+  }
+  return docs;
 }
 
 export class DocStorage {
-  // TODO: Possible sync issue with current doc vs docs[currentdocname]. Consider storing only the docname here.
-  private currentDoc: Doc;
-  // Use a Map for more efficient additions/deletions and less possible weirdness with objects.
-  // TODO: NO, don't use a map, serializing maps to/from JSON requires hoop-jumping + performance penalty. Use a TypeScript Record<>.
-  private docs: Map<string, Doc>;
+  #store: DocStore;
+  #docs: Record<string, Doc>;
+  // The *id* of the open document, not the object. Holding the object was the
+  // old design's central defect: the reference aliased the collection
+  // sometimes and not others, so `current` and `docs[name]` could drift apart
+  // and a rename could silently redirect edits into the wrong document.
+  #currentID: string;
+  #saveDelayMs: number;
+  #contentTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor() {
-    const jsonDocs = localStorage.getItem("documents");
-    if (!jsonDocs) {
-      console.warn("no documents collection in localStorage. Creating one");
-      this.docs = new Map<string, Doc>();
-      this.currentDoc = new Doc(
-        Utils.formatDateTime(),
-        `{"ops":[{"insert":"New Document"}]}`,
-      );
-      this.setDoc(this.currentDoc);
-      this.save();
+  // saveDelayMs is injected for the same reason the store is: so tests can
+  // drive the throttle without sleeping half a second per case.
+  constructor(store: DocStore = localStorage, saveDelayMs = CONTENT_SAVE_MS) {
+    this.#store = store;
+    this.#saveDelayMs = saveDelayMs;
+    this.#docs = parseDocs(this.#read(DOCS_KEY));
+
+    const ids = Object.keys(this.#docs);
+    if (ids.length === 0) {
+      const id = crypto.randomUUID();
+      this.#docs[id] = { name: newDocName(), content: "" };
+      this.#currentID = id;
+      this.#save();
       return;
     }
 
-    this.docs = new Map(Object.entries(JSON.parse(jsonDocs)));
-
-    let currentDocName = localStorage.getItem("currentDocument");
-    if (!currentDocName) {
-      console.warn(
-        "no currentDocument in localStorage. Setting it to the first document",
-      );
-      const first = this.docs.keys().next().value;
-      if (!first) {
-        throw new Error("no keys in document map, something has gone wrong.");
-      }
-      currentDocName = first;
-    }
-    this.currentDoc = this.docs.get(currentDocName)!;
-    this.save();
-
-    // TODO: Emit event that DocStorage is loaded.
+    // A stored id that no longer exists (deleted in another tab, or storage
+    // written by an older build) would leave every read dereferencing
+    // undefined. Repair it to a real document and persist the repair.
+    const stored = this.#read(CURRENT_KEY);
+    this.#currentID = stored && stored in this.#docs ? stored : ids[0];
+    this.#write(CURRENT_KEY, this.#currentID);
   }
 
-  load() {
-    const jsonDocs = localStorage.getItem("documents");
-    if (!jsonDocs) {
-      throw new Error("localstorage corrupted");
+  #read(key: string): string | null {
+    try {
+      return this.#store.getItem(key);
+    } catch {
+      // Private mode or blocked storage. Run in memory for this session
+      // rather than failing the page load.
+      return null;
     }
-
-    this.docs = new Map(Object.entries(JSON.parse(jsonDocs)));
-
-    const currentDocName = localStorage.getItem("currentDocument");
-    if (!currentDocName) {
-      throw new Error("localstorage corrupted");
-    }
-    this.setCurrent(this.docs.get(currentDocName)!);
   }
 
+  #write(key: string, value: string) {
+    try {
+      this.#store.setItem(key, value);
+    } catch (err) {
+      // Over quota, or storage blocked. In-memory state is left alone: the
+      // operator keeps working and only loses the change on reload, which
+      // beats reverting an edit under their hands.
+      console.warn(`could not persist ${key}`, err);
+    }
+  }
+
+  // Writes the whole collection, so it also satisfies whatever content edit
+  // was waiting on the throttle — drop the pending timer rather than letting
+  // it fire a second, identical write.
+  #save() {
+    if (this.#contentTimer !== undefined) {
+      clearTimeout(this.#contentTimer);
+      this.#contentTimer = undefined;
+    }
+    this.#write(DOCS_KEY, JSON.stringify(this.#docs));
+    this.#write(CURRENT_KEY, this.#currentID);
+  }
+
+  /**
+   * Persist a throttled content edit now. Callers with a DOM must call this
+   * when the page is going away — a write still sitting on the timer is lost
+   * work — and it is also how tests avoid leaving a timer pending.
+   * A no-op when nothing is waiting.
+   */
+  flush() {
+    if (this.#contentTimer === undefined) return;
+    this.#save();
+  }
+
+  /** All documents as [id, doc] pairs — a snapshot, not the live collection. */
+  list(): [string, Doc][] {
+    return Object.entries(this.#docs);
+  }
+
+  get(id: string): Doc | undefined {
+    return this.#docs[id];
+  }
+
+  getCurrentID(): string {
+    return this.#currentID;
+  }
+
+  /** The open document. The constructor guarantees this always resolves. */
   getCurrent(): Doc {
-    return this.currentDoc;
+    return this.#docs[this.#currentID];
   }
 
-  setCurrent(doc: Doc) {
-    this.currentDoc = doc;
-  }
-
-  setCurrentContent(content: string) {
-    this.currentDoc.content = content;
-    this.setDoc(this.currentDoc);
-  }
-
-  getDoc(docName: string): Doc | undefined {
-    return this.docs.get(docName);
-  }
-
-  setDoc(doc: Doc) {
-    this.docs.set(doc.name, doc);
-  }
-
-  save() {
-    localStorage.setItem("currentDocument", this.currentDoc.name);
-    localStorage.setItem(
-      "documents",
-      JSON.stringify(Object.fromEntries(this.docs.entries())),
-    );
-  }
-
-  rename(doc: Doc, newName: string) {
-    const newDoc = new Doc(newName, doc.content);
-    this.currentDoc = newDoc;
-    this.setDoc(newDoc);
-    this.remove(doc);
-  }
-
-  remove(doc: Doc) {
-    this.docs.delete(doc.name);
-  }
-
-  // TODO: figure out how to create an iterator to return docs. For now, just return the whole map.
-  // *docIterate() {
-  // for (const [_, doc] of this.docs) {
-  //   yield doc
-  // }
-
-  getDocs(): Map<string, Doc> {
-    return this.docs;
-  }
-}
-
-export class DocControls {
-  btnNew: WaButton;
-  drpDocuments: WaDropdown;
-  dlgSave: WaDialog;
-  dlgDelete: WaDialog;
-  // TODO: make this private?
-  docStorage: DocStorage;
-
-  constructor() {
-    // Class Selectors
-    this.btnNew = document.querySelector("#btnNew")!;
-    this.drpDocuments = document.querySelector("#drpDocuments")!;
-    this.dlgSave = document.querySelector("#dlgRename")!;
-    this.dlgDelete = document.querySelector("#dlgDelete")!;
-
-    this.docStorage = new DocStorage();
-    this.loadDocument(this.docStorage.getCurrent().name);
-    this.populateDropdown();
-
-    // Dialog Selectors
-    const btnSave: WaButton = this.dlgSave.querySelector(
-      "wa-button[name=save]",
-    )!;
-    const btnCancel: WaButton = this.dlgSave.querySelector(
-      "wa-button[name=cancel]",
-    )!;
-    const btnDelete: WaButton = this.dlgDelete.querySelector(
-      "wa-button[name=delete]",
-    )!;
-    const btnDelCancel: WaButton = this.dlgDelete.querySelector(
-      "wa-button[name=cancel]",
-    )!;
-
-    // Bind event Listeners
-    this.btnNew.addEventListener("click", this.new.bind(this));
-    this.drpDocuments.addEventListener(
-      "wa-select",
-      this.listenDropSelect.bind(this),
-    );
-
-    btnCancel.addEventListener("click", () => this.dlgSave.open = false);
-    btnSave.addEventListener("click", () => {
-      const input: WaInput = this.dlgSave.querySelector("wa-input")!;
-      const hidden = <HTMLInputElement> this.dlgSave.querySelector(
-        "input",
-      )!;
-      // TODO: Have a better default value for below.
-      this.nameSave(hidden.value, input.value || "");
-      this.dlgSave.open = false;
-    });
-
-    btnDelCancel.addEventListener("click", () => this.dlgDelete.open = false);
-    btnDelete.addEventListener("click", () => {
-      const hidden = <HTMLInputElement> this.dlgDelete.querySelector(
-        "input",
-      );
-      const docName = hidden.value;
-      this.remove(docName);
-      this.dlgDelete.open = false;
-    });
-
-    // TODO: Listen to dockstorage load event and populate dropdown.
-  }
-
-  populateDropdown() {
-    const docs = this.docStorage.getDocs();
-    for (const [name, _] of docs) {
-      const mi = this.genMenuItem(name);
-      this.drpDocuments.appendChild(mi);
-    }
-  }
-
-  listenDropSelect(e: WaSelectEvent) {
-    const item = e.detail.item as WaDropdownItem;
-    const docName = item.value;
-    const icon = <WaIcon> item.firstElementChild;
-    const action = icon.name;
-
-    switch (action) {
-      case "folder-open":
-        this.docStorage.save();
-        this.loadDocument(docName);
-        break;
-      case "pencil":
-        this.editPopup(item);
-        break;
-      case "trash": {
-        this.dlgDelete.open = true;
-        const hidden = <HTMLInputElement> this.dlgDelete.querySelector(
-          "input",
-        );
-        hidden.value = item.value;
-        break;
-      }
-      default:
-        throw new Error("unimplemented");
-    }
-  }
-
-  loadDocument(docName: string, firstLoad = false) {
-    const doc = this.docStorage.getDoc(docName);
-    if (!doc) {
-      console.warn(
-        `failed to load document "${docName}" because it doesn't exist`,
-      );
+  setCurrent(id: string) {
+    if (!(id in this.#docs)) {
+      console.warn(`cannot open document ${id}: it doesn't exist`);
       return;
     }
-
-    // if (!firstLoad) {
-    //   this.docStorage.setDoc(doc);
-    // }
-    this.docStorage.setCurrent(doc);
-
-    const loadEvent = new CustomEvent<Doc>("load", {
-      detail: doc,
-      bubbles: true,
-      composed: true,
-    });
-
-    this.drpDocuments.dispatchEvent(loadEvent);
+    // Settle the outgoing document's edits before moving on. Only CURRENT_KEY
+    // is written below, so a pending content write left behind here would be
+    // lost if the tab closed before its timer fired.
+    this.flush();
+    this.#currentID = id;
+    this.#write(CURRENT_KEY, id);
   }
 
-  editPopup(mi: WaDropdownItem) {
-    // make a popup
-    this.dlgSave.open = true;
-    const input: WaInput = this.dlgSave.querySelector("wa-input")!;
-    const hidden: HTMLInputElement = this.dlgSave.querySelector("input")!;
-    hidden.value = mi.value;
-    input.value = mi.value;
-    input.select();
+  /**
+   * Replace the open document's content. Called on every editor update, so
+   * the write is throttled — but the in-memory collection is updated straight
+   * away, which is what every read goes through.
+   */
+  setContent(content: string) {
+    this.#docs[this.#currentID].content = content;
+    if (this.#contentTimer !== undefined) return;
+    this.#contentTimer = setTimeout(() => {
+      this.#contentTimer = undefined;
+      this.#save();
+    }, this.#saveDelayMs);
   }
 
-  nameSave(previousName: string, newName: string) {
-    const doc = this.docStorage.getDoc(previousName);
-    if (!doc) {
-      throw new Error("can't rename document that doesn't exist?");
+  /** Create an empty document and return its id. Does not open it. */
+  create(name: string = newDocName()): string {
+    // A UUID rather than themes.ts's readable slug: a theme's id doubles as
+    // the CSS class a viewer wears, so it has to be a legible identifier and
+    // needs a collision pass. A document id is never seen by anyone.
+    const id = crypto.randomUUID();
+    this.#docs[id] = { name, content: "" };
+    this.#save();
+    return id;
+  }
+
+  /**
+   * Rename in place. The id — and so anything holding a reference to this
+   * document — is untouched, and `current` is not moved: renaming a document
+   * you are not editing must not redirect your edits into it.
+   */
+  rename(id: string, name: string) {
+    const doc = this.#docs[id];
+    if (!doc) throw new Error(`no document ${id} to rename`);
+    // Names are display-only and need not be unique, but a blank one leaves
+    // an unclickable row in the dropdown.
+    doc.name = name.trim() || "Untitled";
+    this.#save();
+  }
+
+  remove(id: string) {
+    if (!(id in this.#docs)) return;
+    delete this.#docs[id];
+
+    const ids = Object.keys(this.#docs);
+    if (ids.length === 0) {
+      // There is no such thing as "no document": the editor always has one
+      // open, so deleting the last one seeds a replacement rather than
+      // leaving `current` dangling.
+      const fresh = crypto.randomUUID();
+      this.#docs[fresh] = { name: newDocName(), content: "" };
+      this.#currentID = fresh;
+    } else if (this.#currentID === id) {
+      this.#currentID = ids[0];
     }
-    this.docStorage.rename(doc, newName);
-
-    const items = Array.from(
-      this.drpDocuments.querySelectorAll("wa-dropdown-item"),
-    );
-    const mi = items.find((e) => e.value === previousName);
-    if (!mi) {
-      throw new Error("menu item does not exist");
-    }
-    const newItem = this.genMenuItem(newName);
-    mi.value = newItem.value;
-    mi.innerHTML = newItem.innerHTML;
-    this.docStorage.save();
-  }
-
-  private genMenuItem(docName: string) {
-    const mnuItem = new WaDropdownItem();
-
-    mnuItem.innerHTML = `${docName}
-      <wa-dropdown-item slot="submenu" value="${docName}">Open
-        <wa-icon slot="icon" name="folder-open" label="Open"></wa-icon>
-      </wa-dropdown-item>
-      <wa-dropdown-item slot="submenu" value="${docName}">Rename
-        <wa-icon slot="icon" name="pencil" label="Rename"></wa-icon>
-      </wa-dropdown-item>
-      <wa-dropdown-item slot="submenu" value="${docName}" variant="danger">Delete
-        <wa-icon slot="icon" name="trash" label="Delete"></wa-icon>
-      </wa-dropdown-item>
-    `;
-    const m = <WaDropdownItem> mnuItem.cloneNode(true);
-    m.value = docName;
-    return m;
-  }
-
-  new() {
-    this.docStorage.setDoc(this.docStorage.getCurrent());
-    const newName = `document_${Utils.formatDateTime()}`;
-    const newDoc = new Doc(newName, "");
-    this.docStorage.setCurrent(newDoc);
-    const mi = this.genMenuItem(newName);
-    this.drpDocuments.appendChild(mi);
-
-    const newEvent = new CustomEvent("new", {
-      detail: { name: newName },
-      bubbles: true,
-      composed: true,
-    });
-
-    // TODO: When this becomes a web component, dispatch the event from this component.
-    this.drpDocuments.dispatchEvent(newEvent);
-    this.docStorage.setDoc(newDoc);
-  }
-
-  open() {
-    throw new Error("unimplemented");
-  }
-
-  rename() {
-    throw new Error("unimplemented");
-  }
-
-  remove(docName: string) {
-    const items = Array.from(
-      this.drpDocuments.querySelectorAll("wa-dropdown-item"),
-    );
-    const mi = items.find((e) => e.value === docName);
-    if (!mi) {
-      throw new Error("menu item does not exist");
-    }
-    mi.remove();
-
-    this.docStorage.remove(docName);
+    this.#save();
   }
 }
-
-// Utility collection
-const Utils = {
-  formatDateTime(d: Date = new Date()): string {
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const min = String(d.getMinutes()).padStart(2, "0");
-    const ss = String(d.getSeconds()).padStart(2, "0");
-
-    return `${yyyy}${mm}${dd}-${hh}${min}${ss}`;
-  },
-};

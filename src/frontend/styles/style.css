@@ -48,60 +48,129 @@ html {
   gap: 0.25rem;
 }
 
+/* The theme editor dialog. Wide on purpose: the operator is reading CSS in it
+   while watching the preview change beside it. */
+#dlgTheme {
+  --width: min(56rem, 92vw);
+}
+
+#divThemeEditor {
+  margin-block-start: 1rem;
+  border: 1px solid var(--wa-color-surface-border, #444);
+  border-radius: var(--wa-border-radius-m, 4px);
+  overflow: hidden;
+
+  /* CodeMirror sizes itself to its content, so an editor holding two lines
+     would be two lines tall and the dialog would resize under the operator as
+     they type. Fix the height and let it scroll instead. */
+  .cm-editor {
+    height: 55vh;
+  }
+}
+
+#divThemeProblems {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-block-start: 1rem;
+}
+
+/* The sidebar is narrow and a row now carries an id, dimensions, a state, two
+   controls and a pacing marker — so it wraps rather than squeezing, and the
+   individual labels never break mid-phrase. */
 .viewer-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
   font-size: 0.85rem;
+  padding: 0.25rem 0;
 }
 
 .viewer-row .viewer-id {
   font-family: monospace;
+  white-space: nowrap;
+}
+
+.viewer-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  white-space: nowrap;
 }
 
 .viewer-row .viewer-state {
   opacity: 0.7;
 }
 
+.viewer-row .viewer-pacing {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  opacity: 0.8;
+  /* Pushed to the end of the row so the eye can find the pacing viewer down
+     the list without reading each one. */
+  margin-inline-start: auto;
+}
+
 .hidden {
   display: none;
 }
 
-.pop-clocks {
+/* The `hidden` attribute is only `display: none` in the UA stylesheet, so any
+   author rule that sets `display` on the same element beats it — and an id
+   selector beats it comfortably. That silently broke both elements in this
+   page that toggle `el.hidden`: #pdfPane (display: flex) kept its bar and
+   Close PDF button on screen with no PDF loaded, and #divThemeProblems
+   (display: flex) held its empty warning box open. Keep this ahead of the
+   rules below so `hidden` means hidden regardless of what they declare. */
+[hidden] {
+  display: none !important;
+}
+
+/* The control page's PDF pane. Deliberately its own scroller and deliberately
+   not wired to scrollsync: the operator reads ahead of, or behind, the
+   viewers without dragging them along. */
+#pdfPane {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  height: 92vh;
+}
+
+#pdfPaneBar {
+  display: flex;
   align-items: center;
-  font-size: 8vi;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: black;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+}
 
-  .left,
-  .right {
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
+#pdfPaneBar #pdfName {
+  font-family: monospace;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  .mid {
-    /* flex: 1 1 auto; */
-    text-align: center;
-    min-width: 0;
-    word-wrap: break-word;
-    overflow-wrap: anywhere;
-    white-space: normal;
-    color: red;
-  }
+#pdfPages {
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
 
-  time[type="timer"] {
-    color: yellow;
-  }
+#mainEditor.drop-target {
+  outline: 2px dashed currentColor;
+  outline-offset: -4px;
+}
 
-  /* TODO: move this to clock.css? Best way of web components css? */
-  time[type="timer"].negative {
-    color: red;
-  }
-
+/* See the note in viewerBase.css: page height and the gap below it are both
+   set in pixels by pdfview.ts and scale with the column, which is what keeps a
+   scroll ratio meaning the same thing at every viewer size. Nothing here may
+   affect the height. */
+.pdf-page {
+  margin-inline: auto;
+  background: white;
 }
 
 tp-clock-control {

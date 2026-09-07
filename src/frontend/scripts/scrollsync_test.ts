@@ -131,3 +131,24 @@ Deno.test("a zero-height page reports ratio 0 rather than dividing by zero", asy
     assertEquals(sent, [{ r: 0, s: 1 }]);
   });
 });
+
+Deno.test("re-applying a stored ratio re-anchors after the content changes height", async () => {
+  // The mechanism behind viewer.ts's #restoreScroll. Replacing the content —
+  // an edit, a PDF finishing its layout, a zoom — changes scrollHeight while
+  // the browser keeps scrollTop in pixels, so the same position now means a
+  // different line. While the pacer is moving its ~60Hz samples hide this;
+  // paused, nothing else ever corrects it.
+  const el = makeFakeElement({ scrollTop: 0, scrollHeight: 1000, clientHeight: 200 });
+  await withSync(el, async (sync) => {
+    sync.applyRemote(0.5);
+    assertEquals(el.scrollTop, 400); // half of (1000 - 200)
+    await flush();
+
+    // Content grows; scrollTop stays where it was and now means ratio 0.1.
+    el.scrollHeight = 4200;
+    assertEquals(el.scrollTop / (el.scrollHeight - el.clientHeight), 0.1);
+
+    sync.applyRemote(0.5);
+    assertEquals(el.scrollTop, 2000); // half of (4200 - 200)
+  });
+});

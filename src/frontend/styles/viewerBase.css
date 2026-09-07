@@ -1,0 +1,29 @@
+:root {
+  --sidebar-width: 300px;
+  --background-color: hsl(240, 5.9%, 11%);
+  --border-width: 1px;
+  --border-color: hsl(240, 5.9%, 11%);
+}
+
+html {
+  /* color: white; */
+  /* background-color: var(--background-color); */
+  /* font-family: "Fira Code", monospace; */
+  font-optical-sizing: auto;
+}
+
+body {
+  font-family: var(--sl-font-mono);
+  overflow: hidden;
+}
+
+/* Every dimension of a page box, the gap below it included, is set in pixels
+   by pdfview.ts and scales with the column width. That is what makes a scroll
+   ratio mean the same thing on a phone and on a 4K display: the whole column
+   is proportional, so 0.4 lands on the same line at any size. A gap declared
+   here in rem would not scale with it and the viewers would drift apart by a
+   little more with every page. Nothing in CSS may affect the height. */
+.pdf-page {
+  margin-inline: auto;
+  background: white;
+}

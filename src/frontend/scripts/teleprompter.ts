@@ -7,7 +7,9 @@ import {
 
 import WaSplitPanel from "@awesome.me/webawesome/dist/components/split-panel/split-panel.js";
 import WaButton from "@awesome.me/webawesome/dist/components/button/button.js";
+import WaCallout from "@awesome.me/webawesome/dist/components/callout/callout.js";
 import WaDialog from "@awesome.me/webawesome/dist/components/dialog/dialog.js";
+import WaDivider from "@awesome.me/webawesome/dist/components/divider/divider.js";
 import WaDropdown from "@awesome.me/webawesome/dist/components/dropdown/dropdown.js";
 import WaDropdownItem from "@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js";
 import WaIcon from "@awesome.me/webawesome/dist/components/icon/icon.js";
@@ -16,8 +18,8 @@ import WaSlider from "@awesome.me/webawesome/dist/components/slider/slider.js";
 
 // Prevent treeshaking so that these elements are initialised.
 // TODO: Find a better way to do this.
-const check = WaSplitPanel && WaButton && WaDialog && WaDropdown &&
-  WaDropdownItem && WaIcon &&
+const check = WaSplitPanel && WaButton && WaCallout && WaDialog && WaDivider &&
+  WaDropdown && WaDropdownItem && WaIcon &&
   WaInput && WaSlider;
 console.log(check != undefined);
 
@@ -26,12 +28,14 @@ import "@awesome.me/webawesome/dist/styles/themes/shoelace.css";
 import "@awesome.me/webawesome/dist/styles/utilities.css";
 
 import "../styles/style.css";
-import { Doc, DocControls } from "./doc.ts";
-import { WaSelectEvent } from "@awesome.me/webawesome";
+import type { Doc } from "./doc.ts";
+import { DocControls } from "./docControls.ts";
 import { Wordgard } from "wordgard/editor";
 import { newEditor, restoreEditor, saveEditor } from "./editor.ts";
 import { connectController, type ControllerLink } from "./webrtc.ts";
-import type { ControlMessage } from "./protocol.ts";
+import { type PdfView, renderPdf } from "./pdfview.ts";
+import type { ControlMessage, ThemeMessage } from "./protocol.ts";
+import { ThemeControls } from "./themeControls.ts";
 
 interface ViewerEntry {
   dims: { width: number; height: number } | null;
@@ -46,6 +50,9 @@ export class Teleprompter {
   static readonly MAX_PREVIEW_HEIGHT = 450;
   // What the preview falls back to before any viewer has reported its size.
   static readonly DEFAULT_PREVIEW_DIMS = { width: 1920, height: 1080 };
+  // Text Scale slider position that means "fit the PDF to the viewer's width"
+  // — the slider reports tenths, and viewer.ts reads a textScale of 1 as fit.
+  static readonly PDF_FIT_SCALE = 10;
 
   docControls: DocControls;
   splitPanel: WaSplitPanel;
@@ -53,22 +60,40 @@ export class Teleprompter {
   editor: Wordgard;
   rngSpeed: WaSlider;
   rngScale: WaSlider;
-  drpLayouts: WaDropdown;
+  themeControls: ThemeControls;
   tpClockControl: TPClockControl;
   ifrmPreview: HTMLIFrameElement;
   divViewers: HTMLDivElement;
   lnkViewerLink: HTMLAnchorElement;
   controls: HTMLDivElement;
-  editingName: string;
   btnPop: WaButton;
 
   roomID: string;
   link: ControllerLink;
   viewers = new Map<string, ViewerEntry>();
 
-  #currentLayout = "theme-default";
   #currentMessage = "";
   #autoScrollRunning = true;
+  // The pacer's most recent position. Viewers only learn where everyone is
+  // from the pacer's next sample, and while the scroll is paused (or the
+  // speed is 0) there isn't one — so a viewer that joins or reconnects would
+  // sit at the top of the document until someone started scrolling again.
+  #lastRatio = 0;
+  // The operator's explicit pick of which viewer the preview mirrors. Null
+  // means "no preference" — fall back to whoever connected first, which is
+  // what a single-viewer setup wants and never needs to think about.
+  #chosenPreviewID: string | null = null;
+
+  // A dropped PDF takes over from the editor for the rest of the session. It
+  // is held in memory only — deliberately never written to DocStorage, whose
+  // localStorage backing has a ~5MB quota that a PDF would blow straight
+  // through, taking the operator's text documents with it.
+  #pdfName: string | null = null;
+  #pdfBytes: ArrayBuffer | null = null;
+  #pdfView: PdfView | null = null;
+  #pdfResize: ResizeObserver | null = null;
+  #pdfPane: HTMLDivElement;
+  #btnClosePdf: WaButton;
 
   constructor() {
     // Register web components.
@@ -83,18 +108,19 @@ export class Teleprompter {
     this.rngScale = document.querySelector("#rngScale")!;
     this.controls = document.querySelector("#controls")!;
     this.tpClockControl = document.querySelector("#tpClockControl")!;
-    this.drpLayouts = document.querySelector("#drpLayouts")!;
+    this.#pdfPane = <HTMLDivElement> document.querySelector("#pdfPane");
+    this.#btnClosePdf = document.querySelector("#btnClosePdf")!;
     this.ifrmPreview = <HTMLIFrameElement> document.querySelector("#ifrmPreview");
     this.divViewers = <HTMLDivElement> document.querySelector("#divViewers");
     this.lnkViewerLink = <HTMLAnchorElement> document.querySelector("#lnkViewerLink");
 
     this.roomID = this.#ensureRoomID();
-    const viewerURL = `${location.origin}/html/pop.html?room=${this.roomID}`;
+    const viewerURL = `${location.origin}/html/viewer.html?room=${this.roomID}`;
     this.lnkViewerLink.href = viewerURL;
     this.lnkViewerLink.textContent = viewerURL;
     // The iframe preview is a same-page mirror driven over postMessage, not
     // a WebRTC peer — it joins nothing and never appears in `viewers`.
-    this.ifrmPreview.src = "/html/pop.html";
+    this.ifrmPreview.src = "/html/viewer.html";
 
     this.link = connectController(this.roomID, this.#ensureControlKey(this.roomID), {
       onViewerJoined: this.#onViewerJoined.bind(this),
@@ -144,14 +170,15 @@ export class Teleprompter {
       },
     );
 
-    this.drpLayouts.addEventListener(
-      "wa-select",
-      this.listenLayoutSelect.bind(this),
-    );
+    // ThemeControls owns the layout dropdown and its dialogs, and reports the
+    // resulting layout as one message — including while the operator is typing
+    // CSS, which is what makes the preview a live feedback loop.
+    this.themeControls = new ThemeControls();
+    this.themeControls.drpLayouts.addEventListener("theme", (e) => {
+      this.#pushTheme((<CustomEvent<ThemeMessage>> e).detail);
+    });
 
-    this.docControls.loadDocument(
-      this.docControls.docStorage.getCurrent().name,
-    );
+    this.docControls.loadCurrent();
 
     this.btnPop.addEventListener("click", this.listenPop.bind(this));
     this.btnMessage.addEventListener("click", this.listenMessage.bind(this));
@@ -171,11 +198,16 @@ export class Teleprompter {
       this.#pushClock({ type: "clock", action: "reset", time: ev.detail.time });
     });
 
-    this.editingName = "";
+    this.#wirePdfDrop();
+    this.#btnClosePdf.addEventListener("click", () => this.closePdf());
 
     globalThis.addEventListener("keyup", this.listenKey.bind(this));
 
     this.ifrmPreview.addEventListener("load", () => {
+      // The iframe starts on the built-in default in its own markup, so a
+      // persisted custom layout has to be pushed to it the same way a real
+      // viewer gets it on join.
+      this.#postToPreview(this.themeControls.themeMessage());
       this.updateMain();
     });
 
@@ -219,6 +251,90 @@ export class Teleprompter {
     return key;
   }
 
+  // Drop is wired on the whole editor pane rather than the editor element: in
+  // PDF mode the editor is hidden, and the operator still needs somewhere to
+  // drop a replacement.
+  #wirePdfDrop() {
+    const pane = <HTMLElement> document.querySelector("#mainEditor");
+
+    pane.addEventListener("dragover", (e: DragEvent) => {
+      if (!this.#pdfInTransfer(e.dataTransfer)) return;
+      // Without preventDefault on *dragover* the drop never fires and the
+      // browser navigates to the file instead.
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = "copy";
+      pane.classList.add("drop-target");
+    });
+
+    const clear = () => pane.classList.remove("drop-target");
+    pane.addEventListener("dragleave", clear);
+    pane.addEventListener("drop", async (e: DragEvent) => {
+      clear();
+      const file = [...(e.dataTransfer?.files ?? [])].find(
+        (f) => f.type === "application/pdf",
+      );
+      if (!file) return;
+      e.preventDefault();
+      await this.openPdf(file.name, await file.arrayBuffer());
+    });
+  }
+
+  #pdfInTransfer(dt: DataTransfer | null): boolean {
+    // During a drag the file list is empty for security reasons; only the
+    // item *types* are readable.
+    return [...(dt?.items ?? [])].some((i) => i.type === "application/pdf");
+  }
+
+  async openPdf(name: string, bytes: ArrayBuffer) {
+    this.#pdfName = name;
+    this.#pdfBytes = bytes;
+
+    // Text Scale becomes a PDF zoom, where 1 is fit-to-width. Whatever the
+    // slider was set to for text is meaningless here and would typically land
+    // the document at 25% of the display, so reset the control and the
+    // viewers together rather than letting them disagree.
+    this.rngScale.value = Teleprompter.PDF_FIT_SCALE;
+    this.#pushSettings({ textScale: Teleprompter.PDF_FIT_SCALE / 10 });
+
+    this.link.broadcastFile(name, bytes);
+    // The preview is same-origin and same-process, so it takes the bytes
+    // whole — postMessage structured-clones an ArrayBuffer.
+    this.#postToPreview({ type: "pdf", name, data: bytes });
+
+    document.querySelector("#editor")!.classList.add("hidden");
+    this.#pdfPane.hidden = false;
+    document.querySelector("#pdfName")!.textContent = name;
+
+    this.#pdfView?.destroy();
+    const pages = <HTMLElement> document.querySelector("#pdfPages");
+    this.#pdfView = await renderPdf(pages, bytes, pages.clientWidth);
+
+    // The operator's pane always fits the width — it isn't scroll-synced, so
+    // there's nothing for the zoom control to keep in step here. Dragging the
+    // split panel would otherwise leave the pages at their old size.
+    this.#pdfResize ??= new ResizeObserver(() => {
+      this.#pdfView?.setWidth(pages.clientWidth);
+    });
+    this.#pdfResize.observe(pages);
+  }
+
+  closePdf() {
+    this.#pdfName = null;
+    this.#pdfBytes = null;
+    this.#pdfResize?.disconnect();
+    this.#pdfView?.destroy();
+    this.#pdfView = null;
+
+    this.#pdfPane.hidden = true;
+    document.querySelector("#editor")!.classList.remove("hidden");
+
+    this.link.broadcast({ type: "pdf-clear" });
+    this.#postToPreview({ type: "pdf-clear" });
+    // Viewers cleared their #main along with the PDF, so they need the
+    // editor's content pushed again rather than waiting for the next keystroke.
+    this.updateMain();
+  }
+
   #postToPreview(msg: ControlMessage) {
     this.ifrmPreview.contentWindow?.postMessage(msg, location.origin);
   }
@@ -253,18 +369,41 @@ export class Teleprompter {
     this.#postToPreview(msg);
   }
 
+  // Sent directly rather than through #pushSettings: a theme carries a whole
+  // stylesheet, which has no business being merged frame-by-frame with slider
+  // values, and its class name has to land in the same message as its CSS so
+  // the two can't be applied out of order. ThemeControls already debounces the
+  // keystroke case.
+  #pushTheme(msg: ThemeMessage) {
+    this.link.broadcast(msg);
+    this.#postToPreview(msg);
+  }
+
   #onViewerJoined(id: string) {
     this.viewers.set(id, { dims: null, canDrive: false, state: "new" });
     // Bring the newcomer up to date rather than leaving it blank until the
-    // next edit/setting change.
-    this.link.sendTo(id, { type: "content", html: this.editor.contentDOM.innerHTML });
+    // next edit/setting change. In PDF mode that means re-sending the whole
+    // file — the channel isn't open yet at this point, so this relies on the
+    // pending-file slot in webrtc.ts.
+    if (this.#pdfBytes) {
+      this.link.sendFileTo(id, this.#pdfName ?? "document.pdf", this.#pdfBytes);
+    } else {
+      this.link.sendTo(id, { type: "content", html: this.editor.contentDOM.innerHTML });
+    }
     this.link.sendTo(id, {
       type: "settings",
       speed: -this.rngSpeed.value,
       textScale: this.rngScale.value / 10,
-      layout: this.#currentLayout,
       message: this.#currentMessage,
     });
+    // The only route by which a viewer ever learns its theme — a custom one's
+    // CSS exists nowhere but this browser, so a viewer that reloads mid-service
+    // comes back unstyled unless this is here.
+    this.link.sendTo(id, this.themeControls.themeMessage());
+    // Where everyone currently is. Sent on the *control* channel, not the
+    // scroll one: control queues until the channel opens, and an unreliable
+    // channel that isn't open yet would simply drop this.
+    this.link.sendTo(id, { type: "scroll", r: this.#lastRatio, s: 0 });
     // A newcomer may be the only viewer (making it the pacer) or one more
     // follower; either way the roles need recomputing.
     this.#applyScrollRoles();
@@ -291,13 +430,26 @@ export class Teleprompter {
     this.#renderViewers();
   }
 
-  // Which viewer the preview mirrors — geometry and scroll both. A viewer
-  // granted drive is the canonical one to show; otherwise just the first
-  // one that connected. Viewers can differ in size, so the preview has to
-  // pick one rather than pretend they share a shape.
-  #previewSourceID(): string | null {
+  // Which viewer paces the scroll: the one granted drive, else whoever
+  // connected first. Exactly one, always — two viewers each integrating the
+  // speed off their own clock drift apart with nothing to pull them back.
+  #pacerID(): string | null {
     for (const [id, entry] of this.viewers) {
       if (entry.canDrive) return id;
+    }
+    return this.viewers.keys().next().value ?? null;
+  }
+
+  // Which viewer the preview is shaped like. Separate from the pacer on
+  // purpose: viewers can have completely different sizes and aspect ratios,
+  // and the preview renders at one viewer's *real* pixel size to be a true
+  // miniature of it, so the operator has to be able to say which. Scroll is
+  // not part of this choice — every viewer sits at the same ratio, so the
+  // pacer's position is correct to show in a box shaped like any of them.
+  #previewID(): string | null {
+    // An explicit choice only holds while that viewer is still connected.
+    if (this.#chosenPreviewID && this.viewers.has(this.#chosenPreviewID)) {
+      return this.#chosenPreviewID;
     }
     return this.viewers.keys().next().value ?? null;
   }
@@ -307,7 +459,7 @@ export class Teleprompter {
   // actually showing. Sizing it directly to the small on-screen box instead
   // would reflow the content and make the preview a lie.
   #applyPreviewScale() {
-    const source = this.#previewSourceID();
+    const source = this.#previewID();
     const dims = (source && this.viewers.get(source)?.dims) ||
       Teleprompter.DEFAULT_PREVIEW_DIMS;
 
@@ -331,7 +483,7 @@ export class Teleprompter {
   // would each run off their own clock and drift apart within a minute
   // with nothing to pull them back together.
   #applyScrollRoles() {
-    const pacer = this.#previewSourceID();
+    const pacer = this.#pacerID();
     for (const id of this.link.viewers()) {
       this.link.sendTo(id, {
         type: "settings",
@@ -342,7 +494,11 @@ export class Teleprompter {
 
   #onViewerScroll(id: string, ratio: number) {
     if (!this.viewers.has(id)) return;
-    if (id !== this.#previewSourceID()) return;
+    // Only the pacer's samples are authoritative. Every viewer reports its
+    // own position unconditionally; the rest are echoes of this one.
+    if (id !== this.#pacerID()) return;
+
+    this.#lastRatio = ratio;
 
     // The pacing viewer's position goes out to everyone else on every
     // sample it sends — ~60 a second, on the unreliable channel, applied
@@ -367,15 +523,26 @@ export class Teleprompter {
     if (!entry) return;
     entry.canDrive = canDrive;
     this.link.sendTo(id, { type: "set-driver", canDrive });
-    // Granting drive changes which viewer paces the scroll, and which one
-    // the preview follows.
+    // Granting drive changes which viewer paces the scroll. It no longer
+    // changes what the preview is shaped like — that's the operator's own
+    // choice now, since the viewer worth driving from and the viewer worth
+    // looking at need not be the same shape or the same device.
     this.#applyScrollRoles();
+    this.#renderViewers();
+  }
+
+  #setPreview(id: string) {
+    if (!this.viewers.has(id)) return;
+    this.#chosenPreviewID = id;
     this.#applyPreviewScale();
     this.#renderViewers();
   }
 
   #renderViewers() {
     this.divViewers.innerHTML = "";
+    const previewID = this.#previewID();
+    const pacerID = this.#pacerID();
+
     for (const [id, entry] of this.viewers) {
       const row = document.createElement("div");
       row.className = "viewer-row";
@@ -391,6 +558,18 @@ export class Teleprompter {
       state.textContent = entry.state;
       row.appendChild(state);
 
+      // Radio, not a checkbox: the preview can only be shaped like one
+      // viewer at a time. Sharing a `name` lets the browser enforce that.
+      const previewLabel = document.createElement("label");
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "previewSource";
+      radio.checked = id === previewID;
+      radio.addEventListener("change", () => this.#setPreview(id));
+      previewLabel.appendChild(radio);
+      previewLabel.appendChild(document.createTextNode("preview"));
+      row.appendChild(previewLabel);
+
       const label2 = document.createElement("label");
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
@@ -403,14 +582,23 @@ export class Teleprompter {
       label2.appendChild(document.createTextNode("allow drive"));
       row.appendChild(label2);
 
+      // Which viewer is actually pacing is derived (drive grant, else first
+      // to connect), so without saying so the operator can't tell whose
+      // position everyone else is mirroring.
+      if (id === pacerID) {
+        const pacing = document.createElement("span");
+        pacing.className = "viewer-pacing";
+        pacing.textContent = "pacing";
+        row.appendChild(pacing);
+      }
+
       this.divViewers.appendChild(row);
     }
   }
 
   saveEditorContent(editor: Wordgard) {
     const content = JSON.stringify(saveEditor(editor));
-    this.docControls.docStorage.setCurrentContent(content);
-    this.docControls.docStorage.save();
+    this.docControls.setContent(content);
     // Content now travels over a live data channel rather than a manual
     // "update" action, so every edit is a good moment to push it.
     this.updateMain();
@@ -424,19 +612,13 @@ export class Teleprompter {
       : { width: 800, height: 600, x: 100, y: 100 };
 
     const win = self.open(
-      `/html/pop.html?room=${this.roomID}`,
+      `/html/viewer.html?room=${this.roomID}`,
       "pop",
       `popup=true,width=${dims.width},height=${dims.height},screenX=${dims.x},screenY=${dims.y}`,
     );
     if (!win) {
       throw new Error("can't open window");
     }
-  }
-
-  listenLayoutSelect(e: WaSelectEvent) {
-    const item = e.detail.item as WaDropdownItem;
-    this.#currentLayout = item.value;
-    this.#pushSettings({ layout: this.#currentLayout });
   }
 
   listenSpeedWheel(e: WheelEvent) {
@@ -484,6 +666,9 @@ export class Teleprompter {
   }
 
   updateMain() {
+    // Editing while a PDF is showing is legitimate — the operator can prepare
+    // the next script — but it must not push that text at the displays.
+    if (this.#pdfBytes) return;
     const content = this.editor.contentDOM.innerHTML;
     this.link.broadcast({ type: "content", html: content });
     this.#postToPreview({ type: "content", html: content });
