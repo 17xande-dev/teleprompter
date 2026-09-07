@@ -1,0 +1,27 @@
+# Watches the Go sources and rebuilds/restarts the server. Frontend changes do
+# not need this — `deno task bundle-watch` rewrites dist/ and -dev reads it off
+# disk — but a Go change otherwise means killing and re-running the server by
+# hand, and forgetting to is indistinguishable from the change not working.
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/server ."
+  entrypoint = "./tmp/server"
+  # -dev so the server reads dist/ off disk. Without it go:embed's compile-time
+  # copy wins and every rebundle is invisible until the *next* Go rebuild.
+  # Passed as args_bin rather than appended to the entrypoint: air treats
+  # entrypoint as a single path and would look for a file named "server -dev".
+  args_bin = ["-dev"]
+  include_ext = ["go"]
+  # dist/ is the bundler's output and changes constantly while bundle-watch is
+  # running; rebuilding Go for it would restart the server on every keystroke,
+  # dropping the WebRTC signaling sockets for no reason.
+  exclude_dir = ["dist", "tmp"]
+  stop_on_error = true
+  # Long enough to coalesce a multi-file save (a gofmt-on-save across a
+  # package) into one restart.
+  delay = 300
+
+[misc]
+  clean_on_exit = true

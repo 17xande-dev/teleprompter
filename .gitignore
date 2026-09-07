@@ -37,3 +37,4 @@ src/backend/dist/*
 
 .crush
 CLAUDE.md
+src/backend/tmp/

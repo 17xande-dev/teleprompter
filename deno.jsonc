@@ -37,7 +37,11 @@
     // separate Deno file-server anymore. -dev makes the server read dist/
     // off disk, since the embedded copy is fixed at compile time and would
     // otherwise ignore everything bundle-watch rebuilds.
-    "dev": "deno task bundle-watch & (cd src/backend && go run . -dev)",
+    // air rebuilds and restarts the Go server when a .go file changes (see
+    // src/backend/.air.toml); it replaces `go run`, which had to be killed and
+    // re-run by hand. The frontend half is unchanged: bundle-watch rewrites
+    // dist/ and -dev makes the server read it off disk.
+    "dev": "deno task bundle-watch & (cd src/backend && air)",
     "build": "deno task bundle",
     "check": "deno check src/frontend/scripts",
     // --no-check: `deno task check` already covers types; without it, `deno

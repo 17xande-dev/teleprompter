@@ -1,2 +1,7 @@
 [tools]
 deno = "latest"
+# Rebuilds and restarts the Go server when a .go file changes, which "deno task
+# dev" runs in place of `go run`. Pinned as a project tool so the dev task works
+# on a fresh checkout rather than failing on a binary the developer happens not
+# to have.
+air = "latest"
