@@ -117,9 +117,6 @@ export class Teleprompter {
   #pdfView: PdfView | null = null;
   #pdfResize: ResizeObserver | null = null;
   #previewBox: HTMLElement;
-  // The editor's mount, which carries the operator's reading size — it
-  // outlives any one Wordgard instance, so the size survives a document load.
-  #editorMount: HTMLElement;
   #pdfPane: HTMLDivElement;
   #pdfPages: HTMLElement;
   #btnClosePdf: WaButton;
@@ -148,7 +145,6 @@ export class Teleprompter {
       "#ifrmPreview",
     );
     this.#previewBox = <HTMLElement> document.querySelector("#divPreviewBox");
-    this.#editorMount = <HTMLElement> document.querySelector("#editor");
     this.divViewers = <HTMLDivElement> document.querySelector("#divViewers");
     this.lnkViewerLink = <HTMLAnchorElement> document.querySelector(
       "#lnkViewerLink",

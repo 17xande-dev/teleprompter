@@ -72,31 +72,36 @@ export const COMMAND_SPECS: CommandSpec[] = [
     keywords: ["play", "pause", "resume"],
   },
   {
+    // Down is faster, up is slower: to scroll forward is to scroll *down* the
+    // script, so the arrow points the way the text travels. Note this is the
+    // opposite of the slider's own geometry — Forward sits at the bottom, so
+    // "faster" also steps the thumb downward. The two agree by coincidence of
+    // metaphor, not by construction; the sign lives in the action below.
     id: "speed.up",
     label: "Scroll faster",
     group: "Scroll",
-    shortcut: "Mod+ArrowUp",
+    shortcut: "Mod+ArrowDown",
     repeatable: true,
   },
   {
     id: "speed.down",
     label: "Scroll slower",
     group: "Scroll",
-    shortcut: "Mod+ArrowDown",
+    shortcut: "Mod+ArrowUp",
     repeatable: true,
   },
   {
     id: "speed.up.large",
     label: "Scroll faster (large step)",
     group: "Scroll",
-    shortcut: "Mod+Shift+ArrowUp",
+    shortcut: "Mod+Shift+ArrowDown",
     repeatable: true,
   },
   {
     id: "speed.down.large",
     label: "Scroll slower (large step)",
     group: "Scroll",
-    shortcut: "Mod+Shift+ArrowDown",
+    shortcut: "Mod+Shift+ArrowUp",
     repeatable: true,
   },
   {
@@ -292,9 +297,9 @@ export function buildCommands(host: CommandHost): Command[] {
     // what puts Forward at the bottom of the vertical slider so the thumb
     // travels the way the text does (the same metaphor as listenSpeedWheel's
     // `value += -e.deltaY`). These commands are named for the speed the
-    // operator wants, not the direction the thumb moves — so Mod+ArrowUp means
-    // faster and drives the thumb downward. The two used to disagree, and
-    // "Scroll faster" scrolled backwards; commands_test.ts guards the sign.
+    // operator wants, not the direction the thumb moves — so speed.up steps
+    // the value *down*. The two used to disagree, and "Scroll faster" scrolled
+    // backwards; commands_test.ts guards the sign.
     "speed.up": () => nudge(host.rngSpeed, -SPEED_STEP),
     "speed.down": () => nudge(host.rngSpeed, SPEED_STEP),
     "speed.up.large": () => nudge(host.rngSpeed, -SPEED_STEP_LARGE),

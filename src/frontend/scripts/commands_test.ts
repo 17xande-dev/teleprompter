@@ -418,6 +418,19 @@ Deno.test("faster means forward, which is a step toward the slider's minimum", (
   assertEquals(host.rngSpeed.value, 0);
 });
 
+Deno.test("the speed arrows point the way the text travels", () => {
+  // Down is forward — scrolling on is scrolling down the script — so the
+  // faster commands are bound to ArrowDown and the slower ones to ArrowUp.
+  // Nothing about getting this backwards looks wrong until a service, and it
+  // reads as plausible either way, which is exactly why it is asserted.
+  const shortcut = (id: string) =>
+    COMMAND_SPECS.find((s) => s.id === id)!.shortcut;
+  assertEquals(shortcut("speed.up"), "Mod+ArrowDown");
+  assertEquals(shortcut("speed.down"), "Mod+ArrowUp");
+  assertEquals(shortcut("speed.up.large"), "Mod+Shift+ArrowDown");
+  assertEquals(shortcut("speed.down.large"), "Mod+Shift+ArrowUp");
+});
+
 Deno.test("only Space is bound bare, and every other binding is a chord", () => {
   // The operator asked for chords precisely so shortcuts stay out of the way
   // while typing. Space predates that and is guarded by focus instead; a new
