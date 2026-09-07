@@ -3,6 +3,13 @@
     "unstable": true
   },
   "version": "0.0.1",
+  // deno fmt's HTML support de-dents slotted children below their parent
+  // element, which makes index.html markedly harder to read than the hand
+  // formatting — and it rewrites the icon asset to no purpose. Excluded here
+  // rather than remembered, so a bare `deno fmt` over the repo stays safe.
+  "fmt": {
+    "exclude": ["**/*.html", "**/*.svg"]
+  },
   "compilerOptions": {
     "lib": [
       "dom",
