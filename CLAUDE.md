@@ -410,6 +410,26 @@ WebSocket relay, `ice.go` STUN/TURN config.
     `.cm-editor`, `.cm-gutters` and 16 `.cm-line`s were all present and correct
     while the thing was completely unstyled. Assert **computed styles**, and
     look at a screenshot.
+- **Custom elements here are autonomous (`<tp-clock>`), never customized
+  built-ins (`<time is="tp-clock">`)**, because WebKit accepts the definition
+  and then ignores it. Measured on iOS 18.7 / Safari 26.6 through the device's
+  own inspector: `customElements.define(name, cls, {extends: "time"})` throws
+  nothing, `customElements.get(name)` is truthy, and the `<time is=…>` elements
+  already in the markup are simply never upgraded — `el instanceof TPClock` is
+  false, no `connectedCallback` runs, and the element keeps whatever text the
+  HTML gave it. So the wall clock (empty markup) was blank on every iPhone and
+  the countdown sat frozen at the `00:00:00` in its own tag, with nothing in any
+  console. An autonomous element registered and upgraded on the same device in
+  the same test. Type-checking cannot see this and Chrome cannot either.
+- **A stopped viewer must ask the viewport for nothing at all.** `scrollBy` on
+  WebKit performs a sub-pixel scroll and then reports `scrollY` unchanged, so
+  `carryRemainder` — which decides what to bank by comparing what was asked with
+  what came back — re-banks the whole remainder every frame. While the speed is
+  nonzero that debt churns harmlessly; at speed 0 nothing drains it, and a
+  viewer whose speed the operator had just zeroed went on creeping at 0.84px a
+  frame, about 50px/s, on iOS. `pendingScroll` is the guard: no speed, no
+  request, remainder dropped. Under a pixel of owed movement is nothing to
+  defend; a display that ignores "stop" is.
 - **Don't throttle or ease the scroll fan-out.** It feels smooth _because_ the
   pacer's ratio goes out on every one of ~60 samples a second and is applied
   instantly at the far end. An earlier attempt here to send 4/sec and
