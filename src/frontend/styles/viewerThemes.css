@@ -33,12 +33,12 @@
       color: red;
     }
 
-    time[type="timer"] {
+    tp-clock[type="timer"] {
       color: yellow;
     }
 
     /* TODO: move this to clock.css? Best way of web components css? */
-    time[type="timer"].negative {
+    tp-clock[type="timer"].negative {
       color: red;
     }
   }
@@ -77,12 +77,12 @@
       order: -1;
     }
 
-    time[type="timer"] {
+    tp-clock[type="timer"] {
       color: yellow;
     }
 
     /* TODO: move this to clock.css? Best way of web components css? */
-    time[type="timer"].negative {
+    tp-clock[type="timer"].negative {
       color: red;
     }
   }

@@ -288,8 +288,8 @@ wa-split-panel {
   font-size: var(--wa-font-size-s);
 }
 
-.clock-row time,
-tp-clock-control time {
+.clock-row tp-clock,
+tp-clock-control tp-clock {
   font-family: var(--wa-font-family-code, monospace);
   font-variant-numeric: tabular-nums;
 }

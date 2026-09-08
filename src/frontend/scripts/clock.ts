@@ -61,7 +61,7 @@ class TPClockControl extends HTMLElement {
     <wa-icon name="stop" label="Stop"></wa-icon>
     </wa-button>
     </wa-button-group>
-		<time is="tp-clock" id="timeCountdown" type="timer" timer="00:00:00"></time>
+		<tp-clock id="timeCountdown" type="timer" timer="00:00:00"></tp-clock>
     </div>
 `;
 
@@ -138,13 +138,23 @@ const dateOptions: Intl.DateTimeFormatOptions = {
 };
 
 /**
- * Teleprompter Countdown clock component. Extends HTMLTimeElement.
+ * Teleprompter clock component.
  *
  * Usage:
- * <time is="tp-clock" type="clock" countdown="01:02:03"></time>
+ * <tp-clock type="clock" countdown="01:02:03"></tp-clock>
  * countdown="hh:mm:ss" to countdown from.
+ *
+ * An *autonomous* custom element, and it has to be. This was
+ * `<time is="tp-clock">` — a customized built-in — and on WebKit that is
+ * silently inert: iOS 18.7 / Safari 26.6 accepts the `define()` call and
+ * registers the name (`customElements.get("tp-clock")` is truthy) but never
+ * upgrades the elements already in the markup, so `el instanceof TPClock` is
+ * false, the element keeps whatever text the HTML gave it, and nothing is
+ * logged anywhere. On a phone the wall clock was simply blank and the
+ * countdown sat frozen at its markup's 00:00:00. Semantic `<time>` is not
+ * worth a component that doesn't run on half the displays it is pointed at.
  */
-class TPClock extends HTMLTimeElement {
+class TPClock extends HTMLElement {
   // TODO: is this actually a good case for inheritance?
   // Each differenty type of clock having the same methods by slightly different implementations?
   static observedAttributes = ["countdown"];
@@ -270,7 +280,9 @@ class TPClock extends HTMLTimeElement {
 }
 
 function registerClockComponent() {
-  customElements.define("tp-clock", TPClock, { extends: "time" });
+  // No `{ extends: "time" }` — see the note on TPClock. A definition WebKit
+  // accepts and then ignores is worse than one it rejects.
+  customElements.define("tp-clock", TPClock);
 }
 
 export {

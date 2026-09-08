@@ -309,9 +309,9 @@ export const THEME_TEMPLATE = `/* A viewer theme is plain CSS, and while it is
 
      body
        header#header.viewer-clocks
-         time#timeTimer.left    the countdown
-         span#message.mid       the operator's message
-         time#timeClock.right   the wall clock
+         tp-clock#timeTimer.left  the countdown
+         span#message.mid         the operator's message
+         tp-clock#timeClock.right the wall clock
        main#main.content        the script, or the PDF page column
 
    Three things are not yours to set:
