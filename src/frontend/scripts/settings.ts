@@ -17,15 +17,14 @@ const SETTINGS_KEY = "teleprompter.settings";
 
 export type Settings = {
   /**
-   * Which way a wheel over a slider moves its thumb.
+   * Whether the wheel moves a slider's thumb the opposite way to the default.
    *
-   * There is no correct default, only a common one: whether a scroll away from
-   * the operator arrives as a positive or a negative `deltaY` is decided by the
-   * pointing device and the "natural scrolling" setting above the browser, and
-   * the page cannot see either. So the default is the direction that matches a
-   * system scrolling naturally (thumb follows the fingers), and this flips it
-   * for everyone else — which is the whole reason it is a setting and not a
-   * constant someone has to be right about.
+   * "Opposite to the default", not "opposite to down": which physical direction
+   * a `deltaY` stands for is decided by the pointing device and the "natural
+   * scrolling" preference above the browser, and the page can see neither. So
+   * the switch is defined against what this build ships, which is the direction
+   * a conventional mouse wheel wants, and the operator flips it if their setup
+   * disagrees. Default `false` so a fresh page has every switch off.
    */
   invertWheel: boolean;
 };
@@ -67,9 +66,14 @@ export function parseSettings(raw: string | null): Settings {
  * teleprompter.ts) but that inversion is already in what "up" means for its
  * value, so nothing here needs to know which slider it is. Callers scale the
  * result for their own range; the sign is this function's business.
+ *
+ * The default subtracts: a conventional mouse wheel reports a scroll away from
+ * the operator as a positive `deltaY`, and that should walk the thumb *down*
+ * the track. A trackpad set to scroll naturally reports the opposite sign for
+ * the same gesture, which is what the setting is for.
  */
 export function wheelStep(deltaY: number, invertWheel: boolean): number {
-  return invertWheel ? -deltaY : deltaY;
+  return invertWheel ? deltaY : -deltaY;
 }
 
 export class SettingsStorage {

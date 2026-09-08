@@ -74,15 +74,16 @@ Deno.test("storage that throws is not fatal in either direction", () => {
 });
 
 Deno.test("the wheel's sign is the setting, and nothing else", () => {
-  // The default has the thumb follow the scroll on a naturally-scrolling
-  // system; inverting flips it for everyone else. Asserted because a sign is
-  // the one thing here that looks identical when it is backwards.
-  assertEquals(wheelStep(120, false), 120);
-  assertEquals(wheelStep(120, true), -120);
-  assertEquals(wheelStep(-120, false), -120);
-  assertEquals(wheelStep(-120, true), 120);
+  // By default a positive deltaY — a conventional wheel scrolled away from the
+  // operator — walks the thumb *down* the track, i.e. subtracts. The setting
+  // flips that for a device reporting the other sign. Asserted because a sign
+  // is the one thing here that looks identical when it is backwards.
+  assertEquals(wheelStep(120, false), -120);
+  assertEquals(wheelStep(120, true), 120);
+  assertEquals(wheelStep(-120, false), 120);
+  assertEquals(wheelStep(-120, true), -120);
   // No deflection either way when the wheel didn't move.
-  assertEquals(wheelStep(0, false), 0);
+  assertEquals(wheelStep(0, false), -0);
 });
 
 Deno.test("all() hands out a copy, not the stored object", () => {
