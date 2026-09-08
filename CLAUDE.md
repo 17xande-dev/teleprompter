@@ -319,11 +319,14 @@ WebSocket relay, `ice.go` STUN/TURN config.
   setting rather than a constant someone has to be right about: whether a scroll
   away from the operator arrives as a positive or a negative `deltaY` is decided
   by the pointing device and the "natural scrolling" preference above the
-  browser. The default has the thumb follow the fingers on a naturally scrolling
-  system, and Settings' "Reverse slider scrolling" flips it. All three wheel
-  handlers go through `wheelStep`, so the direction is one answer for the whole
-  page — and the setting is read per event, never cached, or the switch and the
-  sliders disagree until a reload.
+  browser. `wheelStep` subtracts by default — a conventional mouse wheel
+  scrolled away from the operator walks the thumb _down_ the track — and
+  Settings' "Reverse slider scrolling" flips it for a device reporting the other
+  sign. The switch is defined against what the build ships rather than against a
+  physical direction, so its default is `false` and a fresh page has every
+  switch off. All three wheel handlers go through `wheelStep`, so the direction
+  is one answer for the whole page — and the setting is read per event, never
+  cached, or the switch and the sliders disagree until a reload.
 - **A connected gamepad must not write the speed slider while untouched.**
   Polling is per-frame, so a pad sitting on the desk would broadcast a speed
   sixty times a second and stamp on the wheel or the arrow keys the moment the
@@ -550,6 +553,20 @@ than adding to it.
   sheets cascade _after_ the document's own `<link>`, so a theme rule of equal
   specificity wins — which is what "replace" has to mean. One reused
   `CSSStyleSheet`, so switching themes doesn't pile them up.
+- **The viewer's palette is seven custom properties in `viewerBase.css`.**
+  `--viewer-bg` and `--viewer-color` are applied _there_, on `html`, which is
+  the layer under every theme — so a theme that overrides just those two
+  recolours the screen without restating a layout, which is the only reason a
+  token is worth having. The five accents (`--clocks-bg`, `--clock-color`,
+  `--timer-color`, `--timer-negative-color`, `--message-color`) are read by the
+  built-in layouts and by `THEME_TEMPLATE`, so they follow a theme that keeps
+  those rules and are taken over by one that rewrites them. Both halves are
+  verified in the browser. The list is documented to authors in the template's
+  own comment; change it in one place and change it in the other.
+- **A viewer is white-on-black, and that lives in the base layer, not a
+  layout.** Nothing set either until now — `viewerBase.css` had the `html` rule
+  commented out — so the default layout put a black script on a white page: a
+  lamp pointed at the talent through the glass.
 - **Nothing needs unloading to make "replace" work.** The built-in layouts are
   `@scope`d to `.theme-default` / `.theme-big-clock`, so a `theme-user-*` body
   class stops them matching on its own. `viewerBase.css` is unscoped and
