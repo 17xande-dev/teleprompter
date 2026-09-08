@@ -7,6 +7,7 @@ import { assertAlmostEquals, assertEquals } from "@std/assert";
 import {
   carryRemainder,
   makeScrollSync,
+  pendingScroll,
   ratioOf,
   scrollQuantum,
   type ScrollSync,
@@ -315,4 +316,26 @@ Deno.test("the quantum is the default, so callers need not know it", () => {
   const carry = carryRemainder(0.25, 0);
   assertEquals(Number.isFinite(carry), true);
   assertEquals(carry, 0.25);
+});
+
+Deno.test("a stopped viewer asks for nothing, whatever it was owed", () => {
+  // The iOS creep: WebKit performs a sub-pixel scrollBy and then reports that
+  // it moved 0, so carryRemainder re-banks the whole remainder every frame. At
+  // speed 0 that debt has nothing to drain it — measured at 0.84px a frame,
+  // about 50px/s, on a viewer whose speed the operator had just zeroed.
+  assertEquals(pendingScroll(0, 16, 0.84), 0);
+  assertEquals(pendingScroll(0, 16, -0.84), 0);
+  assertEquals(pendingScroll(0, 0, 0), 0);
+});
+
+Deno.test("a moving viewer still carries its sub-pixel remainder", () => {
+  // The other half of the rule: at 6px/s a frame asks for a tenth of a pixel,
+  // which moves nothing, and dropping that outright means slow speeds never
+  // move at all.
+  assertEquals(pendingScroll(6, 16, 0), 0.096);
+  assertAlmostEquals(pendingScroll(6, 16, 0.096), 0.192, 1e-12);
+  // Reverse is symmetric, and the carry is signed.
+  assertEquals(pendingScroll(-6, 16, 0), -0.096);
+  // A frame that took no time asks only for what was already owed.
+  assertEquals(pendingScroll(60, 0, 0.5), 0.5);
 });

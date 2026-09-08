@@ -3,6 +3,7 @@ import { connectViewer, type ViewerLink } from "./webrtc.ts";
 import {
   carryRemainder,
   makeScrollSync,
+  pendingScroll,
   type ScrollSync,
 } from "./scrollsync.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
@@ -260,7 +261,20 @@ export class Viewer {
     if (this.lastScrollTime === 0) this.lastScrollTime = timestamp;
     const timeElapsed = timestamp - this.lastScrollTime;
 
-    this.accumulatedScroll += (this.scrollSpeed / 1000) * timeElapsed;
+    this.accumulatedScroll = pendingScroll(
+      this.scrollSpeed,
+      timeElapsed,
+      this.accumulatedScroll,
+    );
+
+    // Stopped means stopped: don't touch the viewport at all. See
+    // pendingScroll — a sub-pixel carry that outlived its speed is what made
+    // an iPhone go on creeping after the operator zeroed the slider.
+    if (this.accumulatedScroll === 0) {
+      this.lastScrollTime = timestamp;
+      requestAnimationFrame(this.smoothScroll.bind(this));
+      return;
+    }
 
     // Scroll by the whole fractional amount rather than rounding down to a
     // whole pixel. Rounding makes slow speeds visibly step, and — because a

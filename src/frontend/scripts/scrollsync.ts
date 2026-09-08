@@ -91,6 +91,32 @@ export function carryRemainder(
   return Math.max(-quantum, Math.min(quantum, wanted - moved));
 }
 
+/**
+ * How far to ask the viewport to move this frame, carry included.
+ *
+ * **A stopped viewer asks for nothing at all**, remainder or no remainder.
+ * That is not an optimisation: `carryRemainder` decides what to bank by
+ * comparing what was asked with what `scrollY` reports back, and WebKit
+ * reports back a *whole* pixel — an iPhone asked to scroll by 0.84px does move,
+ * and then says it moved 0. So the carry is re-banked in full every frame and,
+ * once the speed reaches zero, never drains: measured on iOS 18.7, a viewer at
+ * speed 0 went on creeping at 0.84px a frame, about 50px/s, and no amount of
+ * zeroing the speed stopped it. Under a pixel of owed movement is nothing to
+ * defend; a display that ignores "stop" is.
+ *
+ * Kept here rather than in viewer.ts's frame loop because this and
+ * `carryRemainder` are two halves of one rule about a debt that must not
+ * outlive its reason, and only one of the two was testable.
+ */
+export function pendingScroll(
+  speed: number,
+  elapsedMs: number,
+  carried: number,
+): number {
+  if (speed === 0) return 0;
+  return carried + (speed / 1000) * elapsedMs;
+}
+
 export function makeScrollSync({ el, send }: ScrollSyncOptions): ScrollSync {
   // Scroll events for the document's scrolling element are dispatched at
   // the window, not at the element itself.
