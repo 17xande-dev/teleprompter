@@ -15,12 +15,16 @@
     position: sticky;
     top: 0;
     z-index: 10;
-    background: black;
+    background: var(--clocks-bg);
 
     .left,
     .right {
       flex: 0 0 auto;
       white-space: nowrap;
+    }
+
+    tp-clock[type="clock"] {
+      color: var(--clock-color);
     }
 
     .mid {
@@ -30,16 +34,16 @@
       word-wrap: break-word;
       overflow-wrap: anywhere;
       white-space: normal;
-      color: red;
+      color: var(--message-color);
     }
 
     tp-clock[type="timer"] {
-      color: yellow;
+      color: var(--timer-color);
     }
 
     /* TODO: move this to clock.css? Best way of web components css? */
     tp-clock[type="timer"].negative {
-      color: red;
+      color: var(--timer-negative-color);
     }
   }
 
@@ -58,12 +62,16 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    background: black;
+    background: var(--clocks-bg);
     height: 100vh;
 
     .left,
     .right {
       font-size: 22cqw;
+    }
+
+    tp-clock[type="clock"] {
+      color: var(--clock-color);
     }
 
     .mid {
@@ -73,17 +81,17 @@
       word-wrap: break-word;
       overflow-wrap: anywhere;
       white-space: normal;
-      color: red;
+      color: var(--message-color);
       order: -1;
     }
 
     tp-clock[type="timer"] {
-      color: yellow;
+      color: var(--timer-color);
     }
 
     /* TODO: move this to clock.css? Best way of web components css? */
     tp-clock[type="timer"].negative {
-      color: red;
+      color: var(--timer-negative-color);
     }
   }
 }

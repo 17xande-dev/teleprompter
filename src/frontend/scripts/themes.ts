@@ -312,7 +312,23 @@ export const THEME_TEMPLATE = `/* A viewer theme is plain CSS, and while it is
          tp-clock#timeTimer.left  the countdown
          span#message.mid         the operator's message
          tp-clock#timeClock.right the wall clock
-       main#main.content        the script, or the PDF page column
+       main#main.content          the script, or the PDF page column
+
+   The colours are custom properties, so a palette change is a few lines rather
+   than a rewrite of the rules below. Set them on :root:
+
+     --viewer-bg              the page behind everything          (black)
+     --viewer-color           the script's ink                    (white)
+     --clocks-bg              the strip behind the clocks         (black)
+     --clock-color            the wall clock       (--viewer-color)
+     --timer-color            the countdown                       (yellow)
+     --timer-negative-color   the countdown past zero             (red)
+     --message-color          the operator's message              (red)
+
+   The first two are applied by the viewer's base stylesheet, which sits
+   underneath every theme, so setting those alone is enough to recolour a
+   screen. The rest are read by the rules below — they are yours, so a theme
+   that rewrites a rule takes over that colour with it.
 
    Three things are not yours to set:
      - #message's font-size, which the viewer recomputes to fit its box
@@ -331,7 +347,7 @@ export const THEME_TEMPLATE = `/* A viewer theme is plain CSS, and while it is
   position: sticky;
   top: 0;
   z-index: 10;
-  background: black;
+  background: var(--clocks-bg);
 
   .left,
   .right {
@@ -344,20 +360,23 @@ export const THEME_TEMPLATE = `/* A viewer theme is plain CSS, and while it is
     min-width: 0;
     overflow-wrap: anywhere;
     white-space: normal;
-    color: red;
+    color: var(--message-color);
   }
 
-  time[type="timer"] {
-    color: yellow;
+  tp-clock[type="clock"] {
+    color: var(--clock-color);
   }
 
-  time[type="timer"].negative {
-    color: red;
+  tp-clock[type="timer"] {
+    color: var(--timer-color);
+  }
+
+  tp-clock[type="timer"].negative {
+    color: var(--timer-negative-color);
   }
 }
 
 .content {
   font-size: var(--textScale);
-  color: white;
 }
 `;

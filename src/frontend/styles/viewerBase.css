@@ -1,14 +1,36 @@
+/* The viewer's palette, in one place so a theme can restyle it by overriding a
+   few properties instead of restating a layout. The four names that were here
+   before (--sidebar-width, --background-color, --border-width, --border-color)
+   were read by nothing on either page.
+
+   The first two are consumed *here*, in the layer that always applies, which is
+   what makes them worth overriding: a user theme replaces the built-in layouts
+   wholesale (see viewerThemes.css), so a token only a layout reads does nothing
+   for a theme that doesn't read it too. The accents below are read by the
+   built-in layouts and by the template a new theme starts from.
+
+   THEME_TEMPLATE in themes.ts documents this list to theme authors, and its CSS
+   is a hand copy of the theme-default block. Change one, change both. */
 :root {
-  --sidebar-width: 300px;
-  --background-color: hsl(240, 5.9%, 11%);
-  --border-width: 1px;
-  --border-color: hsl(240, 5.9%, 11%);
+  --viewer-bg: black;
+  --viewer-color: white;
+  --clocks-bg: black;
+  --clock-color: var(--viewer-color);
+  --timer-color: yellow;
+  --timer-negative-color: red;
+  --message-color: red;
 }
 
+/* A display is dark unless a theme says otherwise. The script is read off a
+   screen at arm's length, often in a dark room and often through glass at a
+   talent's face, so a white page is a lamp pointed at them — and the default
+   layout left the script black-on-white, because nothing here set either.
+   Set on `html` rather than in a layout so it survives a user theme: that
+   theme is the only *layout* stylesheet a viewer has, but this layer is still
+   underneath it. */
 html {
-  /* color: white; */
-  /* background-color: var(--background-color); */
-  /* font-family: "Fira Code", monospace; */
+  background-color: var(--viewer-bg);
+  color: var(--viewer-color);
   font-optical-sizing: auto;
 }
 
