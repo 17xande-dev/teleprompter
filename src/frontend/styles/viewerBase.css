@@ -71,39 +71,12 @@ html.can-drive body::-webkit-scrollbar {
   background: white;
 }
 
-/* The way into fullscreen on a screen this device opened.
+/* Nothing here for fullscreen any more, deliberately.
 
-   It has to be a gesture *here*, and that is not a choice: window.open
-   consumes the opener's user activation, so the new window has none and its
-   own requestFullscreen is refused — measured, not assumed. The `fullscreen`
-   window feature the control page asks for covers the case where Chrome will
-   place a companion window on a second display, and nothing covers the rest,
-   so a display that came up in a frame needs one click to fill the screen.
-   Shown only while html[data-fs-prompt] is set: a display reached by link or
-   QR code never gets it, and it goes on the first click either way, so the
-   talent sees it for as long as it takes the operator to set the screen up
-   and no longer. Above everything, because it is the one thing on the screen
-   that wants to be clicked. */
-#fsPrompt {
-  display: none;
-}
-
-html[data-fs-prompt] #fsPrompt {
-  display: grid;
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  place-content: center;
-  gap: 0.5em;
-  padding: 1em;
-  text-align: center;
-  background-color: var(--viewer-bg);
-  color: var(--viewer-color);
-  font-size: 1.5rem;
-  cursor: pointer;
-}
-
-#fsPrompt .fs-hint {
-  font-size: 1rem;
-  opacity: 0.6;
-}
+   A screen this device opened cannot fullscreen itself on load: window.open
+   consumes the opener's user activation, so the new document has none and the
+   request is refused — measured, not assumed. This had a click-to-fill prompt
+   for that case, and a message the talent has to look at until someone clears
+   it is worse than the browser chrome it was there to remove. viewer.ts sizes
+   the window to the screen instead, which script may do without an
+   activation, and a click still takes it to true fullscreen. */

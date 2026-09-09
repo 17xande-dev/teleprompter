@@ -232,32 +232,61 @@ export class Viewer {
    */
   #goFullscreen() {
     if (!globalThis.opener) return;
-    const prompt = document.querySelector<HTMLElement>("#fsPrompt");
-    // The `hidden` attribute is the markup's default so a link-reached display
-    // never flashes it; from here on the data attribute decides.
-    if (prompt) prompt.hidden = false;
 
-    const showPrompt = () => {
-      // Deliberately keyed off the real state rather than "did we ask yet":
-      // the window feature may have got there first, and the operator may
-      // have left fullscreen on purpose with Escape — in which case offering
-      // the way back is the right thing, not nagging.
-      const on = !!document.fullscreenElement;
-      if (on) delete document.documentElement.dataset.fsPrompt;
-      else document.documentElement.dataset.fsPrompt = "";
+    // Worth trying only when there is an activation to spend. window.open
+    // consumes the opener's, so normally there is none — and calling anyway
+    // does not merely fail quietly, it puts "API can only be initiated by a
+    // user gesture" in the operator's console on every single open, which a
+    // catch cannot suppress because Chrome logs it itself. Skipped rather
+    // than swallowed. `isActive` is Chromium-only; where it is missing the
+    // call is still worth making.
+    if (
+      !document.fullscreenElement &&
+      navigator.userActivation?.isActive !== false
+    ) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+
+    // Fill the screen without asking anyone for anything. A window this page
+    // opened may be resized and moved by script with no user activation —
+    // unlike fullscreen — and a `popup=true` window carries no tab bar or
+    // bookmarks, so what is left above the script is a thin URL strip. Not as
+    // good as fullscreen and it needs no gesture at all, which on a
+    // single-screen setup is the difference between the talent seeing the
+    // script and the talent seeing an instruction to click.
+    // After `load`, not now: this runs while the window is still being placed,
+    // and a resize asked for then is undone by the placement that follows —
+    // measured, the same call landing 1518px wide on load and 3072 a moment
+    // later. A window manager that owns geometry (a tiling one) overrides it
+    // whenever it is asked; a click still gets true fullscreen there.
+    const fill = () => {
+      try {
+        // availLeft/availTop are non-standard (and untyped) but are the only
+        // way to land on the right screen in a multi-monitor setup, where the
+        // available area of the display this window is on does not start at 0.
+        const area = <{
+          availLeft?: number;
+          availTop?: number;
+        }> <unknown> screen;
+        globalThis.moveTo(area.availLeft ?? 0, area.availTop ?? 0);
+        globalThis.resizeTo(screen.availWidth, screen.availHeight);
+      } catch {
+        // Some browsers refuse either call. The window is then whatever size
+        // it was given, which still shows the script.
+      }
     };
-    document.addEventListener("fullscreenchange", showPrompt);
-    // Any click, not just the prompt's: the prompt covers the viewport while
-    // it is up, and once it is gone a click that lands on the script should
-    // not be swallowed by a second handler.
+    if (document.readyState === "complete") fill();
+    else self.addEventListener("load", fill);
+
+    // And a click anywhere takes the strip away too. No prompt for it: this
+    // display is pointed at the talent, and a message that has to be clicked
+    // away is worse than a strip of browser chrome. The operator who wants
+    // true fullscreen knows to click, and the double-click handler in the
+    // caller is the way back out.
     self.addEventListener("click", () => {
       if (document.fullscreenElement) return;
       document.documentElement.requestFullscreen().catch(() => {});
     });
-
-    document.documentElement.requestFullscreen()
-      .catch(() => {})
-      .finally(showPrompt);
   }
 
   /**

@@ -4,6 +4,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- The same icon the control page uses. Without it every display 404s on
+       /favicon.ico as it loads, which is noise in the one console an operator
+       looks at when a screen misbehaves. -->
+  <link rel="icon" href="/icons/tv-solid-full.svg" type="image/svg+xml">
   <title>Viewer</title>
   <script type="module" defer src="../scripts/viewerApp.ts"></script>
 </head>
@@ -17,13 +21,6 @@
   <main id="main" class="content">
 
   </main>
-  <!-- Hidden unless viewer.ts asks for it: only a screen this device opened,
-       and only while it is not filling the screen. See #fsPrompt in
-       viewerBase.css for why a click here is unavoidable. -->
-  <div id="fsPrompt" hidden>
-    <span>Click to fill the screen</span>
-    <span class="fs-hint">Double-click any time to toggle</span>
-  </div>
 </body>
 
 </html>
