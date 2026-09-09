@@ -1,9 +1,9 @@
 import {
   registerClockComponent,
   registerClockControlComponent,
-  ResetEvent,
   TPClockControl,
 } from "./clock.ts";
+import { parseDuration, parseTimer, serialiseTimer } from "./timer.ts";
 
 import WaSplitPanel from "@awesome.me/webawesome/dist/components/split-panel/split-panel.js";
 import WaBadge from "@awesome.me/webawesome/dist/components/badge/badge.js";
@@ -65,6 +65,11 @@ import { LOCAL_CHANNEL } from "./protocol.ts";
 import type { ControlMessage, ThemeMessage } from "./protocol.ts";
 import { wheelStep } from "./settings.ts";
 import { ThemeControls } from "./themeControls.ts";
+
+// Where the countdown is written down so it survives the operator's refresh.
+// Show state, so deliberately not in SettingsStorage's key — that one holds
+// preferences, and a countdown is not a preference.
+const TIMER_KEY = "teleprompter.timer";
 
 interface ViewerEntry {
   dims: { width: number; height: number } | null;
@@ -367,18 +372,10 @@ export class Teleprompter {
       });
     }
 
-    this.tpClockControl.addEventListener(
-      "start",
-      () => this.#pushClock({ type: "clock", action: "start" }),
-    );
-    this.tpClockControl.addEventListener(
-      "stop",
-      () => this.#pushClock({ type: "clock", action: "stop" }),
-    );
-    this.tpClockControl.addEventListener("reset", (event) => {
-      const ev = event as ResetEvent;
-      this.#pushClock({ type: "clock", action: "reset", time: ev.detail.time });
-    });
+    // One listener for all three buttons: each reports where the countdown
+    // ended up rather than which button was pressed, so there is one thing to
+    // remember, send and write down.
+    this.tpClockControl.addEventListener("clock", () => this.#setClock());
 
     this.#wirePdfDrop();
     this.#btnClosePdf.addEventListener("click", () => this.closePdf());
@@ -418,6 +415,9 @@ export class Teleprompter {
       // The published script, not the editor's: the preview is a mirror of
       // what the displays show, which is the one thing it exists for.
       this.#pushPublished();
+      // And the countdown, for the same reason a joining display gets it: the
+      // iframe starts at its own markup's zero.
+      this.#pushClock();
     });
 
     // The preview fits the box it is given, so it has to be refitted whenever
@@ -446,6 +446,7 @@ export class Teleprompter {
     this.#renderTransport();
     this.#renderPop();
     this.#renderLive();
+    this.#restoreClock();
   }
 
   /**
@@ -704,9 +705,70 @@ export class Teleprompter {
     });
   }
 
-  #pushClock(msg: ControlMessage) {
+  /**
+   * The countdown changed. Tell everyone, and write it down.
+   *
+   * The one funnel, so the operator's copy, every display, the preview and
+   * localStorage cannot end up describing different countdowns — which they
+   * did, structurally, when each ran its own interval off a command.
+   *
+   * Nothing is cached here. The control's own countdown is asked for the
+   * state every time one is needed, because a remembered `remainingMs` stops
+   * being true the moment it is taken — see TPClockControl.state().
+   */
+  #setClock() {
+    this.#pushClock();
+    this.#saveClock();
+  }
+
+  #pushClock() {
+    const msg: ControlMessage = {
+      type: "clock",
+      ...this.tpClockControl.state(),
+    };
     this.link.broadcast(msg);
     this.#postToPreview(msg);
+  }
+
+  #saveClock() {
+    try {
+      localStorage.setItem(
+        TIMER_KEY,
+        serialiseTimer(
+          this.tpClockControl.state(),
+          parseDuration(this.tpClockControl.value()),
+          Date.now(),
+        ),
+      );
+    } catch (err) {
+      // Over quota, or storage blocked. The countdown still runs and still
+      // reaches the displays; it just won't survive a reload.
+      console.warn(`could not persist ${TIMER_KEY}`, err);
+    }
+  }
+
+  /**
+   * Pick a running countdown back up after the operator's page reloaded.
+   *
+   * A control page refresh is a case this app already designs for — a new
+   * controller evicts the sitting one precisely so a refresh reconnects — and
+   * the countdown was the one piece of the show it dropped on the floor.
+   * parseTimer ages a running state by however long the page was away, so it
+   * comes back where it would have been rather than where it was left.
+   */
+  #restoreClock() {
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(TIMER_KEY);
+    } catch {
+      // Private mode or blocked storage: start from zero.
+    }
+    const restored = parseTimer(raw, Date.now());
+    this.tpClockControl.setState(restored, restored.targetMs);
+    // Not through #setClock: there is nothing new to write down, and the
+    // displays are caught up by #onViewerJoined as they connect anyway. This
+    // covers the ones already attached to the evicted controller.
+    this.#pushClock();
   }
 
   // Sent directly rather than through #pushSettings: a theme carries a whole
@@ -743,6 +805,11 @@ export class Teleprompter {
     // CSS exists nowhere but this browser, so a viewer that reloads mid-service
     // comes back unstyled unless this is here.
     this.link.sendTo(id, this.themeControls.themeMessage());
+    // The countdown. Without this a display that reloads mid-service comes
+    // back frozen at its markup's zero while the operator's own copy runs on,
+    // which is the whole reason the message carries state rather than a
+    // command.
+    this.link.sendTo(id, { type: "clock", ...this.tpClockControl.state() });
     // Where everyone currently is. Sent on the *control* channel, not the
     // scroll one: control queues until the channel opens, and an unreliable
     // channel that isn't open yet would simply drop this.

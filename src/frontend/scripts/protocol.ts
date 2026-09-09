@@ -59,9 +59,27 @@ export type PdfMessage = { type: "pdf"; name: string; data: ArrayBuffer };
 // Leave PDF mode and go back to following the editor's content stream.
 export type PdfClearMessage = { type: "pdf-clear" };
 
-export type ClockMessage =
-  | { type: "clock"; action: "start" | "stop" }
-  | { type: "clock"; action: "reset"; time: string };
+// The countdown's whole state, rather than a command to act on it.
+//
+// It used to be `start`/`stop`/`reset(time)`, which meant the running state
+// existed nowhere but the live setInterval in each receiver: there was nothing
+// for the controller to replay, so a display that joined or reloaded
+// mid-service came back frozen at its markup's 00:00:00 while the operator's
+// countdown ran on. One state, sent on every change and in the catch-up
+// snapshot, is the fix — and every copy rendering the same two numbers is
+// what stops them drifting.
+//
+// `remainingMs` and not an absolute deadline, deliberately: an epoch stamped
+// by the control page is read against the *receiver's* clock, so a display
+// whose clock is off — a phone, a Pi that has not reached NTP — would show
+// nonsense. The receiver anchors the duration to its own clock on arrival and
+// transit is milliseconds.
+export type ClockMessage = {
+  type: "clock";
+  running: boolean;
+  /** Milliseconds left. Negative once the countdown is past zero. */
+  remainingMs: number;
+};
 
 // Sent by the controller to grant/revoke a viewer's ability to drive the
 // shared scroll position for everyone else. Viewers always report their own

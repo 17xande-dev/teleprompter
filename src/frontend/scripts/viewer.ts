@@ -167,17 +167,11 @@ export class Viewer {
         this.setTheme(msg.layout, msg.css);
         break;
       case "clock":
-        switch (msg.action) {
-          case "start":
-            this.timer.start();
-            break;
-          case "stop":
-            this.timer.stop();
-            break;
-          case "reset":
-            this.timer.reset(msg.time);
-            break;
-        }
+        // One assignment for what used to be three commands. The controller
+        // is authoritative about the countdown and says what it *is*, so a
+        // display that just reloaded lands on the right value instead of on
+        // whichever commands it happened to be present for.
+        this.timer.setState(msg);
         break;
       case "set-driver":
         this.setCanDrive(msg.canDrive);
