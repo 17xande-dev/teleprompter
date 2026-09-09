@@ -6,6 +6,19 @@
 // via postMessage. Keeping one protocol for both means the sync logic in
 // viewer.ts doesn't need to know which transport it's running over.
 
+/**
+ * The BroadcastChannel a display uses to ask "is the control page here?".
+ *
+ * Not part of the WebRTC protocol and deliberately outside it: a
+ * BroadcastChannel reaches only other pages of this origin in this browser
+ * profile, and that reach *is* the signal — an answer means the control page
+ * is running on the same machine. A display sends `{type: "who"}`, the
+ * control page replies `{type: "here"}`, and the display then reports itself
+ * as local in its `dims`. Lives here because both pages have to agree on the
+ * name.
+ */
+export const LOCAL_CHANNEL = "teleprompter.local";
+
 export type ContentMessage = { type: "content"; html: string };
 
 export type SettingsMessage = {
@@ -55,7 +68,22 @@ export type ClockMessage =
 // scroll ratio; the controller decides whether to act on it.
 export type SetDriverMessage = { type: "set-driver"; canDrive: boolean };
 
-export type DimsMessage = { type: "dims"; width: number; height: number };
+// A viewer reporting its own size, and whether it is a screen on the
+// operator's own machine.
+//
+// `local` rides along here rather than in a message of its own because this is
+// already sent on connect and on every resize, so a reconnect re-establishes
+// it for free — the same reason the controller learns dimensions this way.
+// What "local" means is decided at the viewer (see #detectLocal in viewer.ts):
+// same browser profile as the control page. A remote display cannot claim it
+// by accident, and nothing in the app grants a local viewer anything, so
+// there is nothing here worth forging.
+export type DimsMessage = {
+  type: "dims";
+  width: number;
+  height: number;
+  local: boolean;
+};
 
 // Scroll position, sent as a 0..1 ratio (not raw pixels) so it lands in the
 // same place regardless of the receiving window's size — a popped-out window,

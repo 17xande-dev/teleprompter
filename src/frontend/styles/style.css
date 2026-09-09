@@ -463,6 +463,18 @@ tp-clock-control tp-clock {
   opacity: 0.7;
 }
 
+/* Which machine a display is on. Given a border rather than left as plain
+   text because it sits between two pieces of plain text (the id and the RTC
+   state) and is a different kind of fact from either — one an operator scans
+   the column for rather than reads. */
+.viewer-row .viewer-where {
+  border: var(--wa-border-width-s) solid var(--wa-color-neutral-border-quiet);
+  border-radius: var(--wa-border-radius-pill);
+  padding-inline: 0.4rem;
+  font-size: var(--wa-font-size-xs);
+  white-space: nowrap;
+}
+
 /* The "pacing" badge this styled is gone: the drive radio marks the same
    viewer, and saying it twice on one row read as two different facts. */
 

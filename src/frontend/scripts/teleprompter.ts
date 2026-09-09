@@ -60,6 +60,7 @@ import {
   pxToTenths,
   tenthsToRem,
 } from "./textscale.ts";
+import { LOCAL_CHANNEL } from "./protocol.ts";
 import type { ControlMessage, ThemeMessage } from "./protocol.ts";
 import { wheelStep } from "./settings.ts";
 import { ThemeControls } from "./themeControls.ts";
@@ -67,6 +68,9 @@ import { ThemeControls } from "./themeControls.ts";
 interface ViewerEntry {
   dims: { width: number; height: number } | null;
   state: RTCPeerConnectionState | "new";
+  // Whether this display is on this machine. Null until its first dims
+  // report, the same "not known yet" the dimensions themselves start at.
+  local: boolean | null;
 }
 
 export class Teleprompter {
@@ -295,6 +299,7 @@ export class Teleprompter {
     // How a local screen this page did not open — because the page has since
     // reloaded — gets picked back up. See #listenPopHello.
     self.addEventListener("message", this.#listenPopHello.bind(this));
+    this.#answerLocalProbes();
     this.btnMessage.addEventListener("click", this.listenMessage.bind(this));
     this.btnGoToViewers.addEventListener(
       "click",
@@ -678,7 +683,7 @@ export class Teleprompter {
   }
 
   #onViewerJoined(id: string) {
-    this.viewers.set(id, { dims: null, state: "new" });
+    this.viewers.set(id, { dims: null, state: "new", local: null });
     // Bring the newcomer up to date rather than leaving it blank until the
     // next edit/setting change. In PDF mode that means re-sending the whole
     // file — the channel isn't open yet at this point, so this relies on the
@@ -727,6 +732,7 @@ export class Teleprompter {
     const entry = this.viewers.get(id);
     if (!entry) return;
     entry.dims = { width: msg.width, height: msg.height };
+    entry.local = msg.local;
     this.#applyPreviewScale();
     this.#renderViewers();
   }
@@ -873,6 +879,33 @@ export class Teleprompter {
    * so this one will never drive anything, and that is a different problem from
    * a dropped socket already reconnecting on its own.
    */
+  /**
+   * The viewer count, split by where the displays are.
+   *
+   * A bare total reads identically whether three people are watching on three
+   * devices or three windows are stacked on this one laptop, and those are
+   * very different things to be looking at before a service. Falls back to
+   * the total while nothing has reported yet — a count that flickered between
+   * shapes as displays connected would be worse than one that waits.
+   */
+  #viewerCountText(): string {
+    let local = 0;
+    let remote = 0;
+    for (const entry of this.viewers.values()) {
+      if (entry.local === null) continue;
+      entry.local ? local++ : remote++;
+    }
+    if (local + remote === 0) return `${this.viewers.size}`;
+    const parts: string[] = [];
+    if (local) parts.push(`${local} local`);
+    if (remote) parts.push(`${remote} remote`);
+    // Any display still to report is counted here but named in neither part,
+    // so say so rather than letting the parts quietly fail to add up.
+    const pending = this.viewers.size - local - remote;
+    if (pending) parts.push(`${pending}…`);
+    return parts.join(" · ");
+  }
+
   #renderStatus() {
     const shown = this.#signaling === "denied"
       ? { variant: "danger", text: "No control", attention: "none" }
@@ -902,7 +935,7 @@ export class Teleprompter {
   }
 
   #renderViewers() {
-    this.#spnViewerNum.textContent = `${this.viewers.size}`;
+    this.#spnViewerNum.textContent = this.#viewerCountText();
     // The badge reads the viewer count, so it is stale until this runs.
     this.#renderStatus();
     this.divViewers.innerHTML = "";
@@ -920,6 +953,18 @@ export class Teleprompter {
         : "…";
       label.textContent = `${id.slice(0, 6)} (${dims})`;
       row.appendChild(label);
+
+      // Which machine this display is on. Not cosmetic: a row that says
+      // Remote is someone else's screen, and closing the operator's own
+      // window will not turn it off.
+      const where = document.createElement("span");
+      where.className = "viewer-where";
+      where.textContent = entry.local === null
+        ? "…"
+        : entry.local
+        ? "Local"
+        : "Remote";
+      row.appendChild(where);
 
       const state = document.createElement("span");
       state.className = "viewer-state";
@@ -1069,6 +1114,31 @@ export class Teleprompter {
     const win = <Window | null> e.source;
     if (!win || win.closed) return;
     this.#adoptPop(win);
+  }
+
+  /**
+   * Tell any display in this browser that the control page is right here.
+   *
+   * This is the whole mechanism behind the Local badge for a display the
+   * operator opened by hand: a BroadcastChannel carries only to pages of this
+   * origin in this browser profile, so the fact that an answer arrives at all
+   * is the evidence. Answering rather than announcing, because a display can
+   * start at any time and there is no moment at which announcing once would
+   * reach all of them.
+   */
+  #answerLocalProbes() {
+    let channel: BroadcastChannel;
+    try {
+      channel = new BroadcastChannel(LOCAL_CHANNEL);
+    } catch {
+      // No BroadcastChannel, or storage blocked. Displays this page opened
+      // still identify themselves by `opener`; the rest read as remote.
+      return;
+    }
+    channel.addEventListener("message", (e: MessageEvent) => {
+      if ((<{ type?: string }> e.data)?.type !== "who") return;
+      channel.postMessage({ type: "here" });
+    });
   }
 
   /**

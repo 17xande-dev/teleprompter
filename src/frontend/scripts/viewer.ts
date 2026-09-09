@@ -7,6 +7,7 @@ import {
   type ScrollSync,
 } from "./scrollsync.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
+import { LOCAL_CHANNEL } from "./protocol.ts";
 import type { ControlMessage } from "./protocol.ts";
 
 // CSS imports.
@@ -117,6 +118,7 @@ export class Viewer {
     });
 
     self.addEventListener("resize", this.#listenResize.bind(this));
+    this.#detectLocal();
     // The manual way in and out, for a display reached by link or QR code —
     // and the fallback for a local screen whose browser ignored the
     // `fullscreen` window feature. Caught, not awaited: a rejected
@@ -294,7 +296,51 @@ export class Viewer {
       type: "dims",
       width: globalThis.innerWidth,
       height: globalThis.innerHeight,
+      local: this.#isLocal,
     });
+  }
+
+  /**
+   * Whether this display is on the same machine as the control page.
+   *
+   * Worth telling the operator, because otherwise "3 displays" reads the same
+   * whether three people are watching or three windows are stacked on one
+   * laptop, and those are very different situations to be in ten seconds
+   * before a service.
+   *
+   * Two signals, both same-origin. `opener` catches a screen the control page
+   * opened. A BroadcastChannel catches the rest: the channel only reaches
+   * other pages of this origin in this browser profile, so a control page
+   * answering means it is running right here. That second signal is what
+   * covers a display the operator opened on a second monitor by hand — the
+   * viewer link carries rel="noopener", so such a window has no opener to go
+   * on.
+   *
+   * The honest limit is "same browser profile on this machine", so a display
+   * in a *different* browser on the same desk reports as remote. Nothing is
+   * granted on the strength of this, so being wrong is cosmetic.
+   */
+  #isLocal = !!globalThis.opener;
+
+  #detectLocal() {
+    if (this.#isLocal) return;
+    let channel: BroadcastChannel;
+    try {
+      channel = new BroadcastChannel(LOCAL_CHANNEL);
+    } catch {
+      // No BroadcastChannel (or blocked storage): fall back to `opener`
+      // alone, which is already in #isLocal.
+      return;
+    }
+    channel.addEventListener("message", (e: MessageEvent) => {
+      if ((<{ type?: string }> e.data)?.type !== "here") return;
+      if (this.#isLocal) return;
+      this.#isLocal = true;
+      // The controller has already been told `false`, on connect. Nothing
+      // else will correct that until the next resize, so say so now.
+      this.#reportDims();
+    });
+    channel.postMessage({ type: "who" });
   }
 
   resizeMessage() {
