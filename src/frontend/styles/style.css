@@ -316,6 +316,19 @@ body {
   gap: var(--wa-space-s);
 }
 
+/* Shown only when the control page threw on the way up (see app.ts). Loud on
+   purpose: the alternative was a page that looked like it was still
+   connecting. */
+#divStartupError {
+  padding: var(--wa-space-m);
+  margin: var(--wa-space-m);
+  border: var(--wa-border-width-s) solid var(--wa-color-danger-border-loud);
+  border-radius: var(--wa-border-radius-m);
+  background-color: var(--wa-color-danger-fill-quiet);
+  color: var(--wa-color-danger-on-quiet);
+  font-size: var(--wa-font-size-m);
+}
+
 /* -------------------------------------------------------------- transport */
 
 /* Wrapping, because there are three vertical sliders and their labels in a

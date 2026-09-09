@@ -3,6 +3,7 @@ import {
   registerClockControlComponent,
   TPClockControl,
 } from "./clock.ts";
+import { randomID } from "./ids.ts";
 import { parseDuration, parseTimer, serialiseTimer } from "./timer.ts";
 
 import WaSplitPanel from "@awesome.me/webawesome/dist/components/split-panel/split-panel.js";
@@ -589,7 +590,7 @@ export class Teleprompter {
     const params = new URLSearchParams(location.search);
     let room = params.get("room");
     if (!room) {
-      room = crypto.randomUUID().slice(0, 8);
+      room = randomID().slice(0, 8);
       params.set("room", room);
       history.replaceState(null, "", `${location.pathname}?${params}`);
     }
@@ -610,7 +611,7 @@ export class Teleprompter {
       // Private mode or blocked storage: fall through to a per-load key.
     }
     if (!key) {
-      key = crypto.randomUUID();
+      key = randomID();
       try {
         localStorage.setItem(storageKey, key);
       } catch {

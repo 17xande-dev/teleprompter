@@ -5,6 +5,8 @@
 // DOM half — dropdown, dialogs, events. Same split, and for the same reason,
 // as themes.ts / themeControls.ts.
 
+import { randomID } from "./ids.ts";
+
 export type Doc = {
   // Display name, editable. Identity is the id, not this.
   name: string;
@@ -109,7 +111,7 @@ export class DocStorage {
 
     const ids = Object.keys(this.#docs);
     if (ids.length === 0) {
-      const id = crypto.randomUUID();
+      const id = randomID();
       this.#docs[id] = { name: newDocName(), content: "" };
       this.#currentID = id;
       this.#save();
@@ -218,7 +220,7 @@ export class DocStorage {
     // A UUID rather than themes.ts's readable slug: a theme's id doubles as
     // the CSS class a viewer wears, so it has to be a legible identifier and
     // needs a collision pass. A document id is never seen by anyone.
-    const id = crypto.randomUUID();
+    const id = randomID();
     this.#docs[id] = { name, content: "" };
     this.#save();
     return id;
@@ -247,7 +249,7 @@ export class DocStorage {
       // There is no such thing as "no document": the editor always has one
       // open, so deleting the last one seeds a replacement rather than
       // leaving `current` dangling.
-      const fresh = crypto.randomUUID();
+      const fresh = randomID();
       this.#docs[fresh] = { name: newDocName(), content: "" };
       this.#currentID = fresh;
     } else if (this.#currentID === id) {

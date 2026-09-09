@@ -416,8 +416,20 @@ export function buildCommands(host: CommandHost): Command[] {
     "document.new": () => host.docControls.create(),
     "pdf.close": () => host.closePdf(),
     "viewer.pop": () => host.btnPop.click(),
-    "viewer.copyLink": () =>
-      navigator.clipboard.writeText(host.lnkViewerLink.href),
+    // `navigator.clipboard` is secure-context gated like crypto.randomUUID
+    // was, so it is simply absent over plain HTTP to anything but localhost —
+    // which is how an operator reaches this from a phone before there is TLS
+    // in front of it. Unguarded this threw a TypeError into the palette and
+    // the command did nothing with no explanation. The link is on screen to
+    // be read either way.
+    "viewer.copyLink": () => {
+      const url = host.lnkViewerLink.href;
+      if (!navigator.clipboard) {
+        console.warn(`no clipboard on this origin; the viewer link is ${url}`);
+        return;
+      }
+      navigator.clipboard.writeText(url);
+    },
     // Read through the host when the key fires, not now: the palette is
     // constructed *from* this list, so it does not exist yet.
     "settings.open": () => host.settings.open(),
