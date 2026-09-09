@@ -277,12 +277,30 @@ WebSocket relay, `ice.go` STUN/TURN config.
   desktop position is saved on the way into mobile and restored on the way out,
   or coming back leaves the script pane at zero width with no divider on screen
   to drag back.
-- **`--max` caps the _primary_ (start) panel**, which is how you say "the
-  sidebar never gets thinner than this". It clamps on window resize as well as
-  on drag. Needed because the divider's position is a percentage: on a 900px
+- **`--max` caps the _primary_ (start) panel**, which is how `#appSplit` says
+  "the sidebar never gets thinner than this". It clamps on window resize as well
+  as on drag. Needed because the divider's position is a percentage: on a 900px
   window the sidebar's 25% share came out at 223px, narrower than its own cards,
-  which then overflowed. There is deliberately no `--min` — the script pane
-  reflows and a PDF just zooms out, so an operator may drag it to nothing.
+  which then overflowed. `#appSplit` deliberately has no `--min` — the script
+  pane reflows and a PDF just zooms out, so an operator may drag it to nothing.
+- **There are two split panels, and the knobs are _inherited_ custom
+  properties.** `--min`, `--max` and `--divider-width` are read inside a `var()`
+  in the `grid-template-rows`/`columns` the component writes as an inline style,
+  so a rule matching `wa-split-panel` reaches the nested `#sidebarSplit` as
+  well. Both are therefore addressed by id, and it matters in both directions:
+  the desktop `--max` would have capped the preview's _height_ at the sidebar's
+  height minus 20rem — computing negative on a shorter sidebar and collapsing
+  the preview to nothing — and the mobile block's `--divider-width: 0` would
+  have taken the preview's divider away on the one device where the sidebar has
+  the whole screen. `#sidebarSplit` _does_ carry a `--min`, unlike the outer
+  panel, because the preview's card spends ~124px on its own header, footer and
+  padding before it can show a pixel of picture.
+- **Anything scoped to `#controls` is only half the sidebar.** The preview's
+  card lives in `#previewPane` now, so the tighter card `--spacing` is set on
+  `#sidebarSplit` (both panes) while `flex: 0 0 auto` stays on `#controls` — the
+  preview's card is the one that must _fill_ its pane. Those two selectors have
+  equal specificity, so with both at sidebar scope the winner was whichever came
+  later in the file, and the preview silently stopped growing.
 - **Wordgard's colour scheme is `auto`, i.e. `prefers-color-scheme`** — so on a
   machine set to light it drew its light variant onto a page that is dark
   unconditionally (`<html class="wa-dark">`), which is what made the toolbar a
@@ -375,11 +393,12 @@ WebSocket relay, `ice.go` STUN/TURN config.
   anything a joining viewer is sent has to be posted to the iframe in that
   handler too, or the preview shows something no viewer is showing. It went a
   while inheriting a 16px script while every real viewer sat at 1.6px.
-- **The control page's panes move only by explicit action.** They are not
+- **The control page's _script_ pane moves only by explicit action.** It is not
   scroll-synced on purpose, so `goToViewerPosition`/`sendMyPosition` use the
   exported `ratioOf`/`setRatio` rather than a `ScrollSync` — making one of those
   also starts a per-frame pump and a scroll listener, which is what a
-  continuously synced pane wants and these don't.
+  continuously synced pane wants and this doesn't. The preview is the deliberate
+  exception: see the scrub section.
 - **A key handler on `window` sees a retargeted event.** For a keypress inside a
   `wa-input`, `event.target` is the _host_ element, not the `<input>` in its
   shadow root — so `target.closest("input")` finds nothing and a focus guard
@@ -463,13 +482,21 @@ WebSocket relay, `ice.go` STUN/TURN config.
 - **The preview fits the box CSS gives it, both axes, smaller factor wins.**
   `#divPreviewBox` is the space; `#applyPreviewScale` measures _that_ and never
   the container it writes to, which is what keeps the ResizeObserver from
-  looping. A box measuring 0 hasn't been laid out yet and falls back to the old
-  fixed maximums. The aspect ratio stays the previewed viewer's, so a portrait
+  looping. A box measuring 0 **in both axes** hasn't been laid out yet and falls
+  back to the fixed maximums — testing the axes separately fell back on a box
+  that was laid out and merely short, which the operator can now produce by
+  dragging `#sidebarSplit`'s divider up, and the preview then rendered at the
+  fixed size and was clipped by its pane: a fragment of a screen rather than a
+  small one. The aspect ratio stays the previewed viewer's, so a portrait
   display letterboxes horizontally rather than being squeezed — the preview
   renders at that viewer's real pixel size and distorting it would defeat the
   point.
-- The preview iframe is a _passive mirror_ — no auto-scroll loop of its own, no
-  scroll reports. It renders at the previewed viewer's real pixel size and is
+- The preview iframe runs **no auto-scroll loop of its own** — its motion is
+  entirely the controller's. It is no longer the wholly passive mirror it was,
+  though: it reports its scroll ratio upward so the operator can scrub the show
+  from it (see the scrub section), which is the one message that travels from a
+  viewer document to the control page. It is still never scrolled _by hand_ and
+  never a driver. It renders at the previewed viewer's real pixel size and is
   CSS-scaled down; sizing it to the on-screen box reflows the content and stops
   it representing what the viewer shows.
 - **Exactly one viewer drives**, and `#driverID()` is the only answer to which:
@@ -499,7 +526,10 @@ WebSocket relay, `ice.go` STUN/TURN config.
   viewport takes its used overflow from the body element, and the whole page
   stops responding to wheel and touch. Programmatic movement is unaffected —
   `scrollTo` works fine on an overflow-hidden viewport — which is why nothing in
-  the sync path ever noticed that "allow drive" granted nothing.
+  the sync path ever noticed that "allow drive" granted nothing. The preview is
+  not an exception to this and must not become one: it is scrolled by the
+  controller on the operator's behalf, never by hand, so it needs no
+  `set-driver` and its `pointer-events: none` stays.
 - The preview iframe is resized whenever that pick changes. Text reflows by
   itself; a PDF is laid out in pixels, so the previewer branch of `Viewer` needs
   its own `resize` listener — but _only_ for the PDF relayout, never
@@ -666,6 +696,69 @@ and a copy that missed ticks in a background tab simply ran slow.
   countdown started at thirty seconds reads 0:30 rather than flicking to 0:29.
 - The `observedAttributes = ["countdown"]` path is gone: it only acted on a
   `type="countdown"` this app never used, so nothing on it ever ran.
+
+### Scrubbing the show from the preview
+
+A wheel or drag over the preview moves every display, armed by `previewScrub`
+(off by default). It behaves like hand-scrolling the driver: it displaces the
+position and the pacer carries on from there at the set speed.
+
+- **The gesture is handled on the control page and forwarded _into_ the iframe**
+  as `scroll-by`, rather than letting the iframe scroll itself. Two reasons,
+  both measured and both silent:
+  - `tinykeys` installs every binding on the control page's own window
+    (`paletteControls.ts`). Giving the iframe `pointer-events` makes it
+    focusable, so one click on the preview would send Space, `Mod+K` and every
+    chord into _its_ document — using the scrub gesture would disarm the
+    operator's keyboard for the rest of the session. `#ifrmPreview` keeps
+    `pointer-events: none`; the topmost element at the preview's centre is
+    `#divIFrameContainer`, and that is what the listeners are on.
+  - A `scroll` event **also fires when a layout change clamps `scrollTop`**, and
+    the preview relayouts on every keystroke with live editing on, on a PDF load
+    and on every re-fit. So the previewer offers its ratio unconditionally and
+    the control page accepts one **only while a gesture of its own is in
+    flight**. Verified by moving the preview from inside itself with no gesture:
+    it went 869 → 0 and the display stayed at 869.
+- **`scroll-by` is applied outside `applyRemote`, deliberately.** The resulting
+  scroll event has to be sampled and reported, which is the same reason
+  `smoothScroll` uses a bare `scrollBy` to produce the driver's samples. Routing
+  it through the echo guard would swallow the very thing that has to travel.
+- **`SCRUB_HOLD_MS` is not about the echo guard.** The gesture never passes
+  through `applyRemote`, so it cannot be swallowed. The window drops the
+  driver's _in-flight_ samples, which for about a round trip still describe the
+  position it held before the scrub reached it — relayed, they fight the gesture
+  on every other display. Two round trips plus a frame. Shortening it brings the
+  judder back.
+- **The ratio goes to _every_ viewer including the driver**, so the driver moves
+  and its own loop carries on from the new position. Nothing is posted back to
+  the preview, for the same reason the pacer is never sent its own position.
+  `#lastRatio` is updated too, or a display joining after a scrub would catch up
+  to the last pacer sample instead.
+- **A `driverID` sentinel was the wrong shape** and is worth not retrying:
+  `#applyScrollRoles` derives `settings{autoScroll}` from `#driverID()`, so a
+  sentinel would revoke the real driver's auto-scroll — the opposite of the
+  behaviour wanted. Suppressing only the echo _into_ the preview is also wrong;
+  the driver's stale samples would still fight the scrub on every other display.
+- **Wheel deltas are not scaled; drag deltas are.** A notch means what it means
+  on the display itself, and dividing by the ~0.2 preview scale would send half
+  a page per click. A drag is the opposite — direct manipulation has to track
+  the finger — so `movementY` is divided by `#previewScale`. Neither goes
+  through `wheelStep`: `invertWheel` is about which way a wheel moves a slider
+  _thumb_, and routing a document scroll through it would make the preview run
+  backwards for anyone who has that switch on.
+- **The armed state is marked on the preview itself.** The switch is a
+  remembered preference inside a dialog and what it arms moves what the audience
+  reads, so the surface whose behaviour changed carries the outline and the
+  cursor, plus an app-bar icon. Same reasoning as `#icnHeld`.
+- `touch-action: none` on the armed container, or a touch-drag scrolls the
+  sidebar out from under the gesture.
+- **The end-of-document guard stops the pacer early**, by design but
+  imprecisely: it compares `innerHeight + scrollY` against
+  `document.body.offsetHeight` while the scrollable range comes from
+  `scrollingElement.scrollHeight`, so a display parks tens of pixels short of
+  its real maximum. Pre-existing, and visible now that a scrub can put a display
+  anywhere. Also note the guard is permanently true when the document is shorter
+  than the viewport, so such a display never auto-scrolls at all.
 
 ### Viewer themes
 
