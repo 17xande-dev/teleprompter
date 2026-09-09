@@ -569,6 +569,34 @@ memory only — `DocStorage`'s localStorage would not survive one).
 - The control page's own PDF pane is deliberately _not_ scroll-synced: the
   operator reads ahead or behind without moving the viewers.
 
+### Secure-context APIs, and the first visit
+
+**Nothing on the startup path may assume a secure context.** The app is reached
+over plain HTTP by LAN address as a matter of course — that is how a phone
+becomes a display before there is TLS in front of it — and on such an origin
+`crypto.randomUUID` and `navigator.clipboard` are simply absent.
+
+- **`randomID()` in `ids.ts`, never `crypto.randomUUID` directly.** The latter
+  threw out of the control page's constructor, which wires itself up in one
+  pass, so the page came up looking merely slow: no editor, no room id, an empty
+  viewer link, and a badge stuck on "Connecting". It failed only on a **first**
+  visit, and that is the tell rather than a coincidence — the three seeding
+  paths (no room id, no control key, no documents) are the only code that mints
+  an id, so a browser past them once had the answers in storage. `#ensureRoomID`
+  threw first, before the documents store was reached.
+- The fallback is `getRandomValues`, not `Math.random`: no secure-context
+  requirement, and one of these ids is the control key that stops a stranger on
+  the same network claiming a room. It stamps the v4 version and variant bits,
+  so an id minted on an insecure origin cannot be told from one minted on a
+  secure one — they are stored, compared, and in the room's case sliced.
+- **WebRTC data channels do _not_ need a secure context**, verified: on the LAN
+  address a local screen negotiates and renders normally. Only the id generator
+  and the clipboard did.
+- **`app.ts` catches a startup throw and puts it on the page.** A constructor
+  that dies half-way is indistinguishable from a slow connection, and that is
+  what made this expensive to find. Any new work on the startup path inherits
+  this safety net; don't remove it.
+
 ### The local screen, and local vs remote
 
 `#btnPop` opens or closes **one** window, on this machine, and shows which.
