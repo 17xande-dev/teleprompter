@@ -97,7 +97,7 @@
       </wa-button-group>
     </div>
   </header>
-  <wa-split-panel position="75">
+  <wa-split-panel id="appSplit" position="75">
     <div slot="start" id="mainEditor">
       <div id="toolbar"></div>
       <div id="editor">
@@ -115,7 +115,19 @@
         <div id="pdfPages"></div>
       </div>
     </div>
-    <div slot="end" id="controls">
+    <!-- The sidebar is itself split, so the preview has a pane of its own: it
+         cannot scroll out of sight (the cards below scroll, it doesn't) and its
+         height is the operator's to drag rather than a viewport clamp. Its
+         width still comes from the divider above, which is the same drag that
+         trades the script pane against the sidebar.
+
+         Every knob this panel needs is set on its own id in style.css, never
+         inherited: --min/--max/--divider-width are read inside a var() in the
+         grid-template the component writes inline, so whatever is set on
+         `wa-split-panel` reaches this one too — and --max here would cap a
+         *height*. -->
+    <wa-split-panel slot="end" id="sidebarSplit" orientation="vertical" position="40">
+      <div slot="start" id="previewPane">
       <!-- Preview component -->
       <wa-card id="divPreview" appearance="outlined" with-header with-footer>
         <span slot="header" class="card-title">
@@ -148,6 +160,8 @@
           </wa-dropdown-item>
         </wa-dropdown>
       </wa-card>
+      </div>
+      <div slot="end" id="controls">
       <wa-card id="divTransport" appearance="outlined" with-header>
         <span slot="header" class="card-title">
           <wa-icon name="sliders"></wa-icon>
@@ -285,7 +299,8 @@
         </wa-details>
         <div id="divViewers"></div>
       </wa-card>
-    </div>
+      </div>
+    </wa-split-panel>
   </wa-split-panel>
   <wa-dialog id="dlgRename" label="Rename Document" class="dialog-focus">
     <wa-input autofocus></wa-input>

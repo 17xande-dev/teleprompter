@@ -206,7 +206,11 @@ export class Teleprompter {
     this.btnPushContent = document.querySelector("#btnPushContent")!;
     this.#swLiveEditing = document.querySelector("#swLiveEditing")!;
     this.#icnHeld = document.querySelector("#icnHeld")!;
-    this.splitPanel = document.querySelector("wa-split-panel")!;
+    // By id, not by tag: there are two panels now (the sidebar has its own,
+    // see #sidebarSplit in style.css) and #wirePaneToggle writes `position`
+    // through this one. A tag query would keep working by document order and
+    // break the day the markup is reordered.
+    this.splitPanel = document.querySelector("#appSplit")!;
     this.btnMessage = document.querySelector("#btnMessage")!;
     this.rngSpeed = document.querySelector("#rngSpeed")!;
     this.rngScale = document.querySelector("#rngScale")!;
@@ -887,8 +891,14 @@ export class Teleprompter {
     // A box that measures 0 hasn't been laid out yet; fall back rather than
     // scaling the preview out of existence.
     const box = this.#previewBox.getBoundingClientRect();
-    const maxWidth = box.width || Teleprompter.MAX_PREVIEW_WIDTH;
-    const maxHeight = box.height || Teleprompter.MAX_PREVIEW_HEIGHT;
+    // Both axes have to be zero to mean "not laid out yet". Testing them
+    // separately fell back on a box that *was* laid out and merely short —
+    // which the operator can now produce by dragging the sidebar's divider up
+    // — and the preview then rendered at the fixed maximum and was clipped by
+    // the pane, showing a fragment of a screen instead of a small one.
+    const unlaid = box.width === 0 && box.height === 0;
+    const maxWidth = unlaid ? Teleprompter.MAX_PREVIEW_WIDTH : box.width;
+    const maxHeight = unlaid ? Teleprompter.MAX_PREVIEW_HEIGHT : box.height;
 
     const scale = Math.min(maxWidth / dims.width, maxHeight / dims.height);
 

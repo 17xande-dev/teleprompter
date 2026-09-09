@@ -140,7 +140,11 @@ body {
     display: flex;
   }
 
-  wa-split-panel {
+  /* The outer panel only — see #sidebarSplit's note. Unscoped this also
+     reached the sidebar's own panel and took its divider away, leaving the
+     preview's height unadjustable on the one device where the sidebar has the
+     whole screen. */
+  #appSplit {
     --max: 100%;
     /* Nothing to drag when a pane is all or nothing, and at 0 the divider's
        grid track collapses with it. */
@@ -148,9 +152,11 @@ body {
   }
 
   /* The inactive pane's *content* goes too. Its slot keeps a zero-width track,
-     and a 2rem prompter font in a 0px box would otherwise overflow sideways. */
+     and a 2rem prompter font in a 0px box would otherwise overflow sideways.
+     The sidebar's half is the whole nested panel now, or the preview would
+     stay on screen in script mode. */
   html[data-pane="controls"] #mainEditor,
-  html[data-pane="script"] #controls {
+  html[data-pane="script"] #sidebarSplit {
     display: none;
   }
 
@@ -202,17 +208,68 @@ body {
    No --min to match, because the script pane genuinely does not need one: text
    reflows to whatever width it is given and a PDF just zooms out, so an
    operator who wants the script narrow should be allowed to drag it there. */
-wa-split-panel {
+#appSplit {
   --max: calc(100% - 20rem);
+}
+
+/* The sidebar's own split: the preview above, the scrolling stack of cards
+   below. This is what keeps the preview on screen — it is a pane, not a card
+   in a scroller — and what makes its height the operator's to drag. Its width
+   still comes from #appSplit's divider.
+
+   Addressed by id, and so is #appSplit above, for a reason that bites
+   silently: --min, --max and --divider-width are read inside a var() in the
+   grid-template the component writes as an inline style, and custom
+   properties inherit. A rule matching `wa-split-panel` therefore reaches this
+   nested one too — and --max here would cap a *height*, so the desktop value
+   above would have limited the preview to the sidebar's height minus 20rem
+   and, on a sidebar shorter than that, computed negative and collapsed the
+   preview to nothing. Scoped to the outer panel, nothing reaches here and this
+   one keeps the component's own defaults. */
+#sidebarSplit {
+  block-size: var(--pane-height);
+  /* A floor, unlike #appSplit which deliberately has none. The preview's card
+     spends ~124px on its own header, footer and padding before it can show a
+     single pixel of picture, so below this the box has no height, the preview
+     falls back to a fixed size and gets clipped by the pane — a fragment of a
+     screen rather than a small screen. ~90px of picture at the floor.
+     min(…, 50%) because on a very short sidebar a flat 14rem would be more
+     than the whole thing and the controls would get nothing. */
+  --min: min(14rem, 50%);
+}
+
+/* The preview's pane. It does not scroll: the whole point is that this stays
+   put while the cards below move. */
+#previewPane {
+  box-sizing: border-box;
+  block-size: 100%;
+  overflow: hidden;
+  padding: var(--wa-space-s);
+  display: flex;
+  flex-direction: column;
+}
+
+/* The card fills the pane, and the box inside it takes whatever is left over
+   from the header and footer — which is what hands #applyPreviewScale a real
+   height to fit the viewer's aspect ratio into. */
+#previewPane wa-card {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+#previewPane wa-card::part(body) {
+  flex: 1 1 auto;
+  min-block-size: 0;
 }
 
 /* Its own scroll container, which is the whole point: the sidebar is taller
    than the viewport on any real setup, and while the *document* was the
    thing that scrolled, reaching the viewer list dragged the script pane off
-   screen. */
+   screen. Its height is now the pane #sidebarSplit gives it rather than the
+   whole viewport, since the preview is above it and has taken a share. */
 #controls {
   box-sizing: border-box;
-  block-size: var(--pane-height);
+  block-size: 100%;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -221,9 +278,19 @@ wa-split-panel {
 }
 
 /* Tighter than a card's default: there are six of these stacked in a narrow
-   column, and the default spacing spent most of the sidebar on padding. */
-#controls wa-card {
+   column, and the default spacing spent most of the sidebar on padding. Set
+   for the whole sidebar, both panes — the preview's card left #controls when
+   it got a pane of its own and would otherwise have gone back to the default. */
+#sidebarSplit wa-card {
   --spacing: var(--wa-space-s);
+}
+
+/* Only the cards in the scrolling stack keep their content height. The
+   preview's card is the one that must *fill* its pane instead, and these two
+   rules have equal specificity — so this one is deliberately scoped to
+   #controls rather than the sidebar, instead of relying on source order to
+   settle which wins. */
+#controls wa-card {
   flex: 0 0 auto;
 }
 
@@ -243,7 +310,7 @@ wa-split-panel {
 /* Every card body in the sidebar is a stack of full-width controls. Declared
    once here rather than as a utility class per card, since there is no case
    in this column that wants anything else. */
-#controls wa-card::part(body) {
+#sidebarSplit wa-card::part(body) {
   display: flex;
   flex-direction: column;
   gap: var(--wa-space-s);
@@ -384,7 +451,12 @@ tp-clock-control tp-clock {
    ate the controls below it would be worse than a small one. */
 #divPreviewBox {
   inline-size: 100%;
-  block-size: clamp(120px, 30vh, 600px);
+  /* Whatever the pane has left. It was clamp(120px, 30vh, 600px) — the one
+     dimension the sidebar's stack could not decide — and now the operator
+     decides it by dragging #sidebarSplit's divider. #applyPreviewScale
+     measures this box either way and needs no telling. */
+  flex: 1 1 auto;
+  min-block-size: 0;
   display: flex;
   align-items: center;
   justify-content: center;
