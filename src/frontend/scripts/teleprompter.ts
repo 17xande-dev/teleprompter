@@ -112,6 +112,17 @@ export class Teleprompter {
 
   #currentMessage = "";
   #autoScrollRunning = true;
+  // The one spelling of the URL a display joins on. The anchor, the copy
+  // button, the QR code and the local screen window all read this field.
+  #viewerURL = "";
+  // The local screen this page opened, while it is open. A handle rather than
+  // a boolean because the button closes it as well as opening it — and it is
+  // deliberately *not* derived from "some local viewer exists": that is the
+  // same thing in practice, but only this is something the page can close.
+  #popWin: Window | null = null;
+  // Closing a popup fires nothing in the opener, so the only way to notice is
+  // to ask. Cleared with the window it was watching.
+  #popWatch: ReturnType<typeof setInterval> | undefined;
   // The pacer's most recent position. Viewers only learn where everyone is
   // from the pacer's next sample, and while the scroll is paused (or the
   // speed is 0) there isn't one — so a viewer that joins or reconnects would
@@ -199,14 +210,16 @@ export class Teleprompter {
 
     this.roomID = this.#ensureRoomID();
     document.querySelector("#tagRoom")!.textContent = this.roomID;
-    const viewerURL = `${location.origin}/html/viewer.html?room=${this.roomID}`;
-    this.lnkViewerLink.href = viewerURL;
-    this.lnkViewerLink.textContent = viewerURL;
-    // The copy button and the QR code are handed the anchor's URL rather than
-    // building their own, so the three can never disagree about which room a
-    // display would be joining.
-    (<WaCopyButton> document.querySelector("#btnCopyLink")).value = viewerURL;
-    (<WaQrCode> document.querySelector("#qrViewerLink")).value = viewerURL;
+    this.#viewerURL = `${location.origin}/html/viewer.html?room=${this.roomID}`;
+    this.lnkViewerLink.href = this.#viewerURL;
+    this.lnkViewerLink.textContent = this.#viewerURL;
+    // The copy button, the QR code and the local screen window are all handed
+    // this one string rather than building their own, so none of the four can
+    // disagree about which room a display would be joining.
+    (<WaCopyButton> document.querySelector("#btnCopyLink")).value =
+      this.#viewerURL;
+    (<WaQrCode> document.querySelector("#qrViewerLink")).value =
+      this.#viewerURL;
     // The iframe preview is a same-page mirror driven over postMessage, not
     // a WebRTC peer — it joins nothing and never appears in `viewers`.
     this.ifrmPreview.src = "/html/viewer.html";
@@ -279,6 +292,9 @@ export class Teleprompter {
     this.docControls.loadCurrent();
 
     this.btnPop.addEventListener("click", this.listenPop.bind(this));
+    // How a local screen this page did not open — because the page has since
+    // reloaded — gets picked back up. See #listenPopHello.
+    self.addEventListener("message", this.#listenPopHello.bind(this));
     this.btnMessage.addEventListener("click", this.listenMessage.bind(this));
     this.btnGoToViewers.addEventListener(
       "click",
@@ -389,6 +405,7 @@ export class Teleprompter {
     this.#applyPreviewScale();
     this.#renderViewers();
     this.#renderTransport();
+    this.#renderPop();
   }
 
   /**
@@ -951,26 +968,125 @@ export class Teleprompter {
     this.updateMain();
   }
 
+  /**
+   * Open the local screen, or close the one that is open.
+   *
+   * "Local" is the whole scope of this button: the window *this page* owns, on
+   * this machine. A display on another device arrives by itself through the
+   * viewer link, and nothing here can or should close it.
+   */
   async listenPop() {
-    const screenDetails = await self.getScreenDetails();
-    const secondary = screenDetails.screens.find((s) => !s.isPrimary);
-    const dims = secondary
-      ? {
+    if (this.#popWin && !this.#popWin.closed) {
+      this.#popWin.close();
+      this.#forgetPop();
+      return;
+    }
+
+    const dims = await this.#screenForPop();
+    // `fullscreen` alongside `popup` is Chrome's Fullscreen Companion Window:
+    // with the Window Management permission — which #screenForPop has just
+    // asked for — one user activation covers both placing the window and
+    // taking it fullscreen, so the talent never sees browser chrome. Browsers
+    // that don't know the feature ignore it and viewer.ts asks for fullscreen
+    // itself.
+    const win = self.open(
+      this.#viewerURL,
+      "pop",
+      `popup=true,fullscreen=true,width=${dims.width},height=${dims.height},screenX=${dims.x},screenY=${dims.y}`,
+    );
+    if (!win) {
+      // A blocked popup is the operator's browser telling them something, not
+      // a bug to crash the page over — the viewer link is still right there.
+      console.warn("the browser blocked the local screen window");
+      return;
+    }
+    this.#adoptPop(win);
+  }
+
+  /**
+   * Where to put the local screen: the first non-primary display, else a
+   * modest window on this one.
+   *
+   * The Window Management API is Chromium-only, and `getScreenDetails` both
+   * throws where it is missing and rejects when the permission is refused.
+   * Unguarded — as this was — the rejection escapes an `async` click listener
+   * as an unhandled promise and the window simply never opens, with the
+   * failure visible nowhere but the console.
+   */
+  async #screenForPop() {
+    const fallback = { width: 800, height: 600, x: 100, y: 100 };
+    try {
+      const screenDetails = await self.getScreenDetails();
+      const secondary = screenDetails.screens.find((s) => !s.isPrimary);
+      if (!secondary) return fallback;
+      return {
         width: secondary.width,
         height: secondary.height,
         x: secondary.left,
         y: secondary.top,
-      }
-      : { width: 800, height: 600, x: 100, y: 100 };
-
-    const win = self.open(
-      `/html/viewer.html?room=${this.roomID}`,
-      "pop",
-      `popup=true,width=${dims.width},height=${dims.height},screenX=${dims.x},screenY=${dims.y}`,
-    );
-    if (!win) {
-      throw new Error("can't open window");
+      };
+    } catch {
+      return fallback;
     }
+  }
+
+  /** Take ownership of a local screen window and start watching it. */
+  #adoptPop(win: Window) {
+    if (this.#popWin === win) return;
+    this.#popWin = win;
+    clearInterval(this.#popWatch);
+    // Polling, because closing a popup notifies nobody: there is no event on
+    // the opener, and the popup's own `pagehide` cannot be relied on to run
+    // before it goes. Half a second is well under the time it takes an
+    // operator to look up at the button.
+    this.#popWatch = setInterval(() => {
+      if (this.#popWin?.closed) this.#forgetPop();
+    }, 500);
+    this.#renderPop();
+  }
+
+  /** The local screen is gone. */
+  #forgetPop() {
+    this.#popWin = null;
+    clearInterval(this.#popWatch);
+    this.#popWatch = undefined;
+    this.#renderPop();
+  }
+
+  /**
+   * A local screen announcing itself to its opener.
+   *
+   * This is what makes the button survive an operator's refresh. The popup's
+   * `opener` still points at this window after it navigates, so the display
+   * keeps saying hello; a fresh control page hears it and adopts the window it
+   * did not open. Without this the button would read "closed" for the rest of
+   * a session that still has a display running, and a button that lies about
+   * what is on the screen is worse than no button.
+   */
+  #listenPopHello(e: MessageEvent) {
+    if (e.origin !== location.origin) return;
+    if ((<{ type?: string }> e.data)?.type !== "pop-hello") return;
+    const win = <Window | null> e.source;
+    if (!win || win.closed) return;
+    this.#adoptPop(win);
+  }
+
+  /**
+   * Say whether a local screen is open.
+   *
+   * Filled *and* branded when it is, the same loudest-state-the-theme-has that
+   * #wirePaneToggle uses: outlined-blue against outlined-grey is a difference
+   * an operator has to look for, and this button answers "is there a screen
+   * showing this?" at a glance.
+   */
+  #renderPop() {
+    const on = !!this.#popWin && !this.#popWin.closed;
+    this.btnPop.appearance = on ? "accent" : "outlined";
+    this.btnPop.variant = on ? "brand" : "neutral";
+    this.btnPop.setAttribute("aria-pressed", String(on));
+    this.btnPop.title = on
+      ? "Close the local screen"
+      : "Open a screen on this device";
   }
 
   /**

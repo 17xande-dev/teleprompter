@@ -76,9 +76,16 @@
           <wa-icon slot="start" name="gear"></wa-icon>
           <span class="btn-label">Settings</span>
         </wa-button>
-        <wa-button id="btnPop" size="s" appearance="outlined" title="Open a viewer window">
-          <span class="btn-label">Popup</span>
-          <wa-icon slot="end" name="arrow-right-from-bracket"></wa-icon>
+        <!-- The local screen: a window on *this* device, which is the only
+             kind this button can open or close. Displays on other devices
+             arrive by themselves through the viewer link. Accented while one
+             is open, so the bar's Live badge keeps sole ownership of the word
+             "live" — that answers a different question (is anything, anywhere,
+             showing this?). -->
+        <wa-button id="btnPop" size="s" appearance="outlined" aria-pressed="false"
+          title="Open a screen on this device">
+          <wa-icon slot="start" name="display"></wa-icon>
+          <span class="btn-label">Screen</span>
         </wa-button>
       </wa-button-group>
     </div>

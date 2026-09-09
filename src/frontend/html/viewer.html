@@ -17,6 +17,13 @@
   <main id="main" class="content">
 
   </main>
+  <!-- Hidden unless viewer.ts asks for it: only a screen this device opened,
+       and only while it is not filling the screen. See #fsPrompt in
+       viewerBase.css for why a click here is unavoidable. -->
+  <div id="fsPrompt" hidden>
+    <span>Click to fill the screen</span>
+    <span class="fs-hint">Double-click any time to toggle</span>
+  </div>
 </body>
 
 </html>

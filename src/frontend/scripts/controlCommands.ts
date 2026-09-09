@@ -217,10 +217,10 @@ export const COMMAND_SPECS: CommandSpec[] = [
   { id: "pdf.close", label: "Close PDF", group: "Document" },
   {
     id: "viewer.pop",
-    label: "Pop out viewer window",
+    label: "Open / close the local screen",
     group: "Viewers",
     shortcut: "Mod+Alt+KeyP",
-    keywords: ["popup", "screen", "display"],
+    keywords: ["popup", "screen", "display", "close", "fullscreen"],
   },
   {
     id: "viewer.copyLink",

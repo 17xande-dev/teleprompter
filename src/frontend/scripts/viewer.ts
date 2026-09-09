@@ -117,9 +117,17 @@ export class Viewer {
     });
 
     self.addEventListener("resize", this.#listenResize.bind(this));
+    // The manual way in and out, for a display reached by link or QR code —
+    // and the fallback for a local screen whose browser ignored the
+    // `fullscreen` window feature. Caught, not awaited: a rejected
+    // requestFullscreen (no activation, or a browser that refuses) is a
+    // non-event here, and uncaught it was an unhandled promise on every
+    // double-click that missed.
     self.addEventListener("dblclick", () => {
-      document.documentElement.requestFullscreen();
+      document.documentElement.requestFullscreen().catch(() => {});
     });
+    this.#greetOpener();
+    this.#goFullscreen();
 
     this.#reportDims();
     this.startSmoothScroll();
@@ -205,6 +213,80 @@ export class Viewer {
       this.#pdf?.setWidth(this.#pdfWidth());
       this.#isResizing = false;
     });
+  }
+
+  /**
+   * Fill the screen, if this window was opened to be a screen.
+   *
+   * Gated on `opener` because it must only apply to a window the control page
+   * opened for the talent — grabbing the screen out from under someone who
+   * followed a link would be hostile.
+   *
+   * The attempt on load is expected to fail and is made anyway, for the case
+   * where a browser hands the popup an activation: `window.open` *consumes*
+   * the opener's, so this document normally has none and Chrome refuses the
+   * request. Measured, not assumed — a click-opened display comes up with
+   * `document.fullscreenElement === null` every time. The control page's
+   * `fullscreen` window feature is the zero-click path where it applies
+   * (Chromium, with the Window Management permission, placing a companion
+   * window on a second display); everywhere else the only thing that will do
+   * it is a gesture in this window, so #fsPrompt asks for one and takes any
+   * click on the page. It hides itself the moment the screen is filled,
+   * however that happened.
+   */
+  #goFullscreen() {
+    if (!globalThis.opener) return;
+    const prompt = document.querySelector<HTMLElement>("#fsPrompt");
+    // The `hidden` attribute is the markup's default so a link-reached display
+    // never flashes it; from here on the data attribute decides.
+    if (prompt) prompt.hidden = false;
+
+    const showPrompt = () => {
+      // Deliberately keyed off the real state rather than "did we ask yet":
+      // the window feature may have got there first, and the operator may
+      // have left fullscreen on purpose with Escape — in which case offering
+      // the way back is the right thing, not nagging.
+      const on = !!document.fullscreenElement;
+      if (on) delete document.documentElement.dataset.fsPrompt;
+      else document.documentElement.dataset.fsPrompt = "";
+    };
+    document.addEventListener("fullscreenchange", showPrompt);
+    // Any click, not just the prompt's: the prompt covers the viewport while
+    // it is up, and once it is gone a click that lands on the script should
+    // not be swallowed by a second handler.
+    self.addEventListener("click", () => {
+      if (document.fullscreenElement) return;
+      document.documentElement.requestFullscreen().catch(() => {});
+    });
+
+    document.documentElement.requestFullscreen()
+      .catch(() => {})
+      .finally(showPrompt);
+  }
+
+  /**
+   * Tell the control page that opened this window that it is still here.
+   *
+   * Repeated rather than said once, because the *listener* is the thing that
+   * comes and goes: an operator refreshing the control page loses its handle
+   * on this window, while `opener` here still points at it. The next hello
+   * lets the fresh page adopt this display and show its Screen button pressed
+   * again. Only meaningful for a window the control page opened — a display
+   * reached by link or QR code has no opener and says nothing.
+   */
+  #greetOpener() {
+    const opener = globalThis.opener as Window | null;
+    if (!opener) return;
+    const hello = () => {
+      try {
+        opener.postMessage({ type: "pop-hello" }, location.origin);
+      } catch {
+        // The opener is gone for good (closed, or navigated cross-origin).
+        // Nothing to recover: this display keeps working on its own.
+      }
+    };
+    hello();
+    setInterval(hello, 2000);
   }
 
   #reportDims() {
