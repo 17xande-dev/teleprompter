@@ -150,6 +150,23 @@ export class Teleprompter {
   // speed is 0) there isn't one — so a viewer that joins or reconnects would
   // sit at the top of the document until someone started scrolling again.
   #lastRatio = 0;
+  // How long a scrub keeps authority after the operator's last gesture.
+  //
+  // Not a debounce and not about the echo guard: the gesture never travels
+  // through applyRemote, so it cannot be swallowed. This exists to drop the
+  // driver's *in-flight* samples — for about a round trip after a scrub the
+  // driver is still reporting the position it held before ours arrived, and
+  // fanning those out makes every display judder against the scrub at RTT
+  // frequency. Two round trips plus a frame. Shortening it brings the judder
+  // back, which is why the number is written down here with its reason.
+  static readonly SCRUB_HOLD_MS = 300;
+  // When the operator's authority over the position lapses. Also the gate that
+  // decides whether a ratio the preview offers is a gesture or layout noise.
+  #scrubUntil = 0;
+  // The factor #applyPreviewScale last rendered the preview at. A drag has to
+  // divide by it: the picture must track the finger, and the iframe's document
+  // pixels are 1/k of an on-screen pixel.
+  #previewScale = 1;
   // The operator's explicit pick of which viewer the preview mirrors. Null
   // means "no preference" — fall back to whoever connected first, which is
   // what a single-viewer setup wants and never needs to think about.
@@ -168,8 +185,14 @@ export class Teleprompter {
   #pdfView: PdfView | null = null;
   #pdfResize: ResizeObserver | null = null;
   #previewBox: HTMLElement;
+  // The previewed picture itself, and the surface the operator scrubs. The
+  // iframe inside it stays pointer-transparent, so every gesture over the
+  // preview lands here instead — which is the whole reason this works without
+  // making the iframe focusable.
+  #previewFrame: HTMLElement;
   #swLiveEditing: WaSwitch;
   #icnHeld: HTMLElement;
+  #icnScrub: HTMLElement;
   // Where the divider sits when not in the mobile one-pane-at-a-time layout,
   // which overwrites `position` with 0 or 100. Seeded in #wirePaneToggle.
   #desktopSplit = 0;
@@ -206,6 +229,7 @@ export class Teleprompter {
     this.btnPushContent = document.querySelector("#btnPushContent")!;
     this.#swLiveEditing = document.querySelector("#swLiveEditing")!;
     this.#icnHeld = document.querySelector("#icnHeld")!;
+    this.#icnScrub = document.querySelector("#icnScrub")!;
     // By id, not by tag: there are two panels now (the sidebar has its own,
     // see #sidebarSplit in style.css) and #wirePaneToggle writes `position`
     // through this one. A tag query would keep working by document order and
@@ -224,6 +248,9 @@ export class Teleprompter {
       "#ifrmPreview",
     );
     this.#previewBox = <HTMLElement> document.querySelector("#divPreviewBox");
+    this.#previewFrame = <HTMLElement> document.querySelector(
+      "#divIFrameContainer",
+    );
     this.divViewers = <HTMLDivElement> document.querySelector("#divViewers");
     this.lnkViewerLink = <HTMLAnchorElement> document.querySelector(
       "#lnkViewerLink",
@@ -332,6 +359,12 @@ export class Teleprompter {
     // How a local screen this page did not open — because the page has since
     // reloaded — gets picked back up. See #listenPopHello.
     self.addEventListener("message", this.#listenPopHello.bind(this));
+    self.addEventListener("message", this.#listenPreviewScroll.bind(this));
+    this.#wirePreviewScrub();
+    this.settings.swPreviewScrub.addEventListener(
+      "preview-scrub",
+      () => this.togglePreviewScrub(),
+    );
     this.#answerLocalProbes();
     this.btnMessage.addEventListener("click", this.listenMessage.bind(this));
     this.btnGoToViewers.addEventListener(
@@ -450,6 +483,7 @@ export class Teleprompter {
     this.#renderTransport();
     this.#renderPop();
     this.#renderLive();
+    this.#renderPreviewScrub();
     this.#restoreClock();
   }
 
@@ -671,6 +705,97 @@ export class Teleprompter {
     // updateMain: with live editing off that would send nothing and leave
     // every display blank, which is worse than showing a slightly old script.
     this.#pushPublished();
+  }
+
+  /**
+   * Let the operator scroll the show by scrolling the preview.
+   *
+   * The gesture is handled here and forwarded into the iframe, rather than
+   * letting the iframe scroll itself, for two measured reasons. Giving the
+   * iframe pointer events makes it focusable, and every shortcut is bound to
+   * *this* window (paletteControls installs tinykeys on it) — so one click on
+   * the preview would silently disarm Space, Mod+K and every chord for the
+   * rest of the session. And a `scroll` event in the iframe also fires when a
+   * layout change clamps scrollTop, which happens on every keystroke with live
+   * editing on; letting it volunteer positions would push those at the
+   * audience. Driving it from here means a position is only ever accepted
+   * while a gesture is actually in progress.
+   */
+  #wirePreviewScrub() {
+    this.#previewFrame.addEventListener("wheel", (e: WheelEvent) => {
+      if (!this.settings.previewScrub) return;
+      e.preventDefault();
+      // deltaY straight through, deliberately not via wheelStep: that setting
+      // is about which way a wheel moves a slider *thumb*, and a document
+      // scroll is not a slider. Nor is it divided by #previewScale — a notch
+      // means "advance the script about a notch", the same as it would on the
+      // display itself, and scaling it up would send half a page per click.
+      this.#scrubBy(e.deltaY);
+    }, { passive: false });
+
+    // Drag and touch, where the opposite is true: direct manipulation has to
+    // track the finger, so on-screen pixels are divided by the scale to get
+    // the document pixels underneath.
+    this.#previewFrame.addEventListener("pointerdown", (e: PointerEvent) => {
+      if (!this.settings.previewScrub) return;
+      e.preventDefault();
+      this.#previewFrame.setPointerCapture(e.pointerId);
+    });
+    this.#previewFrame.addEventListener("pointermove", (e: PointerEvent) => {
+      if (!this.#previewFrame.hasPointerCapture(e.pointerId)) return;
+      this.#scrubBy(-e.movementY / (this.#previewScale || 1));
+    });
+  }
+
+  /** Move the preview, and hold authority over the position while we do. */
+  #scrubBy(px: number) {
+    this.#scrubUntil = Date.now() + Teleprompter.SCRUB_HOLD_MS;
+    this.#postToPreview({ type: "scroll-by", px });
+  }
+
+  /**
+   * The preview reporting where the operator just put it.
+   *
+   * Accepted only while a gesture of ours is in flight — see SCRUB_HOLD_MS.
+   * Outside that window the preview is relaying a layout clamp, not a
+   * position anybody asked for.
+   *
+   * Fanned out to *every* viewer including the driver, so the driver moves to
+   * the new position and its own loop carries on from there at the set speed
+   * — which is what makes scrubbing behave like hand-scrolling a display.
+   * Nothing is posted back to the preview, for the same reason the pacer is
+   * never sent its own position.
+   */
+  #listenPreviewScroll(e: MessageEvent) {
+    if (e.origin !== location.origin) return;
+    // The source, not just the origin: a popped-out screen is same-origin too
+    // and holds a handle on this window.
+    if (e.source !== this.ifrmPreview.contentWindow) return;
+    const msg = <{ type?: string; r?: number }> e.data;
+    if (msg?.type !== "preview-scroll" || typeof msg.r !== "number") return;
+    if (Date.now() > this.#scrubUntil) return;
+    this.#lastRatio = msg.r;
+    this.link.sendScroll(msg.r);
+  }
+
+  /** Whether a wheel over the preview moves the audience. Also a command. */
+  togglePreviewScrub() {
+    this.settings.previewScrub = !this.settings.previewScrub;
+    this.#renderPreviewScrub();
+  }
+
+  /**
+   * Say whether the preview is armed.
+   *
+   * It has to be visible on the preview itself: the switch is a persisted
+   * preference buried in a dialog, and what it arms is a gesture that moves
+   * what the audience sees. Same reasoning as #icnHeld for live editing.
+   */
+  #renderPreviewScrub() {
+    const on = this.settings.previewScrub;
+    this.settings.swPreviewScrub.checked = on;
+    this.#previewFrame.classList.toggle("scrubbable", on);
+    this.#icnScrub.hidden = !on;
   }
 
   #postToPreview(msg: ControlMessage) {
@@ -901,6 +1026,7 @@ export class Teleprompter {
     const maxHeight = unlaid ? Teleprompter.MAX_PREVIEW_HEIGHT : box.height;
 
     const scale = Math.min(maxWidth / dims.width, maxHeight / dims.height);
+    this.#previewScale = scale;
 
     const container = <HTMLDivElement> this.ifrmPreview.parentElement;
     container.style.width = `${dims.width * scale}px`;
@@ -935,6 +1061,11 @@ export class Teleprompter {
 
   #onViewerScroll(id: string, ratio: number) {
     if (!this.viewers.has(id)) return;
+    // The operator is scrubbing the preview and owns the position. The
+    // driver's samples in this window are the position it held before the
+    // scrub reached it, so relaying them would fight the gesture on every
+    // other display. See SCRUB_HOLD_MS.
+    if (Date.now() < this.#scrubUntil) return;
     // Only the driver's samples are authoritative. Every viewer reports its
     // own position unconditionally; the rest are echoes of this one.
     if (id !== this.#driverID()) return;

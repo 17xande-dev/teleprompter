@@ -55,6 +55,10 @@ Deno.test("a missing key keeps its default rather than reading as false", () => 
   assertEquals(parseSettings('{"invertWheel":true}').liveEditing, true);
   assertEquals(parseSettings("{}").liveEditing, true);
   assertEquals(parseSettings('{"liveEditing":false}').liveEditing, false);
+  // And the third, which defaults the other way again — so "absent" cannot be
+  // read as "on" for a setting that moves what the audience sees.
+  assertEquals(parseSettings("{}").previewScrub, false);
+  assertEquals(parseSettings('{"previewScrub":true}').previewScrub, true);
   // Wrong type is dropped, not coerced — same rule as invertWheel above.
   assertEquals(parseSettings('{"liveEditing":"false"}').liveEditing, true);
 });

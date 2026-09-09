@@ -46,11 +46,25 @@ export type Settings = {
    * has.
    */
   liveEditing: boolean;
+  /**
+   * Whether scrolling the preview scrolls the audience.
+   *
+   * Off by default because the preview sits in the operator's sidebar under
+   * their pointer: armed, a wheel that drifts over it while they were reaching
+   * for a slider jogs every display mid-service. On, it is the fastest way to
+   * put the talent on a line — the gesture behaves like hand-scrolling the
+   * driver display, and the pacer carries on from wherever it is let go.
+   *
+   * Remembered, like the two above, which is why the preview shows plainly
+   * when it is armed rather than leaving that to a switch inside a dialog.
+   */
+  previewScrub: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
   invertWheel: false,
   liveEditing: true,
+  previewScrub: false,
 };
 
 /**
@@ -135,6 +149,15 @@ export class SettingsStorage {
 
   set liveEditing(value: boolean) {
     this.#settings.liveEditing = value;
+    this.#save();
+  }
+
+  get previewScrub(): boolean {
+    return this.#settings.previewScrub;
+  }
+
+  set previewScrub(value: boolean) {
+    this.#settings.previewScrub = value;
     this.#save();
   }
 

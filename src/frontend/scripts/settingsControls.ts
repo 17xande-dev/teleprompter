@@ -21,10 +21,12 @@ export class SettingsControls {
 
   #dialog: WaDialog;
   #swInvertWheel: WaSwitch;
+  #swPreviewScrub: WaSwitch;
 
   constructor() {
     this.#dialog = document.querySelector("#dlgSettings")!;
     this.#swInvertWheel = document.querySelector("#swInvertWheel")!;
+    this.#swPreviewScrub = document.querySelector("#swPreviewScrub")!;
     (<WaButton> document.querySelector("#btnSettings")).addEventListener(
       "click",
       () => this.open(),
@@ -35,6 +37,16 @@ export class SettingsControls {
     this.#swInvertWheel.addEventListener("change", () => {
       this.storage.invertWheel = this.#swInvertWheel.checked;
     });
+
+    // Reported rather than written straight to storage, unlike the switch
+    // above: the control page has to re-render the preview's armed marker,
+    // and it owns what the setting means. Same split as the Live editing
+    // switch, whose change handler calls toggleLiveEditing.
+    this.#swPreviewScrub.addEventListener("change", () => {
+      this.#swPreviewScrub.dispatchEvent(
+        new CustomEvent("preview-scrub", { bubbles: true, composed: true }),
+      );
+    });
   }
 
   /** Also the palette's "Settings" command. */
@@ -43,6 +55,7 @@ export class SettingsControls {
     // is the only state the dialog has, and re-reading means the switch cannot
     // drift from what the wheel handlers are actually using.
     this.#swInvertWheel.checked = this.storage.invertWheel;
+    this.#swPreviewScrub.checked = this.storage.previewScrub;
     this.#dialog.open = true;
   }
 
@@ -67,5 +80,19 @@ export class SettingsControls {
 
   set liveEditing(value: boolean) {
     this.storage.liveEditing = value;
+  }
+
+  /** Asked per gesture, never cached — see invertWheel. */
+  get previewScrub(): boolean {
+    return this.storage.previewScrub;
+  }
+
+  set previewScrub(value: boolean) {
+    this.storage.previewScrub = value;
+  }
+
+  /** The switch the control page listens to, so it can re-render the marker. */
+  get swPreviewScrub(): WaSwitch {
+    return this.#swPreviewScrub;
   }
 }

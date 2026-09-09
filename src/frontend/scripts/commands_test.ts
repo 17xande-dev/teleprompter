@@ -396,6 +396,7 @@ function fakeCommandHost() {
     closePdf: () => clicked.push("closePdf"),
     toggleAutoScroll: () => clicked.push("toggleAutoScroll"),
     toggleLiveEditing: () => clicked.push("toggleLiveEditing"),
+    togglePreviewScrub: () => clicked.push("togglePreviewScrub"),
     resetSliders: () => clicked.push("resetSliders"),
   };
 }

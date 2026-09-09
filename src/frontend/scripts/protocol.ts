@@ -112,6 +112,40 @@ export type DimsMessage = {
 // this discriminated variant instead.
 export type ScrollControlMessage = { type: "scroll"; r: number; s: number };
 
+/**
+ * Move the preview's viewport by a number of its own document pixels.
+ *
+ * Only ever posted to the preview iframe, and the one message that asks a
+ * viewer to *move* rather than telling it where to be. The operator's wheel
+ * and drag land on the control page — the iframe is transparent to pointer
+ * events and stays that way, because making it clickable would focus it and
+ * every keyboard shortcut is bound to the parent window (see paletteControls)
+ * — so the control page forwards the gesture here, and the preview's own
+ * ScrollSync samples the result and reports the ratio back.
+ *
+ * Pixels rather than a ratio because a gesture is a distance, not a
+ * destination: converting to a ratio here would need the document height the
+ * iframe has and the parent does not.
+ */
+export type ScrollByMessage = { type: "scroll-by"; px: number };
+
+/**
+ * The preview telling the control page where the operator just put it.
+ *
+ * The sole message that travels *up* from a viewer document to the control
+ * page — `ControlMessage` is otherwise controller→viewer throughout, which is
+ * why this is its own type and not a member of that union. (The untyped
+ * `pop-hello` a popped-out screen sends its opener is the precedent.)
+ *
+ * The control page accepts it only while it is expecting one, i.e. while the
+ * operator's own gesture is in progress. That gate is not politeness: a
+ * `scroll` event also fires when a layout change clamps `scrollTop`, and the
+ * preview relayouts on every keystroke with live editing on, on a PDF load
+ * and on every re-fit — so a ratio volunteered outside a gesture is noise
+ * that would otherwise be broadcast to every display.
+ */
+export type PreviewScrollMessage = { type: "preview-scroll"; r: number };
+
 export type ControlMessage =
   | ContentMessage
   | PdfMessage
@@ -119,6 +153,7 @@ export type ControlMessage =
   | SettingsMessage
   | ThemeMessage
   | ClockMessage
+  | ScrollByMessage
   | SetDriverMessage
   | DimsMessage
   | ScrollControlMessage;

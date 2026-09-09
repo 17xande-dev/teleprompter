@@ -60,6 +60,7 @@ export interface CommandHost {
   closePdf(): void;
   toggleAutoScroll(): void;
   toggleLiveEditing(): void;
+  togglePreviewScrub(): void;
   resetSliders(): void;
 }
 
@@ -188,6 +189,15 @@ export const COMMAND_SPECS: CommandSpec[] = [
     shortcut: "Mod+Alt+BracketLeft",
     keywords: ["zoom", "script", "mine", "editor"],
     repeatable: true,
+  },
+  {
+    // Whether the preview is a scrub surface. In "Scroll" because that is what
+    // it moves, and it is the operator's answer to "put them on this line".
+    id: "preview.scrub",
+    label: "Scroll the show from the preview on / off",
+    group: "Scroll",
+    shortcut: "Mod+Alt+KeyS",
+    keywords: ["preview", "scrub", "drag", "wheel", "audience", "displays"],
   },
   {
     // No shortcut: a right-click on a slider is the gesture, and this is how an
@@ -400,6 +410,7 @@ export function buildCommands(host: CommandHost): Command[] {
     // A host method, like scroll.toggle: the switch reports intent and this
     // owns what it means, so the two cannot end up disagreeing about which
     // way "toggle" went.
+    "preview.scrub": () => host.togglePreviewScrub(),
     "content.live": () => host.toggleLiveEditing(),
     "content.push": () => host.btnPushContent.click(),
     "document.new": () => host.docControls.create(),

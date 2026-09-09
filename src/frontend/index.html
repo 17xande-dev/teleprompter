@@ -74,6 +74,10 @@
            idiom as the gamepad icon beside it. -->
       <wa-icon id="icnHeld" class="bar-stat bar-warn" name="pause"
         title="Live editing is off — the displays are showing the last script you sent" hidden></wa-icon>
+      <!-- Armed: a wheel or drag over the preview moves every display. Same
+           appears-only-when-true idiom as the two icons beside it. -->
+      <wa-icon id="icnScrub" class="bar-stat bar-warn" name="arrows-up-down"
+        title="Scrolling the preview moves every display" hidden></wa-icon>
       <wa-button-group label="Session">
         <wa-button id="btnPalette" size="s" appearance="outlined" title="Commands (Ctrl+K)">
           <wa-icon slot="start" name="magnifying-glass"></wa-icon>
@@ -339,6 +343,11 @@
   <wa-dialog id="dlgSettings" label="Settings">
     <wa-switch id="swInvertWheel" hint="Flip which way a wheel or trackpad moves a slider's thumb. Turn this on if scrolling down moves a slider up.">
       Reverse slider scrolling
+    </wa-switch>
+    <!-- Says plainly what it arms, because what it arms moves what the
+         audience is reading. The preview shows a marker while it is on. -->
+    <wa-switch id="swPreviewScrub" hint="Scroll or drag the preview to move every display, like scrolling the screen itself. While this is off the preview ignores your pointer.">
+      Scroll the show from the preview
     </wa-switch>
     <wa-button name="close" slot="footer" variant="primary">Done</wa-button>
   </wa-dialog>

@@ -471,10 +471,26 @@ tp-clock-control tp-clock {
   position: relative;
 }
 
+/* Pointer-transparent, and it has to stay that way. Every gesture over the
+   preview is meant to land on the container above, which is what lets the
+   control page forward it in — and giving the iframe pointer events would make
+   it focusable, sending every keyboard shortcut into its document instead of
+   this one (tinykeys is installed on this window). */
 #ifrmPreview {
   border: none;
   overflow: hidden;
   pointer-events: none;
+}
+
+/* Armed: a wheel or drag here moves every display. Marked on the picture
+   itself because the switch that arms it is a remembered preference inside a
+   dialog, and this is the surface whose behaviour changed. */
+#divIFrameContainer.scrubbable {
+  outline: 2px solid var(--wa-color-warning-fill-loud);
+  outline-offset: 2px;
+  cursor: ns-resize;
+  /* Or a touch-drag scrolls the sidebar out from under the gesture. */
+  touch-action: none;
 }
 
 #divViewers {

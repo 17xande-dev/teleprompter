@@ -25,9 +25,13 @@ import "../styles/viewerThemes.css";
  * single codebase (mirroring ~/dev/webrtc-go's viewer.ts):
  *
  * - Embedded (window.parent !== window): this is the control page's own
- *   live preview iframe. It's a passive mirror — same JS process as the
- *   control page, so it talks over postMessage rather than WebRTC, and it
- *   never drives anything (no auto-scroll of its own, no scroll reports).
+ *   live preview iframe. Same JS process as the control page, so it talks over
+ *   postMessage rather than WebRTC, and it runs no auto-scroll loop of its own
+ *   — its motion is entirely the controller's. It is not quite the passive
+ *   mirror it used to be: it reports its scroll ratio upward, because the
+ *   operator can scrub the show from it. It is still never scrolled *by hand*
+ *   and never a driver; the gesture lands on the control page, which forwards
+ *   it here as `scroll-by` (see that message, and #handleControl's case).
  * - Standalone: a popped-out window or a remote device. It owns its own WebRTC
  *   link to the controller (?room= in the URL), runs the auto-scroll loop,
  *   and always reports its own scroll position — whether the controller
@@ -74,6 +78,18 @@ export class Viewer {
         // stay at 0 and #restoreScroll would yank it to the top on the next
         // edit.
         this.#lastRatio = ratio;
+        if (this.isPreviewer) {
+          // Where the operator just put us, offered to the control page —
+          // which ignores it unless it is expecting one. It has to be offered
+          // unconditionally because this fires for a layout clamp as well as
+          // for a gesture, and only the control page knows which it asked
+          // for. Same-origin, and the parent checks the source.
+          globalThis.parent.postMessage(
+            { type: "preview-scroll", r: ratio },
+            location.origin,
+          );
+          return;
+        }
         this.#link?.sendScroll(ratio);
       },
     });
@@ -91,6 +107,11 @@ export class Viewer {
       // previewer must never report dims or it would show up as a viewer.
       globalThis.addEventListener("resize", () => {
         this.#pdf?.setWidth(this.#pdfWidth());
+        // Relaying out a PDF changes scrollHeight while scrollTop stays in
+        // pixels, so the ratio this is showing drifts every time the operator
+        // drags a divider. The real viewers' #listenResize already restores;
+        // this branch was the one that didn't.
+        this.#restoreScroll();
       });
       return;
     }
@@ -178,6 +199,16 @@ export class Viewer {
         break;
       case "scroll":
         this.#applyRemoteScroll(msg.r);
+        break;
+      case "scroll-by":
+        // The operator scrubbing the preview. Deliberately *not* routed
+        // through #applyRemoteScroll: that arms the echo guard, and the whole
+        // point here is that the resulting scroll event must be sampled and
+        // reported back so the displays follow. This is the same bare
+        // scrollBy the auto-scroll loop uses to produce the driver's samples,
+        // for the same reason.
+        if (!this.isPreviewer) break;
+        globalThis.scrollBy(0, msg.px);
         break;
       case "dims":
         // Viewer only ever sends this, never receives it.
