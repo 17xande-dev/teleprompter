@@ -403,14 +403,25 @@ export class Viewer {
     if (!this.scroll) {
       return;
     }
+    // The frame clock, taken once and advanced before any branch below can
+    // return. It used to be advanced at the bottom of each exit path, and the
+    // "at the end of the script" branch was the one that forgot — so the time
+    // a viewer sat parked at the end accumulated, and the next frame that did
+    // scroll measured `timeElapsed` as that whole parked duration and asked
+    // for it all at once. Sent back up the script after 30s at the end at
+    // 100px/s, it asked for 3000px and snapped straight back. Hoisting it here
+    // makes forgetting structurally impossible rather than a thing to
+    // remember in three places.
+    if (this.lastScrollTime === 0) this.lastScrollTime = timestamp;
+    const timeElapsed = timestamp - this.lastScrollTime;
+    this.lastScrollTime = timestamp;
+
     const windowHeight = globalThis.innerHeight + globalThis.scrollY;
     if (this.scrollSpeed > 0 && windowHeight > document.body.offsetHeight) {
       // if we're at the bottom of the page, don't continue scrolling.
       requestAnimationFrame(this.smoothScroll.bind(this));
       return;
     }
-    if (this.lastScrollTime === 0) this.lastScrollTime = timestamp;
-    const timeElapsed = timestamp - this.lastScrollTime;
 
     this.accumulatedScroll = pendingScroll(
       this.scrollSpeed,
@@ -422,7 +433,6 @@ export class Viewer {
     // pendingScroll — a sub-pixel carry that outlived its speed is what made
     // an iPhone go on creeping after the operator zeroed the slider.
     if (this.accumulatedScroll === 0) {
-      this.lastScrollTime = timestamp;
       requestAnimationFrame(this.smoothScroll.bind(this));
       return;
     }
@@ -440,7 +450,6 @@ export class Viewer {
     // banking a blocked scroll used to pin a viewer to one end of its script.
     const moved = globalThis.scrollY - before;
     this.accumulatedScroll = carryRemainder(wanted, moved);
-    this.lastScrollTime = timestamp;
 
     requestAnimationFrame(this.smoothScroll.bind(this));
   }
