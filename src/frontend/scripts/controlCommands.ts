@@ -44,6 +44,7 @@ export interface CommandHost {
   btnSendPosition: Clickable;
   btnMatchScale: Clickable;
   btnSendScale: Clickable;
+  btnPushContent: Clickable;
   rngSpeed: Slider;
   rngScale: Slider;
   rngEditor: Slider;
@@ -58,6 +59,7 @@ export interface CommandHost {
   settings: { open(): void };
   closePdf(): void;
   toggleAutoScroll(): void;
+  toggleLiveEditing(): void;
   resetSliders(): void;
 }
 
@@ -216,6 +218,29 @@ export const COMMAND_SPECS: CommandSpec[] = [
   { id: "document.new", label: "New document", group: "Document" },
   { id: "pdf.close", label: "Close PDF", group: "Document" },
   {
+    // Whether the script travels as it is typed. In "Document" rather than
+    // "Text", which is about how big the words are, not which words.
+    id: "content.live",
+    label: "Live editing on / off",
+    group: "Document",
+    shortcut: "Mod+Alt+KeyL",
+    keywords: ["hold", "freeze", "draft", "audience", "displays"],
+    // Both of these are reached *from* the editor, with the cursor in the
+    // script — "hold this while I fix it" and "right, show them" are things
+    // an operator says mid-sentence. Suppressed while typing, as the default
+    // is, they would be shortcuts that never fire when they are wanted; the
+    // same reason message.send carries this.
+    allowWhileTyping: true,
+  },
+  {
+    id: "content.push",
+    label: "Send my script to viewers",
+    group: "Document",
+    shortcut: "Mod+Alt+KeyU",
+    keywords: ["update", "go live", "push", "audience", "displays"],
+    allowWhileTyping: true,
+  },
+  {
     id: "viewer.pop",
     label: "Open / close the local screen",
     group: "Viewers",
@@ -372,6 +397,11 @@ export function buildCommands(host: CommandHost): Command[] {
     "clock.start": () => host.tpClockControl.btnStart.click(),
     "clock.stop": () => host.tpClockControl.btnStop.click(),
     "clock.reset": () => host.tpClockControl.btnReset.click(),
+    // A host method, like scroll.toggle: the switch reports intent and this
+    // owns what it means, so the two cannot end up disagreeing about which
+    // way "toggle" went.
+    "content.live": () => host.toggleLiveEditing(),
+    "content.push": () => host.btnPushContent.click(),
     "document.new": () => host.docControls.create(),
     "pdf.close": () => host.closePdf(),
     "viewer.pop": () => host.btnPop.click(),

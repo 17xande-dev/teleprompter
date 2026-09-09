@@ -50,4 +50,22 @@ export class SettingsControls {
   get invertWheel(): boolean {
     return this.storage.invertWheel;
   }
+
+  /**
+   * Whether edits go out as they are typed.
+   *
+   * Read and written through here rather than off `storage` directly, so
+   * every preference has one accessor and the control page never has to know
+   * which of them this dialog happens to own a switch for. Its switch is in
+   * the Sync card, not this dialog: the operator reaches for it mid-session,
+   * beside the other "what do the displays have" actions, and a preference
+   * being remembered is not the same as it belonging behind a gear icon.
+   */
+  get liveEditing(): boolean {
+    return this.storage.liveEditing;
+  }
+
+  set liveEditing(value: boolean) {
+    this.storage.liveEditing = value;
+  }
 }

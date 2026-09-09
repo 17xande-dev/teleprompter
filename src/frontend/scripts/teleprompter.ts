@@ -21,6 +21,7 @@ import WaIcon from "@awesome.me/webawesome/dist/components/icon/icon.js";
 import WaInput from "@awesome.me/webawesome/dist/components/input/input.js";
 import WaQrCode from "@awesome.me/webawesome/dist/components/qr-code/qr-code.js";
 import WaSlider from "@awesome.me/webawesome/dist/components/slider/slider.js";
+import WaSwitch from "@awesome.me/webawesome/dist/components/switch/switch.js";
 import WaTag from "@awesome.me/webawesome/dist/components/tag/tag.js";
 
 // Prevent treeshaking so that these elements are initialised. `void` rather
@@ -31,7 +32,7 @@ import WaTag from "@awesome.me/webawesome/dist/components/tag/tag.js";
 void (WaSplitPanel && WaBadge && WaButton && WaButtonGroup && WaCallout &&
   WaCard && WaCopyButton && WaDetails && WaDialog && WaDivider &&
   WaDropdown && WaDropdownItem && WaIcon && WaInput && WaQrCode && WaSlider &&
-  WaTag);
+  WaSwitch && WaTag);
 
 // CSS imports
 import "@awesome.me/webawesome/dist/styles/themes/shoelace.css";
@@ -106,6 +107,7 @@ export class Teleprompter {
   btnSendPosition: WaButton;
   btnMatchScale: WaButton;
   btnSendScale: WaButton;
+  btnPushContent: WaButton;
   palette: PaletteControls;
   padControls: GamepadControls;
   settings: SettingsControls;
@@ -116,6 +118,17 @@ export class Teleprompter {
 
   #currentMessage = "";
   #autoScrollRunning = true;
+  // What the displays are actually showing, as opposed to what is in the
+  // editor. The two are the same thing while live editing is on and have to
+  // be told apart while it is off — a display that reloads mid-service must
+  // come back showing what the others show, not the operator's draft.
+  #publishedHtml = "";
+  // Whether the editor has run ahead of #publishedHtml. Only ever true while
+  // live editing is off, and the only reason the operator can see that there
+  // is something to push.
+  #draftHeld = false;
+  // Whether anything has been published this session. See updateMain.
+  #everPublished = false;
   // The one spelling of the URL a display joins on. The anchor, the copy
   // button, the QR code and the local screen window all read this field.
   #viewerURL = "";
@@ -150,6 +163,8 @@ export class Teleprompter {
   #pdfView: PdfView | null = null;
   #pdfResize: ResizeObserver | null = null;
   #previewBox: HTMLElement;
+  #swLiveEditing: WaSwitch;
+  #icnHeld: HTMLElement;
   // Where the divider sits when not in the mobile one-pane-at-a-time layout,
   // which overwrites `position` with 0 or 100. Seeded in #wirePaneToggle.
   #desktopSplit = 0;
@@ -183,6 +198,9 @@ export class Teleprompter {
     this.btnSendPosition = document.querySelector("#btnSendPosition")!;
     this.btnMatchScale = document.querySelector("#btnMatchScale")!;
     this.btnSendScale = document.querySelector("#btnSendScale")!;
+    this.btnPushContent = document.querySelector("#btnPushContent")!;
+    this.#swLiveEditing = document.querySelector("#swLiveEditing")!;
+    this.#icnHeld = document.querySelector("#icnHeld")!;
     this.splitPanel = document.querySelector("wa-split-panel")!;
     this.btnMessage = document.querySelector("#btnMessage")!;
     this.rngSpeed = document.querySelector("#rngSpeed")!;
@@ -263,11 +281,17 @@ export class Teleprompter {
     // TODO: when docControls becomes a WebComponent, listen directly to it.
     this.docControls.drpDocuments.addEventListener(
       "new",
-      () =>
+      () => {
         this.editor = newEditor(
           document.querySelector("#editor")!,
           this.saveEditorContent.bind(this),
-        ),
+        );
+        // As the "load" handler below does. Without this a new document left
+        // the displays on the previous script until the first keystroke, so
+        // "New document" mid-service showed the talent the wrong page and
+        // nothing said why.
+        this.updateMain();
+      },
     );
 
     this.docControls.drpDocuments.addEventListener(
@@ -311,6 +335,14 @@ export class Teleprompter {
       () => this.matchTextScaleFromViewers(),
     );
     this.btnSendScale.addEventListener("click", () => this.sendMyTextScale());
+    this.btnPushContent.addEventListener("click", () => this.pushContent());
+    // The switch reports the operator's intent; toggleLiveEditing owns what
+    // that means, so the palette command and this click cannot diverge.
+    this.#swLiveEditing.addEventListener("change", () => {
+      if (this.#swLiveEditing.checked !== this.settings.liveEditing) {
+        this.toggleLiveEditing();
+      }
+    });
     this.rngSpeed.addEventListener("wheel", this.listenSpeedWheel.bind(this), {
       passive: false,
     });
@@ -383,7 +415,9 @@ export class Teleprompter {
         type: "settings",
         textScale: this.rngScale.value / 10,
       });
-      this.updateMain();
+      // The published script, not the editor's: the preview is a mirror of
+      // what the displays show, which is the one thing it exists for.
+      this.#pushPublished();
     });
 
     // The preview fits the box it is given, so it has to be refitted whenever
@@ -411,6 +445,7 @@ export class Teleprompter {
     this.#renderViewers();
     this.#renderTransport();
     this.#renderPop();
+    this.#renderLive();
   }
 
   /**
@@ -626,9 +661,11 @@ export class Teleprompter {
 
     this.link.broadcast({ type: "pdf-clear" });
     this.#postToPreview({ type: "pdf-clear" });
-    // Viewers cleared their #main along with the PDF, so they need the
-    // editor's content pushed again rather than waiting for the next keystroke.
-    this.updateMain();
+    // Viewers cleared their #main along with the PDF, so they need the script
+    // pushed again rather than waiting for the next keystroke. Not through
+    // updateMain: with live editing off that would send nothing and leave
+    // every display blank, which is worse than showing a slightly old script.
+    this.#pushPublished();
   }
 
   #postToPreview(msg: ControlMessage) {
@@ -691,10 +728,10 @@ export class Teleprompter {
     if (this.#pdfBytes) {
       this.link.sendFileTo(id, this.#pdfName ?? "document.pdf", this.#pdfBytes);
     } else {
-      this.link.sendTo(id, {
-        type: "content",
-        html: this.editor.contentDOM.innerHTML,
-      });
+      // #publishedHtml, not the editor: while live editing is off the editor
+      // holds a draft nobody is meant to see, and a display that reloads
+      // mid-service has to come back agreeing with the others.
+      this.link.sendTo(id, { type: "content", html: this.#publishedHtml });
     }
     this.link.sendTo(id, {
       type: "settings",
@@ -1407,12 +1444,89 @@ export class Teleprompter {
     this.#pushSettings({ message: this.#currentMessage });
   }
 
+  /**
+   * The editor has new content. Publish it, if the operator wants that.
+   *
+   * Every path to a changed script comes through here: a keystroke, opening
+   * another document, creating one. With live editing off it goes no further
+   * than remembering that there is something to send — which is the whole
+   * point of the switch, and why the alternative (letting it through and
+   * hoping) would be no feature at all.
+   */
   updateMain() {
     // Editing while a PDF is showing is legitimate — the operator can prepare
     // the next script — but it must not push that text at the displays.
     if (this.#pdfBytes) return;
-    const content = this.editor.contentDOM.innerHTML;
-    this.link.broadcast({ type: "content", html: content });
-    this.#postToPreview({ type: "content", html: content });
+    // The first content of a session goes out whatever the switch says.
+    // Nothing has been published yet, so there is no earlier script for the
+    // displays to be showing instead — holding it back would send them the
+    // empty string and blank every screen, which is the opposite of what the
+    // switch is for.
+    if (!this.settings.liveEditing && this.#everPublished) {
+      this.#draftHeld = true;
+      this.#renderLive();
+      return;
+    }
+    this.pushContent();
+  }
+
+  /**
+   * Send the editor's content to the displays and remember it as theirs.
+   *
+   * The only writer of #publishedHtml, so "what the audience is showing" has
+   * exactly one answer however the content got there — the switch, the
+   * button, the palette, or a keystroke while live.
+   */
+  pushContent() {
+    if (this.#pdfBytes) return;
+    this.#publishedHtml = this.editor.contentDOM.innerHTML;
+    this.#everPublished = true;
+    this.#draftHeld = false;
+    this.#pushPublished();
+    this.#renderLive();
+  }
+
+  /** Send whatever the displays are supposed to be showing, unconditionally. */
+  #pushPublished() {
+    const msg: ControlMessage = {
+      type: "content",
+      html: this.#publishedHtml,
+    };
+    this.link.broadcast(msg);
+    this.#postToPreview(msg);
+  }
+
+  /**
+   * Turn live editing on or off.
+   *
+   * Turning it on publishes at once. "Go live" has to mean the displays now
+   * show what the operator is looking at — leaving them a keystroke behind
+   * would be the same trap the switch exists to avoid, in the other
+   * direction.
+   */
+  toggleLiveEditing() {
+    const on = !this.settings.liveEditing;
+    this.settings.liveEditing = on;
+    if (on) this.pushContent();
+    else this.#renderLive();
+  }
+
+  /**
+   * Say whether the displays are tracking the editor.
+   *
+   * The switch is remembered across reloads, so this indicator is what keeps
+   * that from being a trap: the app bar says so whenever they are not, and
+   * the push button goes loud once there is something held to send. Without
+   * it an operator could type for minutes into a screen showing something
+   * else.
+   */
+  #renderLive() {
+    const on = this.settings.liveEditing;
+    this.#swLiveEditing.checked = on;
+    this.#icnHeld.hidden = on;
+    this.btnPushContent.appearance = this.#draftHeld ? "accent" : "outlined";
+    this.btnPushContent.title = this.#draftHeld
+      ? "The displays are behind the editor — send the script now"
+      : "Send the script to the displays";
   }
 }

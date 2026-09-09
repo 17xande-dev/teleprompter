@@ -97,6 +97,15 @@ body {
   white-space: nowrap;
 }
 
+/* The quiet grey the other bar stats wear is right for "a pad is plugged in"
+   and wrong for "the displays are not following you": that is a state the
+   operator has to notice without looking for it, and it is the only one in
+   the bar that is about something being off. */
+.bar-stat.bar-warn {
+  color: var(--wa-color-warning-fill-loud);
+  font-size: var(--wa-font-size-m);
+}
+
 /* The bar is the session's status line, so the room id and the connection
    badge are the first things to go when it runs out of room — the buttons
    beside them are actions and have to stay clickable. */

@@ -380,6 +380,7 @@ function fakeCommandHost() {
     btnSendPosition: click("sendPosition"),
     btnMatchScale: click("matchScale"),
     btnSendScale: click("sendScale"),
+    btnPushContent: click("pushContent"),
     rngSpeed: { value: 0, dispatchEvent: () => true },
     rngScale: { value: 30, dispatchEvent: () => true },
     rngEditor: { value: 20, dispatchEvent: () => true },
@@ -394,6 +395,7 @@ function fakeCommandHost() {
     settings: { open: () => clicked.push("settings") },
     closePdf: () => clicked.push("closePdf"),
     toggleAutoScroll: () => clicked.push("toggleAutoScroll"),
+    toggleLiveEditing: () => clicked.push("toggleLiveEditing"),
     resetSliders: () => clicked.push("resetSliders"),
   };
 }
@@ -414,6 +416,18 @@ Deno.test("the editor size commands are not inverted the way speed is", () => {
   host.rngEditor.value = 20;
   run("editor.down");
   assert(host.rngEditor.value < 20, "editor.down must make the script smaller");
+});
+
+Deno.test("the two live-editing commands reach different seams", () => {
+  // The toggle goes to the page, because the page owns what "toggle" means
+  // and the switch only reports intent; the push goes through the button, so
+  // a click and the shortcut are one path. Getting these the same way round
+  // is what stops the palette advertising a toggle that only ever pushes.
+  const host = fakeCommandHost();
+  const commands = buildCommands(host);
+  commands.find((c) => c.id === "content.live")!.run();
+  commands.find((c) => c.id === "content.push")!.run();
+  assertEquals(host.clicked, ["toggleLiveEditing", "pushContent"]);
 });
 
 Deno.test("Settings is opened by the page's own dialog controller", () => {

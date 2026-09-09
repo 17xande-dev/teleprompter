@@ -1,5 +1,9 @@
-// The operator's own preferences for how this page behaves — not show state,
-// and nothing a viewer ever hears about.
+// The operator's own preferences for how this page behaves, remembered for
+// this browser.
+//
+// One of them, `liveEditing`, does decide whether something reaches a viewer,
+// which the rest of this file deliberately does not — see its own note for
+// why it is remembered anyway.
 //
 // DOM-free, and the Storage is injected, the same split as doc.ts / themes.ts
 // against docControls.ts / themeControls.ts: settingsControls.ts owns the
@@ -27,9 +31,27 @@ export type Settings = {
    * disagrees. Default `false` so a fresh page has every switch off.
    */
   invertWheel: boolean;
+  /**
+   * Whether an edit goes out to the displays as it is typed.
+   *
+   * Off is how an operator opens another document, fixes a typo three pages
+   * ahead or pastes in a late change without any of it appearing in front of
+   * the talent; `pushContent` is then the deliberate "show it now".
+   *
+   * Remembered, unlike a piece of show state, because an operator who works
+   * with it off wants it off — and the cost of remembering is bounded by
+   * saying so loudly: the app bar carries an indicator whenever the displays
+   * are not tracking the editor, so a reload cannot come back quietly not
+   * live. Default true, so a fresh browser behaves the way the app always
+   * has.
+   */
+  liveEditing: boolean;
 };
 
-export const DEFAULT_SETTINGS: Settings = { invertWheel: false };
+export const DEFAULT_SETTINGS: Settings = {
+  invertWheel: false,
+  liveEditing: true,
+};
 
 /**
  * Read stored settings, dropping anything that isn't the shape it should be.
@@ -104,6 +126,19 @@ export class SettingsStorage {
   /** Saving happens in the mutator, so nothing can change a setting silently. */
   set invertWheel(value: boolean) {
     this.#settings.invertWheel = value;
+    this.#save();
+  }
+
+  get liveEditing(): boolean {
+    return this.#settings.liveEditing;
+  }
+
+  set liveEditing(value: boolean) {
+    this.#settings.liveEditing = value;
+    this.#save();
+  }
+
+  #save() {
     try {
       this.#store.setItem(SETTINGS_KEY, JSON.stringify(this.#settings));
     } catch (err) {

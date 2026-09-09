@@ -67,6 +67,13 @@
            also the only feedback the operator gets that the browser has
            noticed it — Chrome hides a pad until a button is pressed. -->
       <wa-icon id="icnGamepad" class="bar-stat" name="gamepad" title="Game controller connected" hidden></wa-icon>
+      <!-- Shown whenever the displays are not tracking the editor. The Live
+           editing switch is remembered across reloads, so without this a
+           reload could come back quietly not live and the operator would type
+           into a screen showing something else. Same appears-only-when-true
+           idiom as the gamepad icon beside it. -->
+      <wa-icon id="icnHeld" class="bar-stat bar-warn" name="pause"
+        title="Live editing is off — the displays are showing the last script you sent" hidden></wa-icon>
       <wa-button-group label="Session">
         <wa-button id="btnPalette" size="s" appearance="outlined" title="Commands (Ctrl+K)">
           <wa-icon slot="start" name="magnifying-glass"></wa-icon>
@@ -241,6 +248,20 @@
             <wa-icon slot="start" name="text-height"></wa-icon>
           </wa-button>
         </wa-button-group>
+        <!-- The script itself, which is the third thing the two panes can
+             disagree about and the only one the operator may want held. A
+             lone button rather than a pair like the two above: there is no
+             "fetch the displays' script", because this page is where it
+             comes from. -->
+        <wa-divider></wa-divider>
+        <wa-switch id="swLiveEditing" checked
+          hint="Off holds your edits back, so you can open another document or fix something ahead without it appearing on the displays.">
+          Live editing
+        </wa-switch>
+        <wa-button id="btnPushContent" size="s" appearance="outlined" variant="brand"
+          title="Send the script to the displays">Send my script
+          <wa-icon slot="start" name="upload"></wa-icon>
+        </wa-button>
       </wa-card>
       <wa-card id="divViewersCard" appearance="outlined" with-header>
         <span slot="header" class="card-title">

@@ -42,8 +42,35 @@ Deno.test("unusable stored settings fall back rather than throwing", () => {
 
 Deno.test("an unknown key doesn't take the rest of the settings with it", () => {
   assertEquals(parseSettings('{"invertWheel":true,"colour":"puce"}'), {
+    ...DEFAULT_SETTINGS,
     invertWheel: true,
   });
+});
+
+Deno.test("a missing key keeps its default rather than reading as false", () => {
+  // The two settings default opposite ways, so "absent" and "off" have to be
+  // different answers: stored settings written before liveEditing existed
+  // must not read as live editing turned off, which would leave an operator
+  // typing into displays that stopped following them.
+  assertEquals(parseSettings('{"invertWheel":true}').liveEditing, true);
+  assertEquals(parseSettings("{}").liveEditing, true);
+  assertEquals(parseSettings('{"liveEditing":false}').liveEditing, false);
+  // Wrong type is dropped, not coerced — same rule as invertWheel above.
+  assertEquals(parseSettings('{"liveEditing":"false"}').liveEditing, true);
+});
+
+Deno.test("live editing persists on its own, alongside the wheel", () => {
+  const store = fakeStore();
+  const settings = new SettingsStorage(store);
+  assertEquals(settings.liveEditing, true);
+
+  settings.liveEditing = false;
+  settings.invertWheel = true;
+  // Both come back: one mutator must not overwrite the other's key, which is
+  // what a save that serialised a partial object would do.
+  const reloaded = new SettingsStorage(store);
+  assertFalse(reloaded.liveEditing);
+  assertEquals(reloaded.invertWheel, true);
 });
 
 Deno.test("a setting is persisted by the mutator that changes it", () => {
