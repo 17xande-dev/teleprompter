@@ -146,6 +146,24 @@ export type ScrollByMessage = { type: "scroll-by"; px: number };
  */
 export type PreviewScrollMessage = { type: "preview-scroll"; r: number };
 
+/**
+ * Whether something that arrived on a `message` event is one of these.
+ *
+ * A guard rather than a cast, because this is the one direction where the data
+ * is genuinely untrusted at the type level: `postMessage` carries `unknown`,
+ * and an assertion would let a malformed payload through to `sendScroll` as a
+ * `number` that isn't one. Narrowing here is also what ties the receiver to
+ * the same declaration the sender is annotated with — the type was declared
+ * for documentation and referenced by neither end, which is exactly how a
+ * renamed field becomes a scrub that silently stops working.
+ */
+export function isPreviewScroll(data: unknown): data is PreviewScrollMessage {
+  if (!data || typeof data !== "object") return false;
+  const msg = data as Partial<PreviewScrollMessage>;
+  return msg.type === "preview-scroll" && typeof msg.r === "number" &&
+    Number.isFinite(msg.r);
+}
+
 export type ControlMessage =
   | ContentMessage
   | PdfMessage

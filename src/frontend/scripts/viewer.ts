@@ -8,7 +8,7 @@ import {
 } from "./scrollsync.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
 import { LOCAL_CHANNEL } from "./protocol.ts";
-import type { ControlMessage } from "./protocol.ts";
+import type { ControlMessage, PreviewScrollMessage } from "./protocol.ts";
 
 // CSS imports.
 import "@awesome.me/webawesome/dist/styles/themes/shoelace.css";
@@ -84,10 +84,18 @@ export class Viewer {
           // unconditionally because this fires for a layout clamp as well as
           // for a gesture, and only the control page knows which it asked
           // for. Same-origin, and the parent checks the source.
-          globalThis.parent.postMessage(
-            { type: "preview-scroll", r: ratio },
-            location.origin,
-          );
+          //
+          // Typed rather than sent as a bare literal: this is the one message
+          // with no compile-time tie to its receiver — postMessage takes
+          // `unknown` and the control page has to re-validate whatever
+          // arrives — so annotating it here is the only thing that makes
+          // renaming `r` a type error instead of a scrub that silently stops
+          // working.
+          const report: PreviewScrollMessage = {
+            type: "preview-scroll",
+            r: ratio,
+          };
+          globalThis.parent.postMessage(report, location.origin);
           return;
         }
         this.#link?.sendScroll(ratio);
@@ -167,7 +175,15 @@ export class Viewer {
         this.setContent(msg.html);
         break;
       case "pdf":
-        this.setPdf(msg.data);
+        // Caught, because setPdf clears #main *before* it awaits renderPdf: a
+        // PDF pdf.js cannot read (corrupt, encrypted, truncated in transit)
+        // left the display blank with the rejection going nowhere, and a blank
+        // display in front of the talent is indistinguishable from a dead
+        // link. The message says which file and why, in the console the
+        // operator opens when a screen misbehaves.
+        this.setPdf(msg.data).catch((err) => {
+          console.error(`could not render ${msg.name}`, err);
+        });
         break;
       case "pdf-clear":
         this.clearPdf();
@@ -213,6 +229,18 @@ export class Viewer {
       case "dims":
         // Viewer only ever sends this, never receives it.
         break;
+      default: {
+        // Exhaustiveness, checked by the compiler: `msg` is only assignable to
+        // `never` here while every ControlMessage variant above is handled.
+        // Add a variant to the protocol and forget it, and this stops
+        // compiling — which is the only thing that would have caught it. A
+        // switch that merely fell through was silent, and "the display ignores
+        // one kind of message" looks exactly like a network fault from the
+        // control page.
+        const unhandled: never = msg;
+        void unhandled;
+        break;
+      }
     }
   }
 

@@ -63,6 +63,7 @@ import {
   tenthsToRem,
 } from "./textscale.ts";
 import { LOCAL_CHANNEL } from "./protocol.ts";
+import { isPreviewScroll } from "./protocol.ts";
 import type { ControlMessage, ThemeMessage } from "./protocol.ts";
 import { wheelStep } from "./settings.ts";
 import { ThemeControls } from "./themeControls.ts";
@@ -772,8 +773,8 @@ export class Teleprompter {
     // The source, not just the origin: a popped-out screen is same-origin too
     // and holds a handle on this window.
     if (e.source !== this.ifrmPreview.contentWindow) return;
-    const msg = <{ type?: string; r?: number }> e.data;
-    if (msg?.type !== "preview-scroll" || typeof msg.r !== "number") return;
+    if (!isPreviewScroll(e.data)) return;
+    const msg = e.data;
     if (Date.now() > this.#scrubUntil) return;
     this.#lastRatio = msg.r;
     this.link.sendScroll(msg.r);
