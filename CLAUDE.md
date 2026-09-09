@@ -29,11 +29,12 @@ three is yours.
 - `@std/assert` is declared in `deno.jsonc`'s `imports`; test files import it by
   bare specifier. A `jsr:`-prefixed import in a new test file puts two lint
   problems back.
-- `clock.ts`'s `interval` is `ReturnType<typeof setInterval> | undefined`, the
+- `clock.ts`'s `tickTimer` is `ReturnType<typeof setTimeout> | undefined`, the
   same shape `themeControls.ts` uses. `undefined` is the "not running" sentinel
-  and it is load-bearing, not cosmetic: `start()` returns early on it, and with
-  it defeated a second Start stacks a second interval and the countdown runs
-  down two seconds per second.
+  and it is load-bearing, not cosmetic: `#run()` returns early on it, and with
+  it defeated a second Start stacks a second chain of redraws. (It was
+  `interval` and a `setInterval` until the countdown became deadline-based — see
+  Clocks below.)
 
 `deno test` is run with `--no-check`: with the repo config, its type-check pass
 pulls in the whole project graph including `teleprompter.ts`'s raw CSS imports,
@@ -151,9 +152,15 @@ WebSocket relay, `ice.go` STUN/TURN config.
   the panes are different widths and equal pixels would wrap differently.
 - `protocol.ts` — the control-channel message union, shared by both transports.
 - `settings.ts` / `settingsControls.ts` — the operator's own preferences for
-  this browser (currently just the wheel direction), split DOM-free half from
-  dialog half like the two below. Nothing in here is on the wire, and nothing in
-  it belongs to a document or a room.
+  this browser (the wheel direction, and live editing), split DOM-free half from
+  dialog half like the two below. Nothing in it belongs to a document or a room.
+  `liveEditing` is the one preference that decides whether something reaches a
+  viewer — see the Live editing section — and the one whose switch is not in the
+  Settings dialog.
+- `timer.ts` / `timer_test.ts` — the countdown's arithmetic and its stored form,
+  DOM-free. It has to be: `clock.ts` imports Web Awesome components that
+  `deno test` cannot resolve, so anything left in there is untestable by
+  construction, which is why `TPClock` had none.
 - `doc.ts` / `themes.ts` — the two localStorage-backed collections (script
   documents; user viewer layouts), both deliberately **DOM-free** so they can be
   unit-tested, both taking their `Storage` as a constructor argument.
@@ -205,7 +212,8 @@ WebSocket relay, `ice.go` STUN/TURN config.
   built-in layouts). These were `pop*` and `.pop-clocks` until themes landed —
   the viewer is not always a popped-out window, and a class every theme is
   written against is not one to rename later. `#btnPop`/`listenPop` keep the
-  name because they really are the `window.open` action.
+  name because they really are the `window.open` action, even though the button
+  now reads "Screen" and toggles.
 - The control page's chrome is an **app bar** (`#appBar`) above the split panel,
   holding what is true of the session rather than of a pane: the document
   actions, the room id, a signaling badge, the viewer count, the gamepad
@@ -530,6 +538,134 @@ memory only — `DocStorage`'s localStorage would not survive one).
   assigning the view.
 - The control page's own PDF pane is deliberately _not_ scroll-synced: the
   operator reads ahead or behind without moving the viewers.
+
+### The local screen, and local vs remote
+
+`#btnPop` opens or closes **one** window, on this machine, and shows which.
+Everything else in the room arrives by itself through the viewer link.
+
+- **Closing a popup notifies nobody.** No event fires in the opener, and the
+  popup's own `pagehide` cannot be relied on to run before it goes, so
+  `#popWin.closed` is polled. That poll is the button's only way of being
+  honest.
+- **A control-page refresh loses the handle while the display keeps running.**
+  The display posts `{type: "pop-hello"}` to its `opener` every two seconds and
+  a fresh control page adopts `event.source`; `opener` survives the opener
+  navigating, which is what makes this work. Without it the button reads
+  "closed" for the rest of a session that still has a screen on. A refresh must
+  _not_ close the popup — a new controller evicts the sitting one and the
+  display rejoins by itself.
+- **`getScreenDetails` throws _and_ rejects.** Missing outside Chromium, and
+  refused when the permission is denied. Unguarded in an `async` click listener
+  it escaped as an unhandled promise and the window silently never opened.
+- **A window cannot fullscreen itself on load**, and the control page cannot do
+  it for another window: `requestFullscreen` only acts on elements in your own
+  document and needs an activation there, and `window.open` _consumes_ the
+  opener's. Measured, not assumed — a click-opened display comes up with
+  `document.fullscreenElement === null` every time. Three things cover it, in
+  order: the `fullscreen` window feature (Chrome's fullscreen companion window,
+  zero clicks, but only with the Window Management permission _and_ a second
+  screen — it is a multi-screen feature and does nothing on one display);
+  `moveTo`/`resizeTo` to the screen's available area, which script may do to a
+  window it opened with no activation at all and which leaves only a thin URL
+  strip on a `popup=true` window; and a click anywhere for true fullscreen.
+  There was a click-to-fill prompt here and it was the wrong answer: the display
+  is pointed at the talent, and a message they must look at until someone clears
+  it is worse than the chrome it removes.
+- **Size the window after `load`, not on construction.** Asked for while the
+  window is still being placed, the resize is undone by the placement that
+  follows — the same call measured at 1518px wide on load and 3072 a moment
+  later. A window manager that owns geometry overrides it regardless.
+- **Skip the doomed fullscreen call rather than catching it.** Chrome logs "API
+  can only be initiated by a user gesture" _itself_, where no `catch` can reach
+  it, so calling with no activation put a warning in the operator's console on
+  every open. `navigator.userActivation?.isActive` is the guard.
+- **A display decides for itself whether it is local**, on two same-origin
+  signals: `opener` for a window this page opened, and a
+  `BroadcastChannel(LOCAL_CHANNEL)` handshake for the rest — the channel reaches
+  only pages of this origin in this browser profile, so an answer arriving _is_
+  the evidence. That second signal is what covers a window the operator opened
+  from the viewer link by hand, since the link carries `rel="noopener"`. The
+  control page answers probes rather than announcing itself, because a display
+  can start at any time. Honest limit: "same browser profile on this machine",
+  so a second _browser_ on the same desk reads as remote. Nothing is granted on
+  the strength of it, so being wrong is cosmetic.
+- The flag rides on `DimsMessage`, which is already sent on connect and on every
+  resize, so a reconnect re-establishes it for free.
+- **The count says "2 local · 1 remote", and that is the point.** A bare total
+  reads identically whether three people are watching on three devices or three
+  windows are stacked on this laptop. The `Live` badge is unchanged and still
+  answers its own one question.
+
+### Live editing
+
+The switch in the Sync card decides whether an edit reaches the displays as it
+is typed; `pushContent` is the deliberate "show them now".
+
+- **`#publishedHtml` is what the displays are showing; the editor is what the
+  operator has.** Telling them apart is the load-bearing part. `#onViewerJoined`
+  and the preview's `load` handler both read the editor directly, so without it
+  a display reloading mid-service came back showing the draft while every other
+  display showed the real script. Watched failing before it was fixed.
+- **`closePdf` pushes the published script unconditionally.** Routed through the
+  gate it would send nothing and leave every display blank, which is worse than
+  a slightly old script.
+- **The first content of a session is always published** (`#everPublished`).
+  Nothing has been sent yet, so there is no earlier script for the displays to
+  be showing instead, and holding it back would send them the empty string.
+- **The switch is remembered, so the app bar says when it is off.** `#icnHeld`
+  is amber and appears only when the displays are not tracking the editor,
+  because a remembered "off" otherwise means a reload comes back quietly not
+  live and the operator types into a screen showing something else.
+- **Both shortcuts are `allowWhileTyping`.** They are reached from the editor
+  with the cursor in the script; suppressed while typing — which is the default
+  — they would be shortcuts that never fire when they are wanted.
+- Dropping a PDF still goes out immediately: it is a deliberate action, not
+  typing.
+
+### Clocks
+
+`ClockMessage` carries the countdown's **whole state** (`running`,
+`remainingMs`), not a command. It used to be `start`/`stop`/`reset(time)`, and
+that is why the timer restarted on every reload and the copies drifted:
+"running" existed nowhere but a live `setInterval` in each receiver, stepping
+its own `Date` back a second per tick. Nothing to replay, nothing to write down,
+and a copy that missed ticks in a background tab simply ran slow.
+
+- **A remaining duration, never an absolute deadline.** An epoch stamped by the
+  control page is read against the _receiver's_ clock, so a display whose clock
+  is off — a phone, a Pi that has not reached NTP — would show nonsense. The
+  receiver anchors it to its own clock on arrival; measured transit is ~1–20ms.
+- **Nothing caches the state.** `TPClockControl.state()` is asked every time one
+  is needed, because a remembered `remainingMs` stops being true the instant it
+  is taken: handing a 36-second-old "two minutes left" to a display that has
+  just connected started it 36 seconds behind. Measured. It is the old
+  protocol's mistake in miniature, and the reason `#setClock` takes no argument.
+- **Redraws are aimed at the moment the text turns over, not fired on an
+  interval.** An interval runs on whatever phase it was started on, so two
+  copies redrew up to a period apart and read a whole second differently —
+  measured between the operator's countdown and the preview's. `#msToNextChange`
+  derives the next boundary from the deadline both copies were given, so they
+  land together; 131 samples across three copies now show zero disagreements. It
+  fires a few ms _late_ on purpose, or a redraw can land a hair before the
+  boundary, paint the same text and then wait a whole second.
+- **The state is replayed in both catch-up sites**, `#onViewerJoined` and the
+  preview iframe's `load` handler. Both were one gap behind on the timer while
+  theme and text scale were already handled.
+- **`teleprompter.timer` in localStorage carries the moment it was written**, so
+  the operator's own refresh resumes where the countdown _would have been_
+  rather than where it was left. Elapsed time is clamped at zero: a clock that
+  went backwards (NTP, a suspend) would otherwise lengthen the countdown.
+- **The reset target is stored separately from where the countdown has got to.**
+  The three fields are what Reset means, so restoring the running value into
+  them would turn a five-minute countdown refreshed at 4:38 into a 4:38
+  countdown from then on.
+- **`parseDuration` sums fields; it does not build a time of day.** The old
+  `parseTimer` set hours/minutes/seconds on a `Date`, so an hour field above 23
+  rolled the date over. `formatDuration` rounds _up_ in absolute value, so a
+  countdown started at thirty seconds reads 0:30 rather than flicking to 0:29.
+- The `observedAttributes = ["countdown"]` path is gone: it only acted on a
+  `type="countdown"` this app never used, so nothing on it ever ran.
 
 ### Viewer themes
 
