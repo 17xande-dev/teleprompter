@@ -44,6 +44,7 @@ import type { Doc } from "./doc.ts";
 import { DocControls } from "./docControls.ts";
 import { Wordgard } from "wordgard/editor";
 import { newEditor, restoreEditor, saveEditor } from "./editor.ts";
+import type { TextSizeAccess } from "./textSizeMenu.ts";
 import {
   buildCommands,
   documentCommands,
@@ -136,6 +137,11 @@ export class Teleprompter {
   #draftHeld = false;
   // Whether anything has been published this session. See updateMain.
   #everPublished = false;
+  // Watchers of the editor's own text size. A set rather than one slot
+  // because the editor is rebuilt on every document switch, and each rebuild
+  // brings a fresh toolbar control; the stale ones drop themselves (see
+  // textSizeMenu).
+  #textSizeListeners = new Set<(tenths: number) => void>();
   // The one spelling of the URL a display joins on. The anchor, the copy
   // button, the QR code and the local screen window all read this field.
   #viewerURL = "";
@@ -309,6 +315,7 @@ export class Teleprompter {
     this.editor = newEditor(
       document.querySelector("#editor")!,
       this.saveEditorContent.bind(this),
+      this.#textSizeAccess(),
     );
     this.docControls = new DocControls();
     // Before the commands are built, which take it on the host — and before
@@ -323,6 +330,7 @@ export class Teleprompter {
         this.editor = newEditor(
           document.querySelector("#editor")!,
           this.saveEditorContent.bind(this),
+          this.#textSizeAccess(),
         );
         // As the "load" handler below does. Without this a new document left
         // the displays on the previous script until the first keystroke, so
@@ -342,6 +350,7 @@ export class Teleprompter {
           this.editor.dom.parentElement!,
           e.detail.content,
           this.saveEditorContent.bind(this),
+          this.#textSizeAccess(),
         );
         this.updateMain();
       },
@@ -1454,6 +1463,36 @@ export class Teleprompter {
    * style.css's rule stays the one place the editor's font is declared, and its
    * 2rem fallback still holds before this ever runs.
    */
+  /**
+   * The editor toolbar's size control, pointed at the Editor Text slider.
+   *
+   * Deliberately not a second piece of state: the slider stays the single
+   * source of truth for how big the script is, and this moves *it* — reading
+   * live, and writing through the same synthetic `input` a drag dispatches, so
+   * the thumb, the readout and the remembered size cannot disagree with what
+   * is on screen. That is the same rule "Match viewers' text size" follows,
+   * and the reason it drives the slider rather than the element's font.
+   *
+   * Read out of the slider rather than from constants, so the range lives in
+   * the markup where the other two sliders' does.
+   */
+  #textSizeAccess(): TextSizeAccess {
+    return {
+      get: () => this.rngEditor.value,
+      set: (tenths) => {
+        this.rngEditor.value = tenths;
+        this.rngEditor.dispatchEvent(new Event("input"));
+      },
+      subscribe: (listener) => {
+        this.#textSizeListeners.add(listener);
+        return () => this.#textSizeListeners.delete(listener);
+      },
+      min: this.rngEditor.min,
+      max: this.rngEditor.max,
+      step: this.rngEditor.step ?? 1,
+    };
+  }
+
   #applyEditorScale() {
     const tenths = this.rngEditor.value;
     (<HTMLElement> document.querySelector("#editor")).style.setProperty(
@@ -1467,6 +1506,12 @@ export class Teleprompter {
       // comes back at the default next load. Nothing else depends on it.
     }
     this.#renderTransport();
+    // Anything watching the size — today the editor toolbar's control — is
+    // told from here rather than from an `input` listener on the slider,
+    // because this is the funnel every path actually reaches: the wheel
+    // handler moves the slider and calls this *without* dispatching `input`,
+    // so a listener on the event would have missed the wheel entirely.
+    for (const listener of this.#textSizeListeners) listener(tenths);
   }
 
   // How big the operator had their own text last time. An ergonomics
