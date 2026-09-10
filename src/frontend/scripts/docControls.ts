@@ -11,7 +11,7 @@ import type WaIcon from "@awesome.me/webawesome/dist/components/icon/icon.js";
 import type WaInput from "@awesome.me/webawesome/dist/components/input/input.js";
 
 import { type Doc, DocStorage } from "./doc.ts";
-import { escapeHtml } from "./dom.ts";
+import { escapeHtml, submitOnEnter } from "./dom.ts";
 
 type WaSelectEvent = CustomEvent<{ item: WaDropdownItem }>;
 
@@ -41,6 +41,13 @@ export class DocControls {
       });
     this.#dlgRename.querySelector("wa-button[name=save]")!
       .addEventListener("click", () => this.#confirmRename());
+    // Enter in the name field is Save. Deliberately not added to #dlgDelete
+    // below: a keypress that confirms a deletion is a keypress that deletes a
+    // document by accident.
+    submitOnEnter(
+      this.#dlgRename.querySelector("wa-input")!,
+      () => this.#confirmRename(),
+    );
 
     this.#dlgDelete.querySelector("wa-button[name=cancel]")!
       .addEventListener("click", () => {

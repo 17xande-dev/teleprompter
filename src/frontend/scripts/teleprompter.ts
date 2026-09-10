@@ -42,6 +42,7 @@ import "@awesome.me/webawesome/dist/styles/utilities.css";
 import "../styles/style.css";
 import type { Doc } from "./doc.ts";
 import { DocControls } from "./docControls.ts";
+import { submitOnEnter } from "./dom.ts";
 import { Wordgard } from "wordgard/editor";
 import { newEditor, restoreEditor, saveEditor } from "./editor.ts";
 import type { TextSizeAccess } from "./textSizeMenu.ts";
@@ -378,6 +379,14 @@ export class Teleprompter {
     );
     this.#answerLocalProbes();
     this.btnMessage.addEventListener("click", this.listenMessage.bind(this));
+    // Enter in the message box sends it. Mod+Enter already did — it is the
+    // one shortcut that fires while typing — but reaching for a chord to send
+    // the thing you just typed into a box with a Send button next to it is a
+    // step nobody expects to need.
+    submitOnEnter(
+      document.querySelector("#txtMessage")!,
+      () => this.btnMessage.click(),
+    );
     this.btnGoToViewers.addEventListener(
       "click",
       () => this.goToViewerPosition(),
