@@ -12,11 +12,20 @@ redirects there. Open the viewer link on anything on the same network — a tabl
 on the floor, a laptop across the room, a phone — and it joins as a display.
 
 **Screen** in the app bar opens one on _this_ machine and closes it again; it
-lights up while that window is open. On a multi-monitor setup with the browser's
-window-management permission granted, Chrome places it fullscreen on the second
-display. Everywhere else it fills the screen it lands on, leaving only a thin
-URL strip, and a click on it goes to true fullscreen. Double-click toggles
-fullscreen at any time.
+lights up while that window is open.
+
+**Whether it opens fullscreen depends on having a second screen**, and that is a
+browser rule rather than a setting. With two displays and the window-management
+permission granted, Chrome opens it fullscreen on the other screen — that is
+what its "fullscreen companion window" does. On a single screen it cannot:
+`window.open` consumes the click's user activation, and a fullscreen request has
+to come from the new window, which has no activation of its own and cannot
+borrow the opener's. So on one screen the window opens filling the available
+area with a thin URL strip, and one click on it goes to true fullscreen.
+Double-click toggles fullscreen at any time.
+
+If you have a second screen and it still opens windowed, the permission is the
+thing to check — the console says so when it has been denied.
 
 The viewer count reads **"2 local · 1 remote"** rather than a bare total,
 because those are very different situations to be in ten seconds before a

@@ -1289,17 +1289,35 @@ export class Teleprompter {
       return;
     }
 
-    const dims = await this.#screenForPop();
+    const target = await this.#screenForPop();
     // `fullscreen` alongside `popup` is Chrome's Fullscreen Companion Window:
     // with the Window Management permission — which #screenForPop has just
-    // asked for — one user activation covers both placing the window and
-    // taking it fullscreen, so the talent never sees browser chrome. Browsers
-    // that don't know the feature ignore it and viewer.ts asks for fullscreen
-    // itself.
+    // asked for — one user activation covers both placing the window *and*
+    // taking it fullscreen, so the talent never sees browser chrome.
+    //
+    // Bare tokens, as Chrome documents them, rather than `fullscreen=true`.
+    // The spec's boolean-feature parsing treats both as true, but `fullscreen`
+    // is not in the spec — it is Chrome's own — so the documented spelling is
+    // the one to hand it.
+    //
+    // It is a *multi-screen* feature and does nothing on a single display:
+    // what it does is put the companion window fullscreen on a screen other
+    // than the opener's. On one screen the window opens ordinary and
+    // viewer.ts fills it, leaving a thin URL strip that one click clears —
+    // there is no way to skip that, because window.open consumes the
+    // activation a fullscreen request would need and activation does not
+    // cross windows.
     const win = self.open(
       this.#viewerURL,
       "pop",
-      `popup=true,fullscreen=true,width=${dims.width},height=${dims.height},screenX=${dims.x},screenY=${dims.y}`,
+      [
+        "popup",
+        ...(target.secondary ? ["fullscreen"] : []),
+        `width=${target.width}`,
+        `height=${target.height}`,
+        `screenX=${target.x}`,
+        `screenY=${target.y}`,
+      ].join(","),
     );
     if (!win) {
       // A blocked popup is the operator's browser telling them something, not
@@ -1321,19 +1339,42 @@ export class Teleprompter {
    * failure visible nowhere but the console.
    */
   async #screenForPop() {
-    const fallback = { width: 800, height: 600, x: 100, y: 100 };
+    // No second screen: fill the one there is. The viewer resizes itself on
+    // load anyway, but opening at the right size means it does not visibly
+    // jump from a small window to a large one.
+    const here = {
+      width: screen.availWidth,
+      height: screen.availHeight,
+      x: 0,
+      y: 0,
+      secondary: false,
+    };
     try {
       const screenDetails = await self.getScreenDetails();
       const secondary = screenDetails.screens.find((s) => !s.isPrimary);
-      if (!secondary) return fallback;
+      if (!secondary) return here;
       return {
         width: secondary.width,
         height: secondary.height,
         x: secondary.left,
         y: secondary.top,
+        // Only then is the `fullscreen` window feature worth asking for.
+        secondary: true,
       };
-    } catch {
-      return fallback;
+    } catch (err) {
+      // Missing outside Chromium, and *rejected* when the operator has denied
+      // or dismissed the permission prompt. Worth saying out loud in the
+      // second case: it is the difference between a display that opens
+      // fullscreen on the second screen and one that opens as a window, and
+      // nothing else on the page would ever mention it.
+      if (screen.isExtended) {
+        console.warn(
+          "allow window management for this site to open the display " +
+            "fullscreen on your second screen",
+          err,
+        );
+      }
+      return here;
     }
   }
 
