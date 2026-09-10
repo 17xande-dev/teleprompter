@@ -55,7 +55,7 @@
     // test`'s type-check pass pulls in the whole configured project graph
     // (including teleprompter.ts's raw CSS imports, which only the bundler
     // knows how to resolve) even for a test file that doesn't import it.
-    "test": "deno test --no-check src/frontend/scripts/*_test.ts",
+    "test": "deno test --no-check --allow-read=. src/frontend/scripts/*_test.ts",
     // The glob skips dotfiles, so dist/.gitkeep — tracked so a fresh checkout
     // has something for go:embed to find — survives this.
     "clean": "rm -rf src/backend/dist/*",
@@ -73,6 +73,12 @@
     "copy-pdfjs-assets": "deno run --allow-read --allow-write tools/copy-pdfjs-assets.ts",
     // Same reason: the bundler emits no static assets, so index.html's favicon
     // was a 404 on every page load until this ran.
+    // docs/shortcuts.md is generated from the command table rather than
+    // written, because that table already feeds the palette, the in-app
+    // cheatsheet and the key bindings — a hand-kept doc would be a fourth
+    // copy and the only one nothing checks. docs_test.ts fails when it is
+    // stale, so this is not a step anyone has to remember.
+    "docs": "deno run --allow-read=. --allow-write=docs tools/gen-docs.ts",
     "copy-icons": "deno run --allow-read --allow-write tools/copy-icons.ts",
     "bundle-script": "deno task --unstable-bundle bundle.ts",
     "bundle-watch": "deno task bundle-pdfjs && deno task bundle-pdfworker && deno task copy-pdfjs-assets && deno bundle --watch src/frontend/index.html src/frontend/html/viewer.html --code-splitting --platform browser --sourcemap=linked --outdir src/backend/dist"
