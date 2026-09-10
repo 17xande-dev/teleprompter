@@ -50,6 +50,16 @@ back quietly not-live and you would type into a screen showing something else.
 Turning live editing back on publishes immediately — "go live" means the
 displays show what you are looking at.
 
+### Your own reading size
+
+The **A** button in the editor's toolbar opens a slider for the size of the
+script _in front of you_. It is yours alone — it never reaches a display, so it
+is safe to nudge mid-service — and it is remembered for this browser.
+`Ctrl+Alt+]` and `Ctrl+Alt+[` do the same from the keyboard, and **Match
+viewers' size** in the Sync card sets it to read like the displays do.
+
+The viewers' size is the separate **Text Scale** slider in the Transport card.
+
 ### PDFs
 
 Drop a PDF on the editor. It takes over the pane for the session, renders as a
@@ -115,7 +125,8 @@ aspect ratio stays the previewed display's.
 ## Messages and clocks
 
 A message overlays every display at whatever size fits its box — for "wrap up"
-or "mic 2 is off". **Ctrl+Enter** sends it without reaching for the mouse.
+or "mic 2 is off". **Enter** in the box sends it, so does Ctrl+Enter from
+anywhere else on the page.
 
 The countdown and the wall clock are part of the viewer layout. Set the
 countdown with the three fields, then Reset / Start / Stop. What travels is the

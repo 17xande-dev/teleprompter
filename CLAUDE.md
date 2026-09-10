@@ -358,11 +358,14 @@ WebSocket relay, `ice.go` STUN/TURN config.
   `textSizeMenu` drops its own listener when it notices its input is no longer
   `isConnected`, because every document switch builds a fresh editor and so a
   fresh control.
-- **`#applyEditorScale` is the funnel to notify from, not the slider's
-  `input`.** `listenEditorWheel` moves `rngEditor` and calls `#applyEditorScale`
-  directly _without_ dispatching `input`, so a listener on the event misses the
-  wheel entirely. Same shape as `#pushSettings` for the transport: hang anything
-  that must see every change off the funnel, not off the control.
+- **`#setEditorScale` is the funnel: it clamps, applies, persists and
+  notifies.** Every route to a new reading size goes through it — the toolbar
+  control, both nudge commands, "match viewers' text size", and the restore on
+  load. Hang anything that must see every change off it rather than off a
+  control, the same shape `#pushSettings` has for the transport. (The lesson was
+  learnt the other way round: while there was still an Editor Text slider, its
+  wheel handler moved it and applied the size _without_ dispatching `input`, so
+  a listener on the event missed the wheel entirely.)
 - **The editor's toolbar lives _inside_ the editor element**, so it inherits
   `#editor`'s 2rem prompter font — it rendered at 28.8px, a "Paragraph" dropdown
   taller than the app bar, until `#mainEditor wg-menubar` reset it. The script
@@ -400,8 +403,8 @@ WebSocket relay, `ice.go` STUN/TURN config.
   Settings' "Reverse slider scrolling" flips it for a device reporting the other
   sign. The switch is defined against what the build ships rather than against a
   physical direction, so its default is `false` and a fresh page has every
-  switch off. All three wheel handlers go through `wheelStep`, so the direction
-  is one answer for the whole page — and the setting is read per event, never
+  switch off. Both wheel handlers go through `wheelStep`, so the direction is
+  one answer for the whole page — and the setting is read per event, never
   cached, or the switch and the sliders disagree until a reload.
 - **A connected gamepad must not write the speed slider while untouched.**
   Polling is per-frame, so a pad sitting on the desk would broadcast a speed
@@ -419,21 +422,30 @@ WebSocket relay, `ice.go` STUN/TURN config.
   were ignored; correcting them would have made `setProperty` reject the `rem`
   value and compute `font-size: 0`. `--editor-scale`, the control page's own
   reading size, is the same shape and stays unregistered for the same reason.
-- **The Editor Text slider is the one slider that is _not_ on the wire.** It is
-  the operator's own reading size, so it goes through `#applyEditorScale`
-  (custom property, `localStorage`, readout) and must never reach
-  `#pushSettings` — sending it would resize every display because someone leaned
-  into their own screen. It is still the single source of truth for how big the
-  script is: "Match viewers' text size" drives the _slider_ rather than writing
-  a font size onto the element, so the thumb, the readout and the remembered
-  size cannot disagree with what is on screen.
-- **The sliders' defaults are read out of the markup**, once, in the constructor
-  — that is what a right-click (and the palette's "Reset sliders to defaults")
-  returns them to. The capture has to happen _before_ `#restoreEditorScale`
-  writes the stored editor size, or "reset" would put back whatever the operator
-  last dragged to rather than the default. A reset dispatches a synthetic
-  `input`, like `controlCommands.ts`'s `nudge`, so it travels the same path a
-  drag does and cannot forget to tell the viewers.
+- **The editor's reading size is the one size that is _not_ on the wire.** It is
+  the operator's own, so it goes through `#setEditorScale` (custom property,
+  `localStorage`, listeners) and must never reach `#pushSettings` — sending it
+  would resize every display because someone leaned into their own screen.
+  `#editorTenths` is the single source of truth for how big the script is:
+  "Match viewers' text size" goes through the funnel rather than writing a font
+  size onto the element, so the toolbar control and the remembered size cannot
+  disagree with what is on screen.
+- **Its range lives in `textscale.ts`, not in the markup, and `clampEditorScale`
+  is what enforces it.** This used to be a `wa-slider` in the transport column,
+  and the component was clamping every write — several call sites leaned on that
+  without owning it, their comments reading "clamping is the component's". When
+  the slider went, nothing would have. A `+9999` nudge lands on the maximum, and
+  a non-finite value comes back as the default rather than reaching the custom
+  property as an invalid length, which computes `font-size: 0` and makes the
+  script vanish with nothing in any console.
+- **The transport sliders' defaults are read out of the markup**, once, in the
+  constructor — that is what a right-click (and the palette's "Reset sliders to
+  defaults") returns them to. A reset dispatches a synthetic `input`, like
+  `controlCommands.ts`'s `nudge`, so it travels the same path a drag does and
+  cannot forget to tell the viewers. The reading size is deliberately _not_
+  reset by it any more: it was, while it was a third slider in that column, but
+  resetting the transport has no business changing how big the operator's own
+  script looks.
 - **`keyLabel` needs an entry for every physical key name a shortcut uses.**
   Anything carrying `Alt` is written as a `code` (`BracketRight`), and without a
   `KEY_LABELS` entry the palette advertises the chord as literally
