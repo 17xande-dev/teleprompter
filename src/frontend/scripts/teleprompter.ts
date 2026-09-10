@@ -58,7 +58,9 @@ import { connectController, type ControllerLink } from "./webrtc.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
 import { ratioOf, setRatio } from "./scrollsync.ts";
 import {
+  clampEditorScale,
   clampTextScale,
+  EDITOR_SCALE,
   matchedEditorFontPx,
   matchedViewerTextScale,
   pxToTenths,
@@ -104,7 +106,6 @@ export class Teleprompter {
   editor: Wordgard;
   rngSpeed: WaSlider;
   rngScale: WaSlider;
-  rngEditor: WaSlider;
   themeControls: ThemeControls;
   tpClockControl: TPClockControl;
   ifrmPreview: HTMLIFrameElement;
@@ -143,6 +144,13 @@ export class Teleprompter {
   // brings a fresh toolbar control; the stale ones drop themselves (see
   // textSizeMenu).
   #textSizeListeners = new Set<(tenths: number) => void>();
+  // The editor's own reading size, in tenths of a rem. A field now that the
+  // transport slider is gone: it was the source of truth while it was the
+  // visible control, and a hidden slider kept only to hold a number would be
+  // a variable wearing a costume. Every write goes through #setEditorScale,
+  // which is what clamps — see clampEditorScale for what the component used
+  // to do silently.
+  #editorTenths: number = EDITOR_SCALE.initial;
   // The one spelling of the URL a display joins on. The anchor, the copy
   // button, the QR code and the local screen window all read this field.
   #viewerURL = "";
@@ -214,7 +222,6 @@ export class Teleprompter {
   #spnViewerNum: HTMLElement;
   #outSpeed: HTMLOutputElement;
   #outScale: HTMLOutputElement;
-  #outEditor: HTMLOutputElement;
   // Where each slider goes back to on a right-click. Read out of the markup
   // once, in the constructor, so the HTML stays the single source of the
   // defaults — and captured *before* the stored editor size is applied, or
@@ -247,7 +254,6 @@ export class Teleprompter {
     this.btnMessage = document.querySelector("#btnMessage")!;
     this.rngSpeed = document.querySelector("#rngSpeed")!;
     this.rngScale = document.querySelector("#rngScale")!;
-    this.rngEditor = document.querySelector("#rngEditor")!;
     this.controls = document.querySelector("#controls")!;
     this.tpClockControl = document.querySelector("#tpClockControl")!;
     this.#pdfPane = <HTMLDivElement> document.querySelector("#pdfPane");
@@ -268,9 +274,8 @@ export class Teleprompter {
     this.#spnViewerNum = <HTMLElement> document.querySelector("#spnViewerNum");
     this.#outSpeed = <HTMLOutputElement> document.querySelector("#outSpeed");
     this.#outScale = <HTMLOutputElement> document.querySelector("#outScale");
-    this.#outEditor = <HTMLOutputElement> document.querySelector("#outEditor");
 
-    for (const slider of [this.rngSpeed, this.rngScale, this.rngEditor]) {
+    for (const slider of [this.rngSpeed, this.rngScale]) {
       this.#sliderDefaults.set(slider, slider.value);
     }
     this.#restoreEditorScale();
@@ -411,14 +416,8 @@ export class Teleprompter {
     this.rngScale.addEventListener("wheel", this.listenScaleWheel.bind(this), {
       passive: false,
     });
-    this.rngEditor.addEventListener(
-      "wheel",
-      this.listenEditorWheel.bind(this),
-      { passive: false },
-    );
     this.rngSpeed.addEventListener("input", this.listenRangeSpeed.bind(this));
     this.rngScale.addEventListener("input", this.listenRangeScale.bind(this));
-    this.rngEditor.addEventListener("input", () => this.#applyEditorScale());
     // Right-click resets a slider. There is nothing else a context menu on a
     // slider could usefully offer, and the palette's "Reset sliders" covers
     // the operator who never thinks to try it.
@@ -1196,7 +1195,6 @@ export class Teleprompter {
     const speed = -this.rngSpeed.value;
     this.#outSpeed.textContent = `${Math.round(speed)}`;
     this.#outScale.textContent = (this.rngScale.value / 10).toFixed(1);
-    this.#outEditor.textContent = tenthsToRem(this.rngEditor.value).toFixed(1);
   }
 
   #renderViewers() {
@@ -1454,12 +1452,6 @@ export class Teleprompter {
     this.#pushSettings({ textScale: this.rngScale.value / 10 });
   }
 
-  listenEditorWheel(e: WheelEvent) {
-    e.preventDefault();
-    this.rngEditor.value += wheelStep(e.deltaY, this.settings.invertWheel) / 30;
-    this.#applyEditorScale();
-  }
-
   /**
    * The editor's own reading size, which goes nowhere near the wire.
    *
@@ -1473,7 +1465,7 @@ export class Teleprompter {
    * 2rem fallback still holds before this ever runs.
    */
   /**
-   * The editor toolbar's size control, pointed at the Editor Text slider.
+   * The editor toolbar's size control, pointed at #editorTenths.
    *
    * Deliberately not a second piece of state: the slider stays the single
    * source of truth for how big the script is, and this moves *it* — reading
@@ -1487,23 +1479,43 @@ export class Teleprompter {
    */
   #textSizeAccess(): TextSizeAccess {
     return {
-      get: () => this.rngEditor.value,
-      set: (tenths) => {
-        this.rngEditor.value = tenths;
-        this.rngEditor.dispatchEvent(new Event("input"));
-      },
+      get: () => this.#editorTenths,
+      set: (tenths) => this.#setEditorScale(tenths),
       subscribe: (listener) => {
         this.#textSizeListeners.add(listener);
         return () => this.#textSizeListeners.delete(listener);
       },
-      min: this.rngEditor.min,
-      max: this.rngEditor.max,
-      step: this.rngEditor.step ?? 1,
+      min: EDITOR_SCALE.min,
+      max: EDITOR_SCALE.max,
+      step: EDITOR_SCALE.step,
     };
   }
 
+  /**
+   * Move the editor's reading size. The one funnel.
+   *
+   * Every route in goes through here — the toolbar control, the two nudge
+   * commands, "match viewers' text size", the reset and the restore on load —
+   * because this is what clamps and what notifies. The `wa-slider` that used
+   * to do the clamping is gone.
+   */
+  #setEditorScale(tenths: number) {
+    this.#editorTenths = clampEditorScale(tenths);
+    this.#applyEditorScale();
+  }
+
+  /**
+   * Step the size, for the two nudge commands.
+   *
+   * A method rather than handing the commands a slider to poke, which is what
+   * they had: there is no slider now, and the clamp lives behind this.
+   */
+  nudgeEditorScale(tenths: number) {
+    this.#setEditorScale(this.#editorTenths + tenths);
+  }
+
   #applyEditorScale() {
-    const tenths = this.rngEditor.value;
+    const tenths = this.#editorTenths;
     (<HTMLElement> document.querySelector("#editor")).style.setProperty(
       "--editor-scale",
       `${tenthsToRem(tenths)}rem`,
@@ -1534,14 +1546,10 @@ export class Teleprompter {
     } catch {
       // Nothing to restore; the markup default stands.
     }
-    const tenths = Number(stored);
-    if (
-      stored && Number.isFinite(tenths) &&
-      tenths >= this.rngEditor.min && tenths <= this.rngEditor.max
-    ) {
-      this.rngEditor.value = tenths;
-    }
-    this.#applyEditorScale();
+    // clampEditorScale is the validation now: a hand-edited or stale value
+    // lands inside the range instead of being rejected, and anything that is
+    // not a number comes back as the default rather than collapsing the pane.
+    this.#setEditorScale(stored ? Number(stored) : EDITOR_SCALE.initial);
   }
 
   /**
@@ -1549,7 +1557,7 @@ export class Teleprompter {
    *
    * Through a synthetic "input" event, like controlCommands.ts's `nudge`: a
    * reset then lands in the same handler as a drag, so it cannot forget to
-   * tell the viewers (or, for the editor slider, to persist).
+   * tell the viewers.
    */
   resetSlider(slider: WaSlider) {
     const value = this.#sliderDefaults.get(slider);
@@ -1559,6 +1567,15 @@ export class Teleprompter {
   }
 
   /** The palette's "Reset sliders to defaults" — all three at once. */
+  /**
+   * Put the transport sliders back where the markup had them.
+   *
+   * The editor's own reading size is deliberately *not* included any more.
+   * It used to be, because it was a third slider in this column; now it is
+   * the editor's own control, in the editor's own toolbar, and resetting the
+   * transport has no business changing how big the operator's script looks.
+   * Dragging that control back is the way to undo it.
+   */
   resetSliders() {
     for (const slider of this.#sliderDefaults.keys()) {
       this.resetSlider(slider);
@@ -1657,11 +1674,11 @@ export class Teleprompter {
    * Resize the editor's text to read like the viewers' does.
    *
    * Equal characters per line rather than equal pixels — see textscale.ts.
-   * Applied through the Editor Text slider rather than straight onto the
-   * element, so that slider stays the single answer to how big the script is:
-   * the thumb and the readout follow, and the match is remembered like any
-   * other size the operator chose. The slider's step is what pxToTenths rounds
-   * to.
+   * Applied through #setEditorScale rather than straight onto the element, so
+   * #editorTenths stays the single answer to how big the script is: the
+   * toolbar control follows, the size is clamped to the same range as any
+   * other route, and the match is remembered like any size the operator chose
+   * by hand. `pxToTenths` and `clampEditorScale` round to the same grid.
    */
   matchTextScaleFromViewers() {
     const px = matchedEditorFontPx(
@@ -1672,10 +1689,7 @@ export class Teleprompter {
     // 0 means a width wasn't known yet; leave the text as it is rather than
     // collapsing it.
     if (px <= 0) return;
-    // Clamping is the component's, as it is for the wheel handlers and the
-    // slider commands.
-    this.rngEditor.value = pxToTenths(px);
-    this.rngEditor.dispatchEvent(new Event("input"));
+    this.#setEditorScale(pxToTenths(px));
   }
 
   /**

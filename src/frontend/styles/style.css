@@ -331,7 +331,7 @@ body {
 
 /* -------------------------------------------------------------- transport */
 
-/* Wrapping, because there are three vertical sliders and their labels in a
+/* Wrapping, because there are two vertical sliders and their labels in a
    sidebar the operator is free to drag down to nothing. */
 .divSliders {
   display: flex;
@@ -450,7 +450,8 @@ tp-clock-control tp-clock {
    here: the scroll container is inside the editor's own shadow-free DOM. */
 #editor {
   /* The starting size, and the fallback that holds before any script runs. The
-     Editor Text slider sets --editor-scale from here on; it is deliberately
+     editor's own toolbar control sets --editor-scale from here on; it is
+     deliberately
      *not* @property-registered, for the reason given on --textScale in
      viewerThemes.css. */
   font-size: var(--editor-scale, 2rem);

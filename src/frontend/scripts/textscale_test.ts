@@ -3,7 +3,9 @@
 // can be checked without a browser.
 import { assert, assertAlmostEquals, assertEquals } from "@std/assert";
 import {
+  clampEditorScale,
   clampTextScale,
+  EDITOR_SCALE,
   matchedEditorFontPx,
   matchedViewerTextScale,
   pxToTenths,
@@ -90,4 +92,39 @@ Deno.test("a matched font size lands on a position the slider has", () => {
   assertEquals(tenths, Math.trunc(tenths));
   // And it is still the same reading size, to within the slider's own grid.
   assertAlmostEquals(tenthsToRem(tenths) * REM_PX, px, REM_PX / 20);
+});
+
+Deno.test("the editor's size is held inside its range", () => {
+  assertEquals(clampEditorScale(20), 20);
+  assertEquals(clampEditorScale(EDITOR_SCALE.min - 10), EDITOR_SCALE.min);
+  assertEquals(clampEditorScale(EDITOR_SCALE.max + 10), EDITOR_SCALE.max);
+  assertEquals(clampEditorScale(EDITOR_SCALE.min), EDITOR_SCALE.min);
+  assertEquals(clampEditorScale(EDITOR_SCALE.max), EDITOR_SCALE.max);
+});
+
+Deno.test("a fractional size is rounded onto the step grid", () => {
+  // The callers deal in fractions — the wheel divides a deltaY by 30, and
+  // matching the viewers' size converts from pixels — and the wa-slider that
+  // used to quantise those writes is gone.
+  assertEquals(clampEditorScale(20.4), 20);
+  assertEquals(clampEditorScale(20.6), 21);
+  assertEquals(clampEditorScale(-0.4), EDITOR_SCALE.min);
+});
+
+Deno.test("a size that isn't a number comes back as the initial one", () => {
+  // NaN reaches the custom property as an invalid length, which computes a
+  // font-size of 0: the script disappears with nothing in any console. A
+  // stored value that fails to parse is the realistic route in.
+  assertEquals(clampEditorScale(NaN), EDITOR_SCALE.initial);
+  assertEquals(clampEditorScale(Number("nonsense")), EDITOR_SCALE.initial);
+  assertEquals(clampEditorScale(Infinity), EDITOR_SCALE.initial);
+});
+
+Deno.test("an empty stored value is zero, not NaN, and clamps to the minimum", () => {
+  // Worth pinning because it is the opposite of what it looks like:
+  // `Number("")` is 0, so an empty stored size takes the clamp's lower bound
+  // rather than the not-a-number path. Either is safe — what matters is that
+  // neither reaches the custom property as an invalid length.
+  assertEquals(Number(""), 0);
+  assertEquals(clampEditorScale(Number("")), EDITOR_SCALE.min);
 });

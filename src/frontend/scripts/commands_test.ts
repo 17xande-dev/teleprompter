@@ -383,7 +383,7 @@ function fakeCommandHost() {
     btnPushContent: click("pushContent"),
     rngSpeed: { value: 0, dispatchEvent: () => true },
     rngScale: { value: 30, dispatchEvent: () => true },
-    rngEditor: { value: 20, dispatchEvent: () => true },
+
     tpClockControl: {
       btnStart: click("clockStart"),
       btnStop: click("clockStop"),
@@ -397,26 +397,35 @@ function fakeCommandHost() {
     toggleAutoScroll: () => clicked.push("toggleAutoScroll"),
     toggleLiveEditing: () => clicked.push("toggleLiveEditing"),
     togglePreviewScrub: () => clicked.push("togglePreviewScrub"),
+    // The editor's size is a number the page holds, not a slider, so the stub
+    // records the delta the command asked for.
+    editorNudges: [] as number[],
+    nudgeEditorScale(tenths: number) {
+      this.editorNudges.push(tenths);
+    },
     resetSliders: () => clicked.push("resetSliders"),
   };
 }
 
 Deno.test("the editor size commands are not inverted the way speed is", () => {
-  // The editor slider is an ordinary max-at-top one — nothing about it is
-  // negated on the way to the wire, because it never reaches the wire. So
-  // "bigger" is a bigger number here, the opposite of speed.up. Both signs are
-  // asserted precisely because the two sit next to each other and read as
-  // plausible either way.
+  // Nothing about the editor's size is negated on the way to the wire,
+  // because it never reaches the wire. So "bigger" is a positive step here,
+  // the opposite of speed.up. Both signs are asserted precisely because the
+  // two sit next to each other and read as plausible either way.
   const host = fakeCommandHost();
   const commands = buildCommands(host);
   const run = (id: string) => commands.find((c) => c.id === id)!.run();
 
   run("editor.up");
-  assert(host.rngEditor.value > 20, "editor.up must make the script bigger");
-
-  host.rngEditor.value = 20;
   run("editor.down");
-  assert(host.rngEditor.value < 20, "editor.down must make the script smaller");
+  assert(
+    host.editorNudges[0] > 0,
+    "editor.up must ask for a bigger script",
+  );
+  assert(
+    host.editorNudges[1] < 0,
+    "editor.down must ask for a smaller script",
+  );
 });
 
 Deno.test("the two live-editing commands reach different seams", () => {

@@ -81,3 +81,44 @@ export function pxToTenths(px: number): number {
 export function tenthsToRem(tenths: number): number {
   return tenths / 10;
 }
+
+/**
+ * The editor's own reading size: the range, and where it starts.
+ *
+ * In code rather than in the markup, which is where it used to be — the
+ * `min`/`max`/`step`/`value` of a `wa-slider` in the transport column. That
+ * slider is gone (the editor's toolbar has the control now), and with it went
+ * the component that had been *clamping* every write. Several call sites
+ * leaned on that without saying so, with comments reading "clamping is the
+ * component's": the wheel handler, the two nudge commands and "match viewers'
+ * text size" all just assigned and let `wa-slider` sort it out. Nothing does
+ * that any more, so the range lives here beside the arithmetic that uses it
+ * and `clampEditorScale` is the one thing that enforces it.
+ */
+export const EDITOR_SCALE = {
+  min: 5,
+  max: 80,
+  step: 1,
+  /** 2.0rem, the size the markup used to start the slider at. */
+  initial: 20,
+} as const;
+
+/**
+ * Hold a size inside the editor's range, on the step grid.
+ *
+ * Rounded as well as clamped because the callers deal in fractions — the
+ * wheel divides a `deltaY` by 30, and matching the viewers' size converts
+ * from pixels — and a size off the grid would make the toolbar's readout and
+ * the applied size disagree about which position was chosen. Same reasoning
+ * as pxToTenths above, which is why both round to the same grid.
+ *
+ * A non-finite input (an empty stored value parsed to NaN, a division that
+ * went wrong) comes back as the initial size rather than propagating: NaN
+ * assigned to the custom property computes a font-size of 0 and the script
+ * vanishes with nothing in any console.
+ */
+export function clampEditorScale(tenths: number): number {
+  if (!Number.isFinite(tenths)) return EDITOR_SCALE.initial;
+  const stepped = Math.round(tenths / EDITOR_SCALE.step) * EDITOR_SCALE.step;
+  return Math.min(EDITOR_SCALE.max, Math.max(EDITOR_SCALE.min, stepped));
+}

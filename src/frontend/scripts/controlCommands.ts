@@ -47,7 +47,6 @@ export interface CommandHost {
   btnPushContent: Clickable;
   rngSpeed: Slider;
   rngScale: Slider;
-  rngEditor: Slider;
   tpClockControl: {
     btnStart: Clickable;
     btnStop: Clickable;
@@ -61,6 +60,8 @@ export interface CommandHost {
   toggleAutoScroll(): void;
   toggleLiveEditing(): void;
   togglePreviewScrub(): void;
+  /** Step the editor's own reading size. See nudgeEditorScale. */
+  nudgeEditorScale(tenths: number): void;
   resetSliders(): void;
 }
 
@@ -389,10 +390,12 @@ export function buildCommands(host: CommandHost): Command[] {
     "position.send": () => host.btnSendPosition.click(),
     "scale.up": () => nudge(host.rngScale, SCALE_STEP),
     "scale.down": () => nudge(host.rngScale, -SCALE_STEP),
-    // No sign inversion on this one, unlike speed.*: the editor slider is
-    // max-at-top like any other, and bigger text is a bigger number.
-    "editor.up": () => nudge(host.rngEditor, EDITOR_STEP),
-    "editor.down": () => nudge(host.rngEditor, -EDITOR_STEP),
+    // No sign inversion on this one, unlike speed.*: bigger text is a bigger
+    // number. It goes through the page rather than a slider because the
+    // editor's size no longer has one — the control is in the editor's own
+    // toolbar, and the page holds the number.
+    "editor.up": () => host.nudgeEditorScale(EDITOR_STEP),
+    "editor.down": () => host.nudgeEditorScale(-EDITOR_STEP),
     "transport.reset": () => host.resetSliders(),
     "scale.match": () => host.btnMatchScale.click(),
     "scale.send": () => host.btnSendScale.click(),
