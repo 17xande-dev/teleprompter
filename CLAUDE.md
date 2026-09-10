@@ -474,6 +474,23 @@ WebSocket relay, `ice.go` STUN/TURN config.
   `Digit0`, `Equal`), which tinykeys matches against `event.code`. Spelled as a
   letter it is matched against `event.key`, and on macOS `Option+P` is `π` — the
   binding would silently never match.
+- **Enter-to-submit and Escape-to-cancel are the library's, not ours.**
+  `wa-input` calls an internal `submitOnEnter` on keydown — guarding modifiers
+  and IME composition — which finds the field's form owner and clicks its
+  submitter, and `wa-dialog` wraps a native `<dialog>` so Escape closes it for
+  free. What is needed is markup: a `<form>`, and `type="submit"` on the button,
+  because **`wa-button`'s `type` defaults to `button`**, deliberately "opposite
+  of how native `<button>` elements behave". A button slotted into a dialog's
+  footer is not a descendant of the form, so it names it with `form="<id>"` —
+  that attribute exists for exactly this. Both forms carry `display: contents`
+  so they are not boxes: each sits in a flex column, and a form that were a box
+  would become the single flex item with the field and button nested inside it.
+  The `submit` handlers still `preventDefault`, since a form that submits
+  navigates and reloading the control page drops every display's link for as
+  long as renegotiation takes. `method="dialog"` would avoid that natively but
+  only inside a real `<dialog>` ancestor, and these forms are slotted into
+  `wa-dialog`'s light DOM rather than nested in the `<dialog>` in its shadow
+  root. Nothing listens to either button's `click`, or it would fire twice.
 - `wa-dialog` reflects its `open` attribute on a microtask, so `wa-dialog[open]`
   is empty in the same task that opened one. The shortcut guard reads the `open`
   _property_ off each dialog rather than resting on another library's render
