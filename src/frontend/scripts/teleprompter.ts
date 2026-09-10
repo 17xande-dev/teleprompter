@@ -281,7 +281,7 @@ export class Teleprompter {
 
     this.roomID = this.#ensureRoomID();
     document.querySelector("#tagRoom")!.textContent = this.roomID;
-    this.#viewerURL = `${location.origin}/html/viewer.html?room=${this.roomID}`;
+    this.#viewerURL = `${location.origin}/viewer?room=${this.roomID}`;
     this.lnkViewerLink.href = this.#viewerURL;
     this.lnkViewerLink.textContent = this.#viewerURL;
     // The copy button, the QR code and the local screen window are all handed
@@ -293,7 +293,7 @@ export class Teleprompter {
       this.#viewerURL;
     // The iframe preview is a same-page mirror driven over postMessage, not
     // a WebRTC peer — it joins nothing and never appears in `viewers`.
-    this.ifrmPreview.src = "/html/viewer.html";
+    this.ifrmPreview.src = "/viewer";
 
     this.link = connectController(
       this.roomID,

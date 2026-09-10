@@ -65,7 +65,7 @@
     // has something for go:embed to find — survives this.
     "clean": "rm -rf src/backend/dist/*",
     "bundle": "deno task bundle-app && deno task bundle-pdfjs && deno task bundle-pdfworker && deno task copy-pdfjs-assets && deno task copy-icons",
-    "bundle-app": "deno bundle src/frontend/index.html src/frontend/html/viewer.html --code-splitting --platform browser --sourcemap=linked --outdir src/backend/dist",
+    "bundle-app": "deno bundle src/frontend/index.html src/frontend/viewer.html --code-splitting --platform browser --sourcemap=linked --outdir src/backend/dist",
     // Both pdf.js entries are loaded by URL at runtime — the library by
     // pdfview.ts, the worker by pdf.js itself — so both need a URL we can
     // write down. Bundled with the app entries they'd get content hashes
@@ -86,7 +86,7 @@
     "docs": "deno run --allow-read=. --allow-write=docs tools/gen-docs.ts",
     "copy-icons": "deno run --allow-read --allow-write tools/copy-icons.ts",
     "bundle-script": "deno task --unstable-bundle bundle.ts",
-    "bundle-watch": "deno task bundle-pdfjs && deno task bundle-pdfworker && deno task copy-pdfjs-assets && deno bundle --watch src/frontend/index.html src/frontend/html/viewer.html --code-splitting --platform browser --sourcemap=linked --outdir src/backend/dist"
+    "bundle-watch": "deno task bundle-pdfjs && deno task bundle-pdfworker && deno task copy-pdfjs-assets && deno bundle --watch src/frontend/index.html src/frontend/viewer.html --code-splitting --platform browser --sourcemap=linked --outdir src/backend/dist"
   },
   "permissions": {
     "net-read": {

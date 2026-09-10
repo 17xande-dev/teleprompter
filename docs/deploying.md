@@ -25,6 +25,10 @@ Environment, all optional:
 The server also takes `-addr` to move off `:8080` and `-dev` to read `dist/`
 from disk instead of the embedded copy.
 
+Two paths matter behind a proxy or a cache rule: **`/control`** is the
+operator's page and **`/viewer`** is a display. `/` redirects to `/control`.
+Everything else served from the root is a content-hashed asset.
+
 ## HTTPS
 
 **Put TLS in front of this.** Two reasons, and the second is not obvious:

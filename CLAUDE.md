@@ -223,13 +223,24 @@ WebSocket relay, `ice.go` STUN/TURN config.
 - `teleprompter.ts` — the control page. `viewer.ts` — the display, running
   either standalone (own WebRTC link) or embedded in the control page's preview
   iframe (postMessage), detected via `window.parent !== window`.
-- The viewer document is `html/viewer.html` + `viewerApp.ts`, styled by
+- The viewer document is `viewer.html` + `viewerApp.ts`, styled by
   `viewerBase.css` (unscoped, always applies) and `viewerThemes.css` (the
   built-in layouts). These were `pop*` and `.pop-clocks` until themes landed —
   the viewer is not always a popped-out window, and a class every theme is
   written against is not one to rename later. `#btnPop`/`listenPop` keep the
   name because they really are the `window.open` action, even though the button
   now reads "Screen" and toggles.
+- **The two pages are served at `/control` and `/viewer`**, and both HTML
+  entries are bundled to the **dist root** because of it. `deno bundle` emits
+  _relative_ asset references (`./index-<hash>.js`), which resolve against the
+  directory of the current URL — so a single-segment path resolves them at the
+  root, and the viewer's old home in `dist/html/` would have had `/viewer` look
+  for `/viewer-<hash>.js` and 404. A trailing slash breaks it the same way, so
+  the routes are exact patterns. `main.go` _serves_ the file at those paths
+  rather than redirecting to the bundler's own, so the clean path is the one in
+  the address bar; `/` redirects to `/control`, keeping one address rather than
+  two that drift. `#ensureRoomID` writes the room with `location.pathname`, so
+  it preserves whichever path the page is on.
 - The control page's chrome is an **app bar** (`#appBar`) above the split panel,
   holding what is true of the session rather than of a pane: the document
   actions, the room id, a signaling badge, the viewer count, the gamepad
@@ -248,9 +259,11 @@ WebSocket relay, `ice.go` STUN/TURN config.
   one place in the app deliberately light-on-dark's opposite — inverting a QR
   code stops some phones recognising it at all. The padding is the code's quiet
   zone and must clear four modules: the component draws the symbol edge to edge
-  of its canvas, a viewer URL encodes to 44 modules (local and deployed alike),
-  and at `size="200"` that is 4.55px a module — so 1rem would be 3.5 modules and
-  fail where 1.5rem is 5.3. Check it by sampling the canvas, not by eye.
+  of its canvas, and at `size="200"` a viewer URL's symbol works out around
+  4.5px a module — so 1rem is under four modules and fails where 1.5rem clears
+  it. (The count moved when the viewer moved to `/viewer`: a shorter URL is
+  fewer, larger modules, so the existing padding clears it by more than it did.)
+  Check it by sampling the canvas, not by eye.
 - **A `wa-button-group`'s slot is `flex-wrap: wrap`**, so a group short of width
   breaks its _own_ buttons onto a second row — which is what made the app bar
   spill out of a fixed height on a phone, its contents measuring `y: -14` inside

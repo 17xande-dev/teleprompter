@@ -6,9 +6,10 @@ and **Ctrl+/** lists them without leaving the page.
 
 ## Screens
 
-The room comes with a viewer link, shown in the **Viewers** card with a QR code
-beside it. Open that link on anything on the same network — a tablet on the
-floor, a laptop across the room, a phone — and it joins as a display.
+The room comes with a viewer link — `/viewer?room=…`, shown in the **Viewers**
+card with a QR code beside it. The control page itself is `/control`, and `/`
+redirects there. Open the viewer link on anything on the same network — a tablet
+on the floor, a laptop across the room, a phone — and it joins as a display.
 
 **Screen** in the app bar opens one on _this_ machine and closes it again; it
 lights up while that window is open. On a multi-monitor setup with the browser's
