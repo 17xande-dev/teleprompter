@@ -456,6 +456,19 @@ tp-clock-control tp-clock {
   font-size: var(--editor-scale, 2rem);
 }
 
+/* A little air on the left, so the script does not start hard against the
+   pane's edge. On the content rather than #editor, which the toolbar is also
+   inside — indenting that would push the bar off the pane's own alignment.
+
+   `wg-content` is an element, not a class, and Wordgard's own theme sets
+   `margin: 0` on it; `#editor wg-content` outweighs that bare type selector,
+   and a longhand beats the shorthand for the one side it names. Declared in
+   rem rather than em: an em here would scale with --editor-scale, so the
+   margin would grow as the operator turned their reading size up. */
+#editor wg-content {
+  margin-inline-start: 0.75rem;
+}
+
 /* The space the preview is allowed to occupy. #applyPreviewScale measures
    *this* box and fits the viewer's aspect ratio inside it, so the preview
    grows and shrinks with the sidebar instead of sitting at a fixed 300px.
