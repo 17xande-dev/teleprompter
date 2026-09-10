@@ -17,15 +17,63 @@
 
 html {
   font-optical-sizing: auto;
+  /* Half of "the page never scrolls" — see the note on body, which carries the
+     other half and the reason neither works alone. */
+  overflow: clip;
 }
 
 /* The page itself never scrolls: the two panes are exactly the viewport minus
    the app bar and each scrolls inside itself. Reaching the bottom of the
    sidebar used to scroll the *document*, dragging the script pane off screen
-   mid-service. */
+   mid-service.
+
+   `overflow` alone does not say that, and believing it did is what stranded
+   the operator. It was `overflow: hidden` on its own here, which takes away
+   the scrollbar and the wheel but leaves a scroll *range*: the document stays
+   scrollable by script, and CLAUDE.md's note that programmatic scrolling
+   works on an overflow-hidden viewport is the same fact pointed at the viewer.
+   So anything that scrolled the document programmatically — `scrollIntoView`
+   walks every ancestor up to the viewport, which is what pasting several pages
+   into the editor and what the palette's selected-item call both do — put the
+   app bar off the top of the screen with no way back. No scrollbar to drag, no
+   wheel to answer, and both panes' own scrollers already where they were
+   asked to be. Measured across all nine combinations of `overflow` on `html`
+   and on `body`: with a 400px overflow forced, *every* one of them let
+   `scrollTo(0, 99999)` move the bar to `top: -400`.
+
+   What actually says it is removing the range, and it takes *both* of these
+   declarations — measured, and neither is enough by itself:
+
+   - Body is pinned to exactly the viewport, so a pane that overflows is
+     clipped rather than growing body's box. Without this, `overflow` anywhere
+     is decoration: all nine combinations of it on html and on body let a
+     forced 400px overflow put the bar at `top: -400`.
+   - `overflow: clip` on html, because the scrollable overflow region
+     propagates to the viewport even through a clipped body — with body pinned
+     but html left `visible`, html's scrollHeight still measured 1287 against a
+     clientHeight of 887, and the bar still went to -400.
+
+   With both, the same forced overflow measures a range of 0, `scrollY` stays
+   0 and the bar stays at `top: 0`. Nothing is clipped in the healthy case,
+   because --pane-height is the viewport minus the bar and the two add back up
+   to it exactly; when something does overflow, losing the bottom of it beats
+   losing the app bar for the rest of the service.
+
+   `clip` rather than `hidden` on both because it creates no scroll container
+   at all, so neither element can be scrolled by script either — with `hidden`
+   the same trap simply moves down one element. Dialogs and dropdowns are
+   unaffected: the top layer is not clipped by an ancestor's overflow.
+
+   The viewer is deliberately *not* the same and must not be changed to match:
+   viewerBase.css locks `body` with `overflow: hidden` precisely so the
+   document keeps taking programmatic scrolls — that is how a position off the
+   wire is applied — while withholding the wheel until the display holds
+   drive. There, the range is the point. Here nothing should scroll the
+   document at all, so there is no range to have. */
 body {
   margin: 0;
-  overflow: hidden;
+  block-size: 100dvh;
+  overflow: clip;
 }
 
 /* ---------------------------------------------------------------- app bar */

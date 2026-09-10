@@ -290,10 +290,35 @@ WebSocket relay, `ice.go` STUN/TURN config.
   `style.css` (`100dvh` minus the app bar). `#pdfPane` reads it in CSS and the
   editor gets it through `Wordgard.scrolling()` in `editor.ts`, which drops the
   string straight into a `height:` declaration — so a `var()` works there, and
-  the two modes cannot drift apart the way two separate `92vh`s could. `body` is
-  `overflow: hidden` and each pane scrolls inside itself; when the _document_
-  was the scroller, reaching the bottom of the sidebar dragged the script pane
-  off screen mid-service.
+  the two modes cannot drift apart the way two separate `92vh`s could. Each pane
+  scrolls inside itself; when the _document_ was the scroller, reaching the
+  bottom of the sidebar dragged the script pane off screen mid-service.
+- **"The control page never scrolls" is a pinned height, not an `overflow`, and
+  `overflow` alone is a trap that strands the operator.** It was
+  `overflow:
+  hidden` on `body` alone, which takes the scrollbar and the wheel
+  away but leaves a scroll _range_ — and the viewport stays scrollable **by
+  script**, which is the same fact the viewer's drive lock relies on, aimed at
+  the wrong page. So anything that scrolled the document programmatically put
+  the app bar off the top with no way back: nothing to drag, no wheel to answer,
+  and both panes' own scrollers already where they were asked to be.
+  `scrollIntoView` walks every ancestor up to the viewport, so pasting several
+  pages into the editor gets there, and so does the palette's selected-item
+  call. Measured all nine combinations of `overflow` on `html` and `body`
+  against a forced 400px overflow: **every one** let `scrollTo(0, 99999)` put
+  the bar at `top: -400`. What works is removing the range, and it takes both
+  halves — `body` pinned to `100dvh` so an overflowing pane is clipped instead
+  of growing body's box, and `overflow: clip` on `html` because the scrollable
+  overflow region propagates to the viewport even through a clipped body (pinned
+  body with `html` left `visible` still measured `scrollHeight` 1287 against
+  `clientHeight` 887). With both, the range is 0 and the same forced overflow
+  leaves `scrollY` at 0. `clip` over `hidden` on both, or the trap just moves
+  down one element; the top layer is not clipped, so dialogs and dropdowns are
+  unaffected (verified). **The viewer is the deliberate opposite and must not be
+  "fixed" to match**: `viewerBase.css` locks `body` with `overflow: hidden`
+  precisely so the document keeps taking programmatic scrolls — that is how a
+  position off the wire is applied — while withholding the wheel until the
+  display holds drive. There the range is the point; here there should be none.
 - **A vertical `wa-slider`'s track is a fixed 200px** whatever you size the host
   to — measured at 176px, 300px and 360px, all with a 200px track. So a height
   on the host only adds empty space, and a height _under_ its natural size
