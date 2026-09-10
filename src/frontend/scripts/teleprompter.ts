@@ -42,7 +42,6 @@ import "@awesome.me/webawesome/dist/styles/utilities.css";
 import "../styles/style.css";
 import type { Doc } from "./doc.ts";
 import { DocControls } from "./docControls.ts";
-import { submitOnEnter } from "./dom.ts";
 import { Wordgard } from "wordgard/editor";
 import { newEditor, restoreEditor, saveEditor } from "./editor.ts";
 import type { TextSizeAccess } from "./textSizeMenu.ts";
@@ -383,15 +382,15 @@ export class Teleprompter {
       () => this.togglePreviewScrub(),
     );
     this.#answerLocalProbes();
-    this.btnMessage.addEventListener("click", this.listenMessage.bind(this));
-    // Enter in the message box sends it. Mod+Enter already did — it is the
-    // one shortcut that fires while typing — but reaching for a chord to send
-    // the thing you just typed into a box with a Send button next to it is a
-    // step nobody expects to need.
-    submitOnEnter(
-      document.querySelector("#txtMessage")!,
-      () => this.btnMessage.click(),
-    );
+    // The Send button is the message form's submitter, so a click, an Enter
+    // in the field and the palette's command (which clicks the button) all
+    // arrive here. Nothing listens to the button directly, or a click would
+    // send twice. See the form in index.html for why this is markup rather
+    // than a key handler.
+    document.querySelector("#frmMessage")!.addEventListener("submit", (e) => {
+      e.preventDefault();
+      this.listenMessage();
+    });
     this.btnGoToViewers.addEventListener(
       "click",
       () => this.goToViewerPosition(),

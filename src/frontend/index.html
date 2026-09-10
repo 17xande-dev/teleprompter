@@ -218,13 +218,27 @@
         <!-- No `label`: the card is titled "Message" and the field repeated it
              directly underneath. The placeholder carries the hint and
              aria-label keeps the accessible name. -->
-        <wa-input id="txtMessage" placeholder="Message for the talent" aria-label="Message">
-          <wa-icon name="message" slot="start"></wa-icon>
-        </wa-input>
-        <wa-button id="btnMessage" size="s" variant="brand" appearance="outlined">
-          <wa-icon name="paper-plane" slot="start"></wa-icon>
-          Send Message
-        </wa-button>
+        <!-- A real form, so Enter in the field sends the message: wa-input
+             already submits its form owner on Enter (guarding modifiers and
+             IME composition), and wa-button does the submitting when its
+             `type` is `submit` — which is not the default, deliberately
+             "opposite of how native button elements behave". Those two
+             attributes are the whole mechanism; there is nothing to
+             hand-write.
+
+             `display: contents` on the form (see style.css) keeps it out of
+             the layout: the card body is a flex column, and a form that were
+             a box would become the single flex item with the field and button
+             nested inside it. -->
+        <form id="frmMessage">
+          <wa-input id="txtMessage" placeholder="Message for the talent" aria-label="Message">
+            <wa-icon name="message" slot="start"></wa-icon>
+          </wa-input>
+          <wa-button id="btnMessage" type="submit" size="s" variant="brand" appearance="outlined">
+            <wa-icon name="paper-plane" slot="start"></wa-icon>
+            Send Message
+          </wa-button>
+        </form>
       </wa-card>
       <!-- The operator's pane is deliberately not scroll-synced, so these are
            the two ways to close the gap on purpose: fetch where the viewers
@@ -294,10 +308,18 @@
       </div>
     </wa-split-panel>
   </wa-split-panel>
+  <!-- Enter saves and Escape cancels, both from the platform. Escape is
+       wa-dialog's own (it wraps a native <dialog>); Enter is wa-input
+       submitting its form owner. The Save button is the submitter, and it
+       names the form by id because it is slotted into the footer and so is
+       not a descendant of the form — which is exactly what wa-button's
+       `form` attribute is for. -->
   <wa-dialog id="dlgRename" label="Rename Document" class="dialog-focus">
-    <wa-input autofocus></wa-input>
-    <input type="hidden"></input>
-    <wa-button name="save" slot="footer" variant="primary">Save</wa-button>
+    <form id="frmRename">
+      <wa-input autofocus></wa-input>
+      <input type="hidden"></input>
+    </form>
+    <wa-button name="save" type="submit" form="frmRename" slot="footer" variant="primary">Save</wa-button>
     <wa-button name="cancel" slot="footer">Cancel</wa-button>
   </wa-dialog>
   <wa-dialog id="dlgDelete" label="Delete Document" class="dialog-focus">

@@ -11,7 +11,7 @@ import type WaIcon from "@awesome.me/webawesome/dist/components/icon/icon.js";
 import type WaInput from "@awesome.me/webawesome/dist/components/input/input.js";
 
 import { type Doc, DocStorage } from "./doc.ts";
-import { escapeHtml, submitOnEnter } from "./dom.ts";
+import { escapeHtml } from "./dom.ts";
 
 type WaSelectEvent = CustomEvent<{ item: WaDropdownItem }>;
 
@@ -39,15 +39,20 @@ export class DocControls {
       .addEventListener("click", () => {
         this.#dlgRename.open = false;
       });
-    this.#dlgRename.querySelector("wa-button[name=save]")!
-      .addEventListener("click", () => this.#confirmRename());
-    // Enter in the name field is Save. Deliberately not added to #dlgDelete
-    // below: a keypress that confirms a deletion is a keypress that deletes a
-    // document by accident.
-    submitOnEnter(
-      this.#dlgRename.querySelector("wa-input")!,
-      () => this.#confirmRename(),
-    );
+    // One handler for both ways in: the Save button is the form's submitter,
+    // so a click and an Enter in the field arrive here identically. Nothing
+    // listens to the button directly, or clicking it would rename twice.
+    //
+    // preventDefault because this form has nowhere to go — a plain form that
+    // submits navigates, and reloading the control page drops every display's
+    // link for as long as renegotiation takes. `method="dialog"` would avoid
+    // that natively but only inside a real <dialog> ancestor, and this form is
+    // slotted into wa-dialog's light DOM rather than nested in the <dialog>
+    // in its shadow root.
+    this.#dlgRename.querySelector("form")!.addEventListener("submit", (e) => {
+      e.preventDefault();
+      this.#confirmRename();
+    });
 
     this.#dlgDelete.querySelector("wa-button[name=cancel]")!
       .addEventListener("click", () => {

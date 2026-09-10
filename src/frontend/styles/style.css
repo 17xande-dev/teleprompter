@@ -520,6 +520,16 @@ tp-clock-control tp-clock {
   touch-action: none;
 }
 
+/* The two forms exist only to give Enter something to submit — see the markup.
+   `display: contents` keeps them out of the layout entirely: both sit in a
+   flex column (a card body, a dialog body), and a form that were a box would
+   become the single flex item with the field and button nested inside it,
+   losing the column's gap and full-width children. */
+#frmMessage,
+#frmRename {
+  display: contents;
+}
+
 #divViewers {
   display: flex;
   flex-direction: column;
