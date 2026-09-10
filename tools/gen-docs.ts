@@ -31,6 +31,28 @@ function cell(text: string): string {
   return text.replaceAll("|", "\\|");
 }
 
+/**
+ * A markdown table with its columns padded to a common width.
+ *
+ * Done here rather than left to `deno fmt`, which formats markdown and would
+ * align these itself — and then the file on disk would no longer match what
+ * this function returns, so the staleness test would fail on a freshly
+ * generated file. deno.jsonc excludes this one file from fmt for that reason;
+ * padding here is what keeps the raw text pleasant to read anyway.
+ */
+function table(headers: string[], rows: string[][]): string[] {
+  const widths = headers.map((h, i) =>
+    Math.max(h.length, ...rows.map((r) => r[i].length))
+  );
+  const line = (cells: string[]) =>
+    "| " + cells.map((c, i) => c.padEnd(widths[i])).join(" | ") + " |";
+  return [
+    line(headers),
+    "| " + widths.map((w) => "-".repeat(w)).join(" | ") + " |",
+    ...rows.map(line),
+  ];
+}
+
 export function renderShortcuts(): string {
   const specs = applyPadBindings(COMMAND_SPECS, PAD_BINDINGS, PAD_LABELS);
 
@@ -57,13 +79,18 @@ export function renderShortcuts(): string {
     const rows = specs.filter((s) => s.group === group);
     if (rows.length === 0) continue;
     out.push(`## ${group}`, "");
-    out.push("| Command | Keys | Pad |", "| --- | --- | --- |");
-    for (const s of rows) {
-      const keys = s.shortcut
-        ? `\`${formatShortcut(s.shortcut, { apple: false })}\``
-        : "";
-      out.push(`| ${cell(s.label)} | ${keys} | ${s.pad ?? ""} |`);
-    }
+    out.push(
+      ...table(
+        ["Command", "Keys", "Pad"],
+        rows.map((s) => [
+          cell(s.label),
+          s.shortcut
+            ? `\`${formatShortcut(s.shortcut, { apple: false })}\``
+            : "",
+          s.pad ?? "",
+        ]),
+      ),
+    );
     out.push("");
   }
 

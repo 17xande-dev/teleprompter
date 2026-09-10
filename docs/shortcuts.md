@@ -16,68 +16,68 @@ throttles and stick do, and [why some chords are unavailable](#unavailable).
 
 ## Scroll
 
-| Command | Keys | Pad |
-| --- | --- | --- |
-| Start / stop scrolling | `Space` | Cross |
-| Scroll faster | `Ctrl+↓` |  |
-| Scroll slower | `Ctrl+↑` |  |
-| Scroll faster (large step) | `Ctrl+Shift+↓` |  |
-| Scroll slower (large step) | `Ctrl+Shift+↑` |  |
-| Set scroll speed to zero | `Ctrl+Alt+0` |  |
-| Go to viewers' position | `Ctrl+Alt+G` | L1 |
-| Send my position to viewers | `Ctrl+Alt+J` | R1 |
-| Scroll the show from the preview on / off | `Ctrl+Alt+S` |  |
-| Reset sliders to defaults |  |  |
+| Command                                   | Keys           | Pad   |
+| ----------------------------------------- | -------------- | ----- |
+| Start / stop scrolling                    | `Space`        | Cross |
+| Scroll faster                             | `Ctrl+↓`       |       |
+| Scroll slower                             | `Ctrl+↑`       |       |
+| Scroll faster (large step)                | `Ctrl+Shift+↓` |       |
+| Scroll slower (large step)                | `Ctrl+Shift+↑` |       |
+| Set scroll speed to zero                  | `Ctrl+Alt+0`   |       |
+| Go to viewers' position                   | `Ctrl+Alt+G`   | L1    |
+| Send my position to viewers               | `Ctrl+Alt+J`   | R1    |
+| Scroll the show from the preview on / off | `Ctrl+Alt+S`   |       |
+| Reset sliders to defaults                 |                |       |
 
 ## Text
 
-| Command | Keys | Pad |
-| --- | --- | --- |
-| Bigger text | `Ctrl+Alt+=` |  |
-| Smaller text | `Ctrl+Alt+-` |  |
-| Match viewers' text size |  |  |
-| Send my text size to viewers |  |  |
-| Bigger editor text | `Ctrl+Alt+]` |  |
-| Smaller editor text | `Ctrl+Alt+[` |  |
+| Command                      | Keys         | Pad |
+| ---------------------------- | ------------ | --- |
+| Bigger text                  | `Ctrl+Alt+=` |     |
+| Smaller text                 | `Ctrl+Alt+-` |     |
+| Match viewers' text size     |              |     |
+| Send my text size to viewers |              |     |
+| Bigger editor text           | `Ctrl+Alt+]` |     |
+| Smaller editor text          | `Ctrl+Alt+[` |     |
 
 ## Message
 
-| Command | Keys | Pad |
-| --- | --- | --- |
-| Send message | `Ctrl+Enter` |  |
-| Clear message |  |  |
+| Command       | Keys         | Pad |
+| ------------- | ------------ | --- |
+| Send message  | `Ctrl+Enter` |     |
+| Clear message |              |     |
 
 ## Clocks
 
-| Command | Keys | Pad |
-| --- | --- | --- |
-| Start countdown |  |  |
-| Stop countdown |  |  |
-| Reset countdown |  |  |
+| Command         | Keys | Pad |
+| --------------- | ---- | --- |
+| Start countdown |      |     |
+| Stop countdown  |      |     |
+| Reset countdown |      |     |
 
 ## Document
 
-| Command | Keys | Pad |
-| --- | --- | --- |
-| New document |  |  |
-| Close PDF |  |  |
-| Live editing on / off | `Ctrl+Alt+L` |  |
-| Send my script to viewers | `Ctrl+Alt+U` |  |
+| Command                   | Keys         | Pad |
+| ------------------------- | ------------ | --- |
+| New document              |              |     |
+| Close PDF                 |              |     |
+| Live editing on / off     | `Ctrl+Alt+L` |     |
+| Send my script to viewers | `Ctrl+Alt+U` |     |
 
 ## Viewers
 
-| Command | Keys | Pad |
-| --- | --- | --- |
-| Open / close the local screen | `Ctrl+Alt+P` |  |
-| Copy viewer link |  |  |
+| Command                       | Keys         | Pad |
+| ----------------------------- | ------------ | --- |
+| Open / close the local screen | `Ctrl+Alt+P` |     |
+| Copy viewer link              |              |     |
 
 ## Help
 
-| Command | Keys | Pad |
-| --- | --- | --- |
-| Settings |  |  |
-| Command palette | `Ctrl+K` |  |
-| Keyboard shortcuts | `Ctrl+/` |  |
+| Command            | Keys     | Pad |
+| ------------------ | -------- | --- |
+| Settings           |          |     |
+| Command palette    | `Ctrl+K` |     |
+| Keyboard shortcuts | `Ctrl+/` |     |
 
 ## Unavailable by design {#unavailable}
 

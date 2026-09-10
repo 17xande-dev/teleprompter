@@ -2,6 +2,22 @@
 
 Guidance for Claude Code working in this repository.
 
+Everything here is about _changing_ the code: the trade-offs, the rejected
+alternatives, and the constraints that produce no error when you break them. The
+prose documentation lives in [docs/](docs/) and is a different job —
+[operating.md](docs/operating.md) for running a service,
+[architecture.md](docs/architecture.md) for the structural view,
+[development.md](docs/development.md) for the build and the gates,
+[deploying.md](docs/deploying.md), [themes.md](docs/themes.md), and
+[shortcuts.md](docs/shortcuts.md), which is generated from the command table by
+`deno task docs` and guarded by a test.
+
+**Traps stay in this file rather than moving to docs/.** This one is loaded
+automatically at the start of a session and those are not, so a constraint moved
+out of here is a constraint nobody reads until after they have broken it. Where
+the two overlap, docs/ explains the behaviour and this explains why it cannot be
+otherwise.
+
 ## Commands
 
 ```sh

@@ -8,7 +8,12 @@
   // formatting — and it rewrites the icon asset to no purpose. Excluded here
   // rather than remembered, so a bare `deno fmt` over the repo stays safe.
   "fmt": {
-    "exclude": ["**/*.html", "**/*.svg"]
+    // deno fmt formats markdown too, and it re-aligns the tables in
+    // docs/shortcuts.md — which is generated. Formatted, the file on disk no
+    // longer matches what tools/gen-docs.ts produces, and docs_test.ts fails
+    // on a file that was freshly generated. The generator pads its own
+    // columns, so nothing is lost by leaving it alone.
+    "exclude": ["**/*.html", "**/*.svg", "docs/shortcuts.md"]
   },
   "compilerOptions": {
     "lib": [
