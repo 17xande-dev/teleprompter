@@ -329,6 +329,40 @@ WebSocket relay, `ice.go` STUN/TURN config.
   custom properties go on the editor element itself (`#editor wordgard-editor`),
   not an ancestor: Wordgard sets its own palette on that element via a generated
   class, and a property set on an ancestor loses to one set on the element.
+- **Wordgard's menu overflow is a _count_, and it beats an explicit template.**
+  `Menu.Group.inline` is defined with `overflow: {at: 5}`, so it wraps
+  everything from its fifth item onwards into a submenu — measured, that happens
+  even when a template names the items explicitly. The schema contributes about
+  ten mark buttons, so which four were visible was decided by rank order, not by
+  anyone's choice; underline, colour, highlight and super/subscript were hidden
+  that way. `editor.ts` therefore puts the formatting controls in a group of its
+  own, at the rank `inline` would have taken and with no overflow, and names the
+  three that go behind the dots. Do not put items back into `Menu.Group.inline`
+  expecting a template to hold them. Its `"..."` slot is still in the template
+  so a mark from a future extension lands somewhere visible rather than
+  vanishing.
+- **`Wordgard.styles` keys are _element_ selectors, not classes.** That is the
+  convention its own colour picker follows — `wg-color-picker-color` is a real
+  element. A key that reads like a class name never matches and fails silently:
+  the text-size slider kept Chrome's intrinsic 129px width and an `accent-color`
+  of `auto` while its rule sat in the sheet doing nothing. Address descendants
+  by nesting from the host element (`"& input"`). Declaring these through
+  `Wordgard.styles` rather than `style.css` is deliberate — they then land
+  wherever style-mod puts the rest of the editor's theme, which is the slot
+  problem below.
+- **A `Menu.CustomControl`'s `render` runs once, not per open.** The DOM is
+  built on the editor's first layout and kept, so a control that reads its value
+  in `render` goes stale — the text-size popup showed 4.0 while the slider said
+  2.2, and the operator would have dragged from a number that was not the
+  current size. Such a control has to be pushed to, and it gets no destroy hook:
+  `textSizeMenu` drops its own listener when it notices its input is no longer
+  `isConnected`, because every document switch builds a fresh editor and so a
+  fresh control.
+- **`#applyEditorScale` is the funnel to notify from, not the slider's
+  `input`.** `listenEditorWheel` moves `rngEditor` and calls `#applyEditorScale`
+  directly _without_ dispatching `input`, so a listener on the event misses the
+  wheel entirely. Same shape as `#pushSettings` for the transport: hang anything
+  that must see every change off the funnel, not off the control.
 - **The editor's toolbar lives _inside_ the editor element**, so it inherits
   `#editor`'s 2rem prompter font — it rendered at 28.8px, a "Paragraph" dropdown
   taller than the app bar, until `#mainEditor wg-menubar` reset it. The script
