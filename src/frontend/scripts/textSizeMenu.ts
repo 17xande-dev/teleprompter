@@ -157,6 +157,25 @@ export function textSizeMenu(
         if (e.key.startsWith("Arrow")) e.stopPropagation();
       });
 
+      // Without this the popup shut the instant you touched the slider.
+      // `MenuBar` listens for `mousedown` on the whole bar and walks up from
+      // the target looking for one of its own items; from inside this control
+      // that walk arrives at the submenu, which reads as clicking the submenu
+      // button a second time — so the menu collapsed and the slider never got
+      // the drag.
+      //
+      // Stopped rather than prevented, though the bar checks
+      // `defaultPrevented` first and that would also work: `preventDefault`
+      // on a range input's mousedown is what starts a thumb drag, so
+      // cancelling it would trade a popup that closes for a slider that
+      // cannot be dragged. Stopping propagation leaves the default action
+      // alone — the input still takes focus and still drags — and simply
+      // keeps the bar from hearing about a gesture that was never aimed at
+      // it. `pointerdown` as well, for touch and pen.
+      for (const type of ["mousedown", "pointerdown"]) {
+        dom.addEventListener(type, (e) => e.stopPropagation());
+      }
+
       dom.append(slider, readout);
       // `focus` is what the menu moves focus to when the submenu opens, which
       // is what makes the slider keyboard-reachable rather than a thing only
