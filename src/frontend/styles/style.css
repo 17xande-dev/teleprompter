@@ -750,7 +750,30 @@ tp-clock-control {
   flex-direction: column;
   gap: var(--wa-space-s);
 
-  .wrapper {
+  /* The two halves of the choice read as one row of the card, so the group
+     splits its width between them rather than sitting in whatever two words
+     happen to need — and, sized to fill, the slot's own `flex-wrap: wrap`
+     can never break a two-item choice onto two lines, which is the trap the
+     app bar's wa-button-group documents.
+
+     Two rules and they are not interchangeable: the radios are *light* DOM
+     children of the group, so a plain descendant selector reaches them, while
+     the flex container they sit in is inside the shadow root and only
+     `::part` can. Nesting the radios under the `::part` rule — which reads
+     like the tidier way to write it — matches nothing at all: a descendant
+     cannot follow `::part`, and the rule is dropped in silence. Measured: the
+     buttons kept their intrinsic 79px and 98px. */
+  #rdoTimerMode::part(form-control-input) {
+    display: flex;
+  }
+
+  #rdoTimerMode wa-radio {
+    flex: 1 1 0;
+    min-inline-size: 0;
+  }
+
+  .wrapper,
+  .target-wrapper {
     display: flex;
     align-items: center;
     gap: 0.25rem;
@@ -761,6 +784,12 @@ tp-clock-control {
       flex: 1 1 0;
       min-inline-size: 0;
     }
+  }
+
+  /* `hidden` is how the two field rows are swapped, and a display rule in a
+     block like this one would beat the UA sheet's [hidden] and show both. */
+  [hidden] {
+    display: none;
   }
 
   /* The countdown reads out beside the buttons that drive it, which is the

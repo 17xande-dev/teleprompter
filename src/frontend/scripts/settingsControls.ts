@@ -22,11 +22,13 @@ export class SettingsControls {
   #dialog: WaDialog;
   #swInvertWheel: WaSwitch;
   #swPreviewScrub: WaSwitch;
+  #swRollTarget: WaSwitch;
 
   constructor() {
     this.#dialog = document.querySelector("#dlgSettings")!;
     this.#swInvertWheel = document.querySelector("#swInvertWheel")!;
     this.#swPreviewScrub = document.querySelector("#swPreviewScrub")!;
+    this.#swRollTarget = document.querySelector("#swRollTarget")!;
     (<WaButton> document.querySelector("#btnSettings")).addEventListener(
       "click",
       () => this.open(),
@@ -36,6 +38,13 @@ export class SettingsControls {
 
     this.#swInvertWheel.addEventListener("change", () => {
       this.storage.invertWheel = this.#swInvertWheel.checked;
+    });
+
+    // Straight to storage like the switch above, not reported like the one
+    // below: nothing on the page has to re-render for it. The countdown asks
+    // for it at the moment Reset is pressed and never before.
+    this.#swRollTarget.addEventListener("change", () => {
+      this.storage.rollTargetToTomorrow = this.#swRollTarget.checked;
     });
 
     // Reported rather than written straight to storage, unlike the switch
@@ -56,6 +65,7 @@ export class SettingsControls {
     // drift from what the wheel handlers are actually using.
     this.#swInvertWheel.checked = this.storage.invertWheel;
     this.#swPreviewScrub.checked = this.storage.previewScrub;
+    this.#swRollTarget.checked = this.storage.rollTargetToTomorrow;
     this.#dialog.open = true;
   }
 
@@ -89,6 +99,11 @@ export class SettingsControls {
 
   set previewScrub(value: boolean) {
     this.storage.previewScrub = value;
+  }
+
+  /** Asked at the moment Reset is pressed, never cached — see invertWheel. */
+  get rollTargetToTomorrow(): boolean {
+    return this.storage.rollTargetToTomorrow;
   }
 
   /** The switch the control page listens to, so it can re-render the marker. */

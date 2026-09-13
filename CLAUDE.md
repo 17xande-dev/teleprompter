@@ -834,7 +834,39 @@ and a copy that missed ticks in a background tab simply ran slow.
 - **The reset target is stored separately from where the countdown has got to.**
   The three fields are what Reset means, so restoring the running value into
   them would turn a five-minute countdown refreshed at 4:38 into a 4:38
-  countdown from then on.
+  countdown from then on. `ResetTarget` carries the mode and _both_ fields'
+  values whichever mode is live, so switching modes does not empty the other
+  one.
+- **The "time of day" mode resolves to a duration on the control page, and that
+  is the whole of it.** `TPClockControl.resetMs` is where the two modes
+  converge: a target time is turned into a remaining duration against _this_
+  page's clock at the moment Reset is pressed, and nothing downstream — the
+  wire, the storage, `TPClock`, every display — knows there are two modes at
+  all. The obvious implementation is to send the target and let each display
+  subtract, and it is the one thing this must never do: an epoch stamped here is
+  read against the _receiver's_ clock, which is the hazard `ClockMessage`
+  already documents. `ClockMessage` did not change to add this mode, and should
+  not.
+- **`msUntilTimeOfDay` is the one place building "today at HH:MM" out of a
+  `Date` is correct**, and it looks exactly like the mistake below, so its
+  comment says why it isn't. Two things there are load-bearing: `parseTimeOfDay`
+  is strict where `parseDuration` is tolerant (an hour above 23 is a typo in a
+  time of day and a legitimate ninety-nine hours in a duration), and "tomorrow"
+  is `setDate(+1)`, never `+ 86_400_000` — across a daylight-saving boundary the
+  same clock time is 23 or 25 hours away. The DST guard is asserted by where the
+  rolled target _lands_ rather than by how far away it is, so the test holds in
+  any timezone and fails in a DST one if the arithmetic regresses.
+- **A `wa-radio` is light DOM; the flex container it sits in is not.** The mode
+  switch needs two rules that read like they should be one:
+  `#rdoTimerMode
+  wa-radio` for the buttons and
+  `#rdoTimerMode::part(form-control-input)` for the row. Nesting the first
+  inside the second is the tidier-looking spelling and matches nothing — **a
+  descendant selector cannot follow `::part`**, and the rule is dropped in
+  silence. Measured: the two buttons kept their intrinsic 79px and 98px instead
+  of splitting the card's width. Sized to fill, they also cannot be broken onto
+  two lines by the slot's own `flex-wrap: wrap`, which is the `wa-button-group`
+  trap in the app bar.
 - **`parseDuration` sums fields; it does not build a time of day.** The old
   `parseTimer` set hours/minutes/seconds on a `Date`, so an hour field above 23
   rolled the date over. `formatDuration` rounds _up_ in absolute value, so a

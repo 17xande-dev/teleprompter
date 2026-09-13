@@ -138,13 +138,31 @@ A message overlays every display at whatever size fits its box — for "wrap up"
 or "mic 2 is off". **Enter** in the box sends it, so does Ctrl+Enter from
 anywhere else on the page.
 
-The countdown and the wall clock are part of the viewer layout. Set the
-countdown with the three fields, then Reset / Start / Stop. What travels is the
-countdown's whole state rather than a start signal, which is what makes it
-survive: a display that reloads mid-service comes back where the countdown
-actually is, your own copy and every display agree to the same second, and
-refreshing the control page resumes rather than restarting. **Reset** returns to
-the length you dialled in, not to wherever the countdown had got to.
+The countdown and the wall clock are part of the viewer layout. The countdown
+has two modes, and **Mode** picks which of them Reset acts on:
+
+- **Duration** — a length, in the three fields. Reset arms twenty minutes;
+  twenty minutes from whenever you press it.
+- **Time of day** — a wall-clock time, in the one field. Reset works out how far
+  away that time is and arms the countdown with that, so "10:00" at 09:35 arms
+  twenty-five minutes. Press Reset again whenever the plan slips and it re-reads
+  the clock.
+
+Either way it is Reset / Start / Stop from there, and **Stop** is a pause —
+Start picks up where it left off rather than starting over.
+
+A target time that has already gone counts _up_ past zero, the same way the
+countdown does at the end of a duration: at 10:04 a 10:00 target reads −4:00,
+which is how late the service is. If you would rather it meant the same time
+tomorrow — dialling 00:30 at 23:00 — turn on **Roll a past target time to
+tomorrow** in Settings.
+
+What travels is the countdown's whole state rather than a start signal, which is
+what makes it survive: a display that reloads mid-service comes back where the
+countdown actually is, your own copy and every display agree to the same second,
+and refreshing the control page resumes rather than restarting — in the mode you
+left it in, with the field still filled. **Reset** returns to what you dialled
+in, not to wherever the countdown had got to.
 
 ## Game controller
 

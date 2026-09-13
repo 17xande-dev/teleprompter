@@ -4,7 +4,7 @@ import {
   TPClockControl,
 } from "./clock.ts";
 import { randomID } from "./ids.ts";
-import { parseDuration, parseTimer, serialiseTimer } from "./timer.ts";
+import { parseTimer, serialiseTimer } from "./timer.ts";
 
 import WaSplitPanel from "@awesome.me/webawesome/dist/components/split-panel/split-panel.js";
 import WaBadge from "@awesome.me/webawesome/dist/components/badge/badge.js";
@@ -431,6 +431,20 @@ export class Teleprompter {
     // ended up rather than which button was pressed, so there is one thing to
     // remember, send and write down.
     this.tpClockControl.addEventListener("clock", () => this.#setClock());
+
+    // Asked at the moment Reset is pressed rather than handed over once, so
+    // the countdown cannot be acting on a setting the operator has since
+    // changed in the dialog. Same reason the wheel handlers read invertWheel
+    // per event.
+    this.tpClockControl.rollTarget = () => this.settings.rollTargetToTomorrow;
+
+    // The mode is remembered but is not show state: it changes what the next
+    // Reset will mean and nothing a display is showing, so it is written down
+    // without going out on the wire.
+    this.tpClockControl.rdoMode.addEventListener(
+      "change",
+      () => this.#saveClock(),
+    );
 
     this.#wirePdfDrop();
     this.#btnClosePdf.addEventListener("click", () => this.closePdf());
@@ -883,7 +897,7 @@ export class Teleprompter {
         TIMER_KEY,
         serialiseTimer(
           this.tpClockControl.state(),
-          parseDuration(this.tpClockControl.value()),
+          this.tpClockControl.target(),
           Date.now(),
         ),
       );
@@ -911,7 +925,7 @@ export class Teleprompter {
       // Private mode or blocked storage: start from zero.
     }
     const restored = parseTimer(raw, Date.now());
-    this.tpClockControl.setState(restored, restored.targetMs);
+    this.tpClockControl.setState(restored, restored);
     // Not through #setClock: there is nothing new to write down, and the
     // displays are caught up by #onViewerJoined as they connect anyway. This
     // covers the ones already attached to the evicted controller.

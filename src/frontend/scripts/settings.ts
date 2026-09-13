@@ -59,12 +59,25 @@ export type Settings = {
    * when it is armed rather than leaving that to a switch inside a dialog.
    */
   previewScrub: boolean;
+  /**
+   * Whether a countdown target time that has already passed means tomorrow.
+   *
+   * Only consulted by the countdown's "time of day" mode, and only at the
+   * moment Reset is pressed. Default false: a target in the past counts *up*
+   * past zero, which is what the countdown already does at the end of a
+   * duration and is honest about a moment that has gone — a service that
+   * started at 10:00 is four minutes late, not twenty-three hours and
+   * fifty-six minutes early. On, "00:30" dialled at 23:00 is ninety minutes
+   * away, which is the late-night case the switch exists for.
+   */
+  rollTargetToTomorrow: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
   invertWheel: false,
   liveEditing: true,
   previewScrub: false,
+  rollTargetToTomorrow: false,
 };
 
 /**
@@ -158,6 +171,15 @@ export class SettingsStorage {
 
   set previewScrub(value: boolean) {
     this.#settings.previewScrub = value;
+    this.#save();
+  }
+
+  get rollTargetToTomorrow(): boolean {
+    return this.#settings.rollTargetToTomorrow;
+  }
+
+  set rollTargetToTomorrow(value: boolean) {
+    this.#settings.rollTargetToTomorrow = value;
     this.#save();
   }
 

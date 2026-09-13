@@ -1,13 +1,25 @@
 import WaButton from "@awesome.me/webawesome/dist/components/button/button.js";
 import WaInput from "@awesome.me/webawesome/dist/components/input/input.js";
+import WaRadio from "@awesome.me/webawesome/dist/components/radio/radio.js";
+import WaRadioGroup from "@awesome.me/webawesome/dist/components/radio-group/radio-group.js";
 
 import {
   formatDuration,
   formatFields,
+  msUntilTimeOfDay,
   parseDuration,
+  type ResetTarget,
+  type TimerMode,
   type TimerState,
+  ZERO_TARGET,
   ZERO_TIMER,
 } from "./timer.ts";
+
+// Prevent treeshaking so these elements upgrade, the same idiom and the same
+// reason as settingsControls.ts's `void WaSwitch`. The two above survive on
+// teleprompter.ts's own void block; these two are used only in type position
+// here, so they need referencing or the mode switch renders as inert markup.
+void (WaRadio && WaRadioGroup);
 
 /**
  * Teleprompter countdown clock control component.
@@ -16,22 +28,42 @@ import {
  * <tp-clock-control id="tpClockControl"></tp-clock-control>
  */
 class TPClockControl extends HTMLElement {
+  rdoMode: WaRadioGroup;
+  divDuration: HTMLElement;
+  divTarget: HTMLElement;
   inHour: WaInput;
   inMinute: WaInput;
   inSecond: WaInput;
+  inTargetTime: WaInput;
   btnStart: WaButton;
   btnStop: WaButton;
   btnReset: WaButton;
   countdown: TPClock;
+
+  /**
+   * Whether a target time already past means the same time tomorrow.
+   *
+   * A callback rather than a remembered boolean, because it is a preference
+   * the operator can flip in a dialog while this element sits there: asked at
+   * the moment Reset is pressed, it cannot be stale, which is the discipline
+   * settingsControls.ts's `invertWheel` getter describes for the wheel
+   * handlers. A custom element takes no constructor arguments, so this
+   * property is the hook teleprompter.ts writes.
+   */
+  rollTarget: () => boolean = () => false;
 
   constructor() {
     // TODO: don't think I need this when extending HTMLElement.
     super();
     // These are actually needed in the Update method, but I'm including them here to prevent a TS error.
     // If there's a better way to do this, do it.
+    this.rdoMode = this.querySelector("#rdoTimerMode")!;
+    this.divDuration = this.querySelector(".wrapper")!;
+    this.divTarget = this.querySelector(".target-wrapper")!;
     this.inHour = this.querySelector("#inHour")!;
     this.inMinute = this.querySelector("#inMinute")!;
     this.inSecond = this.querySelector("#inSecond")!;
+    this.inTargetTime = this.querySelector("#inTargetTime")!;
     this.btnStart = this.querySelector("#btnCountdownStart")!;
     this.btnStop = this.querySelector("#btnCountdownStop")!;
     this.btnReset = this.querySelector("#btnCountdownReset")!;
@@ -42,11 +74,23 @@ class TPClockControl extends HTMLElement {
     // TODO: import that html template literal function from the vanilla website.
     // No heading of its own: the card this sits in is titled "Clocks", and
     // the timer's own <h3> read as a second, competing section header.
+    //
+    // Two ways to say the same thing — a length, or a time of day — so a radio
+    // group rather than a switch: neither is the other's "off", and the
+    // operator has to be able to read which one the fields below belong to
+    // without pressing anything.
     this.innerHTML = `
+    <wa-radio-group id="rdoTimerMode" size="s" orientation="horizontal" value="duration" label="Mode">
+    <wa-radio appearance="button" value="duration">Duration</wa-radio>
+    <wa-radio appearance="button" value="target">Time of day</wa-radio>
+    </wa-radio-group>
     <div class="wrapper">
     <wa-input id="inHour" type="number" value="00"></wa-input><span>:</span>
     <wa-input id="inMinute" type="number" value="00"></wa-input><span>:</span>
     <wa-input id="inSecond" type="number" value="00"></wa-input>
+    </div>
+    <div class="target-wrapper" hidden>
+    <wa-input id="inTargetTime" type="time" step="1" value="00:00:00"></wa-input>
     </div>
     <div class="timer-transport">
     <wa-button-group label="Timer">
@@ -80,6 +124,10 @@ class TPClockControl extends HTMLElement {
   }
 
   update() {
+    this.rdoMode = this.querySelector("#rdoTimerMode")!;
+    this.divDuration = this.querySelector(".wrapper")!;
+    this.divTarget = this.querySelector(".target-wrapper")!;
+    this.inTargetTime = this.querySelector("#inTargetTime")!;
     this.inHour = this.querySelector("#inHour")!;
     this.inMinute = this.querySelector("#inMinute")!;
     this.inSecond = this.querySelector("#inSecond")!;
@@ -103,9 +151,24 @@ class TPClockControl extends HTMLElement {
     });
 
     this.btnReset.addEventListener("click", () => {
-      this.countdown?.reset(this.value());
+      this.countdown?.reset(this.resetMs());
       this.#report();
     });
+
+    // Changing the mode arms nothing and reports nothing: it only changes what
+    // the *next* Reset will mean, so a countdown already running carries on
+    // while the operator sets up the one after it. Deliberately not a `clock`
+    // event — the mode is remembered, but it is not show state and has no
+    // business on the wire. teleprompter.ts listens to this same `change` for
+    // the writing-down half.
+    this.rdoMode.addEventListener("change", () => this.#showFields());
+  }
+
+  /** Only the fields belonging to the live mode, so there is one thing to read. */
+  #showFields() {
+    const target = this.mode() === "target";
+    this.divDuration.hidden = target;
+    this.divTarget.hidden = !target;
   }
 
   /**
@@ -151,17 +214,54 @@ class TPClockControl extends HTMLElement {
    * arriving from anywhere else — is shown here, and reporting it would send
    * the displays a state they are the reason for.
    *
-   * `targetMs` fills the three fields and is deliberately not the same number
-   * as `remainingMs`: the fields are what Reset goes back to, so putting the
-   * running value in them would turn a five-minute countdown refreshed at
-   * 4:38 into a 4:38 countdown from then on.
+   * `target` fills the fields and restores the mode, and its `targetMs` is
+   * deliberately not the same number as `remainingMs`: the fields are what
+   * Reset goes back to, so putting the running value in them would turn a
+   * five-minute countdown refreshed at 4:38 into a 4:38 countdown from then
+   * on. Both of the target's values are carried whichever mode is live, so a
+   * restore cannot empty the field belonging to the other one.
    */
-  setState(state: TimerState, targetMs = state.remainingMs) {
+  setState(
+    state: TimerState,
+    target: ResetTarget = { ...ZERO_TARGET, targetMs: state.remainingMs },
+  ) {
     this.countdown?.setState(state);
-    const total = Math.max(0, targetMs);
+    const total = Math.max(0, target.targetMs);
     this.inHour.value = `${Math.floor(total / 3_600_000)}`.padStart(2, "0");
     this.inMinute.value = `${Math.floor(total / 60_000) % 60}`.padStart(2, "0");
     this.inSecond.value = `${Math.floor(total / 1000) % 60}`.padStart(2, "0");
+    if (target.targetTime) this.inTargetTime.value = target.targetTime;
+    this.rdoMode.value = target.mode;
+    this.#showFields();
+  }
+
+  /** Which of the two things the operator dialled in Reset will act on. */
+  mode(): TimerMode {
+    return this.rdoMode.value === "target" ? "target" : "duration";
+  }
+
+  /**
+   * What Reset means, in milliseconds, as of now.
+   *
+   * The one place the two modes converge, and the reason nothing downstream
+   * has to know there are two: a time of day is resolved here, against this
+   * page's clock, and everything past this point is a plain remaining
+   * duration — which is what the wire, the storage and every display already
+   * deal in.
+   */
+  resetMs(now = Date.now()): number {
+    return this.mode() === "target"
+      ? msUntilTimeOfDay(this.targetValue(), now, this.rollTarget())
+      : parseDuration(this.value());
+  }
+
+  /** What Reset goes back to, in the form that is written down. */
+  target(): ResetTarget {
+    return {
+      mode: this.mode(),
+      targetMs: parseDuration(this.value()),
+      targetTime: this.targetValue(),
+    };
   }
 
   /** The three fields as "hh:mm:ss", zero-padded — which this never was. */
@@ -171,6 +271,16 @@ class TPClockControl extends HTMLElement {
       this.inMinute.value,
       this.inSecond.value,
     );
+  }
+
+  /**
+   * The time-of-day field, as the browser's time input gives it.
+   *
+   * Empty when the field is cleared — a `wa-input` of this type reports null —
+   * and msUntilTimeOfDay reads that as "arm nothing" rather than throwing.
+   */
+  targetValue(): string {
+    return this.inTargetTime.value ?? "";
   }
 }
 
@@ -290,8 +400,15 @@ class TPClock extends HTMLElement {
     this.tick();
   }
 
-  reset(strTime: string | null) {
-    this.setState({ running: false, remainingMs: parseDuration(strTime) });
+  /**
+   * Arm a stopped countdown at `ms`.
+   *
+   * A number, not a string: the control owns the parsing now that there are
+   * two ways to dial a countdown in, and this element goes on knowing only
+   * about a deadline and a remaining duration.
+   */
+  reset(ms: number) {
+    this.setState({ running: false, remainingMs: ms });
   }
 
   /**

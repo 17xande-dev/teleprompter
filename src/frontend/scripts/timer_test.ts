@@ -3,9 +3,13 @@ import { assertEquals } from "@std/assert";
 import {
   formatDuration,
   formatFields,
+  msUntilTimeOfDay,
   parseDuration,
+  parseTimeOfDay,
   parseTimer,
+  type ResetTarget,
   serialiseTimer,
+  ZERO_TARGET,
   ZERO_TIMER,
 } from "./timer.ts";
 
@@ -69,7 +73,14 @@ Deno.test("the three fields are zero-padded on the way out", () => {
   assertEquals(formatFields("01", "30", "00"), "01:30:00");
 });
 
-const ZERO_RESTORED = { ...ZERO_TIMER, targetMs: 0 };
+const ZERO_RESTORED = { ...ZERO_TIMER, ...ZERO_TARGET };
+
+/** A duration-mode reset target, which is what every older test means. */
+const duration = (targetMs: number): ResetTarget => ({
+  mode: "duration",
+  targetMs,
+  targetTime: "",
+});
 
 Deno.test("a running countdown comes back aged by the time away", () => {
   // The bug this is the fix for: a display or the control page reloading put
@@ -78,24 +89,24 @@ Deno.test("a running countdown comes back aged by the time away", () => {
   // all.
   const raw = serialiseTimer(
     { running: true, remainingMs: 30_000 },
-    60_000,
+    duration(60_000),
     1000,
   );
   assertEquals(parseTimer(raw, 1000), {
     running: true,
     remainingMs: 30_000,
-    targetMs: 60_000,
+    ...duration(60_000),
   });
   assertEquals(parseTimer(raw, 6000), {
     running: true,
     remainingMs: 25_000,
-    targetMs: 60_000,
+    ...duration(60_000),
   });
   // And it keeps running past zero rather than clamping.
   assertEquals(parseTimer(raw, 41_000), {
     running: true,
     remainingMs: -10_000,
-    targetMs: 60_000,
+    ...duration(60_000),
   });
 });
 
@@ -105,7 +116,7 @@ Deno.test("the reset target survives independently of the countdown", () => {
   // would silently redefine it.
   const raw = serialiseTimer(
     { running: true, remainingMs: 278_000 },
-    300_000,
+    duration(300_000),
     1000,
   );
   const restored = parseTimer(raw, 1000);
@@ -129,13 +140,13 @@ Deno.test("a target written by an older build falls back to the countdown", () =
 Deno.test("a stopped countdown is not aged", () => {
   const raw = serialiseTimer(
     { running: false, remainingMs: 30_000 },
-    60_000,
+    duration(60_000),
     1000,
   );
   assertEquals(parseTimer(raw, 999_000), {
     running: false,
     remainingMs: 30_000,
-    targetMs: 60_000,
+    ...duration(60_000),
   });
 });
 
@@ -144,13 +155,13 @@ Deno.test("a clock that went backwards does not add time", () => {
   // Unclamped that elapsed would be negative and *lengthen* the countdown.
   const raw = serialiseTimer(
     { running: true, remainingMs: 30_000 },
-    60_000,
+    duration(60_000),
     5000,
   );
   assertEquals(parseTimer(raw, 1000), {
     running: true,
     remainingMs: 30_000,
-    targetMs: 60_000,
+    ...duration(60_000),
   });
 });
 
@@ -179,6 +190,125 @@ Deno.test("running but undatable is held rather than guessed at", () => {
   assertEquals(parseTimer('{"running":true,"remainingMs":30000}', 9999), {
     running: false,
     remainingMs: 30_000,
-    targetMs: 30_000,
+    ...duration(30_000),
   });
+});
+
+Deno.test("a time of day is read strictly, unlike a duration", () => {
+  assertEquals(parseTimeOfDay("19:30"), {
+    hours: 19,
+    minutes: 30,
+    seconds: 0,
+  });
+  assertEquals(parseTimeOfDay("19:30:15"), {
+    hours: 19,
+    minutes: 30,
+    seconds: 15,
+  });
+  assertEquals(parseTimeOfDay("09:05"), { hours: 9, minutes: 5, seconds: 0 });
+  // The strictness is the whole difference from parseDuration, which reads
+  // 99:00:00 as ninety-nine hours quite deliberately. There is no such time of
+  // day, and reading one would roll into another date — the old parseTimer's
+  // bug wearing a different hat.
+  assertEquals(parseTimeOfDay("24:00"), null);
+  assertEquals(parseTimeOfDay("99:00:00"), null);
+  assertEquals(parseTimeOfDay("12:60"), null);
+  assertEquals(parseTimeOfDay("12:30:60"), null);
+  // And unreadable input is null rather than a throw: the operator clears the
+  // field to retype it, and that must not take the page down.
+  assertEquals(parseTimeOfDay(""), null);
+  assertEquals(parseTimeOfDay(null), null);
+  assertEquals(parseTimeOfDay("abc"), null);
+  assertEquals(parseTimeOfDay("19"), null);
+  assertEquals(parseTimeOfDay("19:30:15:00"), null);
+});
+
+Deno.test("a target time resolves to the distance from now", () => {
+  // Local time on purpose — the operator dials the time their own wall clock
+  // shows — so the fixture is built the same way rather than from an epoch.
+  const at = (h: number, m: number, s = 0) =>
+    new Date(2026, 8, 13, h, m, s, 0).getTime();
+  const now = at(9, 0);
+
+  assertEquals(msUntilTimeOfDay("10:00", now, false), 3_600_000);
+  assertEquals(msUntilTimeOfDay("09:03:30", now, false), 210_000);
+  assertEquals(msUntilTimeOfDay("09:00", now, false), 0);
+  // An empty or unreadable field arms nothing rather than throwing.
+  assertEquals(msUntilTimeOfDay("", now, false), 0);
+  assertEquals(msUntilTimeOfDay("25:00", now, false), 0);
+});
+
+Deno.test("a target already past counts up unless it is rolled over", () => {
+  const at = (h: number, m: number) =>
+    new Date(2026, 8, 13, h, m, 0, 0)
+      .getTime();
+  const now = at(10, 4);
+
+  // The default, and the honest reading: the service started four minutes ago.
+  assertEquals(msUntilTimeOfDay("10:00", now, false), -240_000);
+  // With the setting on it is the same time tomorrow, which is the late-night
+  // case — 00:30 dialled at 23:00 is ninety minutes, not twenty-two and a half
+  // hours behind.
+  assertEquals(msUntilTimeOfDay("10:00", now, true), 86_160_000);
+  assertEquals(
+    msUntilTimeOfDay(
+      "00:30",
+      new Date(2026, 8, 13, 23, 0, 0, 0).getTime(),
+      true,
+    ),
+    5_400_000,
+  );
+  // Tomorrow is a *date*, not 86,400,000ms: across a daylight-saving boundary
+  // the same clock time is 23 or 25 hours away. Asserted by where it lands
+  // rather than by how far it is, so this holds in any zone — and fails in a
+  // zone with DST the moment the arithmetic goes back to adding a fixed day.
+  const midnightish = new Date(2026, 2, 28, 22, 0, 0, 0).getTime();
+  const rolled = new Date(
+    midnightish + msUntilTimeOfDay("21:00", midnightish, true),
+  );
+  assertEquals([rolled.getHours(), rolled.getMinutes()], [21, 0]);
+
+  // Exactly now rolls too: "arm me for this time" means the next one.
+  assertEquals(msUntilTimeOfDay("10:04", now, true), 86_400_000);
+  assertEquals(msUntilTimeOfDay("10:04", now, false), 0);
+});
+
+Deno.test("the mode and both fields survive a reload", () => {
+  const target: ResetTarget = {
+    mode: "target",
+    targetMs: 300_000,
+    targetTime: "10:00:00",
+  };
+  const raw = serialiseTimer(
+    { running: true, remainingMs: 240_000 },
+    target,
+    0,
+  );
+  assertEquals(parseTimer(raw, 60_000), {
+    running: true,
+    remainingMs: 180_000,
+    ...target,
+  });
+});
+
+Deno.test("a countdown written before modes existed is a duration", () => {
+  // Which is what it was. Falling back to "target" instead would leave Reset
+  // reading an empty time field and arming nothing.
+  const restored = parseTimer(
+    '{"running":false,"remainingMs":30000,"targetMs":60000,"at":0}',
+    0,
+  );
+  assertEquals(restored.mode, "duration");
+  assertEquals(restored.targetMs, 60_000);
+  assertEquals(restored.targetTime, "");
+  // A hand-edited mode is not a mode.
+  assertEquals(
+    parseTimer('{"running":false,"remainingMs":0,"mode":"sideways"}', 0).mode,
+    "duration",
+  );
+  assertEquals(
+    parseTimer('{"running":false,"remainingMs":0,"targetTime":7}', 0)
+      .targetTime,
+    "",
+  );
 });

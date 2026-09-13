@@ -86,31 +86,122 @@ export function formatFields(
 }
 
 /**
+ * Which of the two things the operator dialled in is what Reset means.
+ *
+ * `"duration"` is a length — twenty minutes from whenever Reset is pressed.
+ * `"target"` is a wall-clock time: Reset works out how far away it is and arms
+ * the countdown with *that*, which is why nothing absolute ever reaches the
+ * wire. See msUntilTimeOfDay.
+ */
+export type TimerMode = "duration" | "target";
+
+/**
+ * Read an "hh:mm" or "hh:mm:ss" *time of day*.
+ *
+ * Strict where parseDuration is deliberately tolerant, and the strictness is
+ * the difference between the two: a duration field may legitimately hold
+ * 99:00:00, ninety-nine hours, while there is no such time of day. An hour
+ * above 23 or a minute above 59 is a typo, and reading it as a time would
+ * silently roll into another day — which is precisely the bug the old
+ * Date-based `parseTimer` had.
+ *
+ * `null` rather than a throw for anything unreadable, including an empty
+ * field: the operator clears the input to retype it, and a countdown that
+ * threw while they did would take the page down with it.
+ */
+export function parseTimeOfDay(
+  text: string | null,
+): { hours: number; minutes: number; seconds: number } | null {
+  if (!text) return null;
+  const parts = text.trim().split(":");
+  if (parts.length < 2 || parts.length > 3) return null;
+  const values: number[] = [];
+  for (const part of parts) {
+    if (!/^\d{1,2}$/.test(part.trim())) return null;
+    values.push(parseInt(part.trim(), 10));
+  }
+  const [hours, minutes, seconds = 0] = values;
+  if (hours > 23 || minutes > 59 || seconds > 59) return null;
+  return { hours, minutes, seconds };
+}
+
+/**
+ * How long from `now` until the next occurrence of a time of day.
+ *
+ * This is the one place in the app where building "today at HH:MM:SS" out of a
+ * Date is the *right* thing to do, and it is worth saying so because it looks
+ * exactly like the mistake the old `parseTimer` made — that one built such a
+ * Date and then counted it down as though it were a duration, which is why an
+ * hour field above 23 rolled the date over. Here the value really is a time of
+ * day, and a local Date is what knows when that time occurs.
+ *
+ * The result is resolved against the *control page's* clock and travels as a
+ * remaining duration, never as the target itself: an epoch stamped here would
+ * be read against a display's own clock, and a phone or a Pi that has not
+ * reached NTP would show nonsense. See protocol.ts's ClockMessage.
+ *
+ * A target already past reads negative — the countdown counts up past zero the
+ * same way it does at the end of a duration — unless `rollToTomorrow`, which is
+ * the operator's setting for "00:30 dialled at 23:00 means ninety minutes".
+ * Tomorrow is `setDate(+1)`, not `+ 86_400_000`: across a daylight-saving
+ * boundary the same clock time is 23 or 25 hours away, not 24.
+ */
+export function msUntilTimeOfDay(
+  text: string | null,
+  now: number,
+  rollToTomorrow: boolean,
+): number {
+  const time = parseTimeOfDay(text);
+  if (!time) return 0;
+  const target = new Date(now);
+  target.setHours(time.hours, time.minutes, time.seconds, 0);
+  if (rollToTomorrow && target.getTime() <= now) {
+    target.setDate(target.getDate() + 1);
+  }
+  return target.getTime() - now;
+}
+
+/**
+ * What Reset goes back to: the mode, and the value belonging to that mode.
+ *
+ * Both are carried whichever mode is live, so switching back and forth doesn't
+ * throw away what was dialled into the other one. `targetMs` is the length in
+ * the three fields; `targetTime` is the "hh:mm:ss" in the time field.
+ */
+export interface ResetTarget {
+  mode: TimerMode;
+  targetMs: number;
+  targetTime: string;
+}
+
+export const ZERO_TARGET: ResetTarget = {
+  mode: "duration",
+  targetMs: 0,
+  targetTime: "",
+};
+
+/**
  * What is written down, which is more than what travels.
  *
- * `targetMs` is the length the operator dialled into the three fields — what
- * Reset goes back to — and it is a separate fact from where the countdown has
- * got to. Restoring the running value into those fields instead would quietly
- * change what Reset means: a five-minute countdown refreshed at 4:38 would
- * reset to 4:38 from then on.
+ * The reset target is a separate fact from where the countdown has got to.
+ * Restoring the running value into the fields instead would quietly change
+ * what Reset means: a five-minute countdown refreshed at 4:38 would reset to
+ * 4:38 from then on.
  */
-interface StoredTimer extends TimerState {
+interface StoredTimer extends TimerState, ResetTarget {
   /** Epoch milliseconds at the moment of writing. */
   at: number;
-  targetMs: number;
 }
 
 /** A restored countdown: where it is, and what Reset should return it to. */
-export interface RestoredTimer extends TimerState {
-  targetMs: number;
-}
+export interface RestoredTimer extends TimerState, ResetTarget {}
 
 export function serialiseTimer(
   state: TimerState,
-  targetMs: number,
+  target: ResetTarget,
   now: number,
 ): string {
-  return JSON.stringify({ ...state, targetMs, at: now });
+  return JSON.stringify({ ...state, ...target, at: now });
 }
 
 /**
@@ -126,7 +217,7 @@ export function serialiseTimer(
  * throwing out of page load.
  */
 export function parseTimer(raw: string | null, now: number): RestoredTimer {
-  const zero = { ...ZERO_TIMER, targetMs: 0 };
+  const zero = { ...ZERO_TIMER, ...ZERO_TARGET };
   if (!raw) return zero;
   let parsed: unknown;
   try {
@@ -144,18 +235,25 @@ export function parseTimer(raw: string | null, now: number): RestoredTimer {
     return zero;
   }
   // A target written by an older build, or hand-edited away, falls back to
-  // where the countdown is: better than resetting to zero.
+  // where the countdown is: better than resetting to zero. The mode and the
+  // time field are the same story — a blob from before this existed is a
+  // duration countdown, which is what it was.
   const targetMs = typeof stored.targetMs === "number" &&
       Number.isFinite(stored.targetMs)
     ? stored.targetMs
     : Math.max(0, stored.remainingMs);
+  const mode: TimerMode = stored.mode === "target" ? "target" : "duration";
+  const targetTime = typeof stored.targetTime === "string"
+    ? stored.targetTime
+    : "";
+  const target: ResetTarget = { mode, targetMs, targetTime };
   if (!stored.running) {
-    return { running: false, remainingMs: stored.remainingMs, targetMs };
+    return { running: false, remainingMs: stored.remainingMs, ...target };
   }
   if (typeof stored.at !== "number" || !Number.isFinite(stored.at)) {
     // Running but undatable. Resuming would be a guess at how long ago;
     // holding it where it was is the answer that cannot be wrong by hours.
-    return { running: false, remainingMs: stored.remainingMs, targetMs };
+    return { running: false, remainingMs: stored.remainingMs, ...target };
   }
   // A clock that went backwards (an NTP correction, a suspend) would
   // otherwise *add* time to the countdown.
@@ -163,6 +261,6 @@ export function parseTimer(raw: string | null, now: number): RestoredTimer {
   return {
     running: true,
     remainingMs: stored.remainingMs - elapsed,
-    targetMs,
+    ...target,
   };
 }

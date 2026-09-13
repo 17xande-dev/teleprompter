@@ -359,6 +359,11 @@
     <wa-switch id="swPreviewScrub" hint="Scroll or drag the preview to move every display, like scrolling the screen itself. While this is off the preview ignores your pointer.">
       Scroll the show from the preview
     </wa-switch>
+    <!-- Only the countdown's "Time of day" mode reads this, and only when
+         Reset is pressed. Off, a target that has gone counts up past zero. -->
+    <wa-switch id="swRollTarget" hint="When a countdown's target time has already passed today, count down to the same time tomorrow instead of counting up past zero.">
+      Roll a past target time to tomorrow
+    </wa-switch>
     <wa-button name="close" slot="footer" variant="primary">Done</wa-button>
   </wa-dialog>
   <!-- The command palette (Ctrl+K), which doubles as the shortcut cheatsheet
