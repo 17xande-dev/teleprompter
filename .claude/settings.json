@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "deno-lsp@skills-dir": true
+  }
+}
