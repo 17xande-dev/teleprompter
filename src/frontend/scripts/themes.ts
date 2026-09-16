@@ -325,9 +325,14 @@ export const THEME_TEMPLATE = `/* A viewer theme is plain CSS, and while it is
      --timer-negative-color   the countdown past zero             (red)
      --message-color          the operator's message              (red)
 
-   The first two are applied by the viewer's base stylesheet, which sits
-   underneath every theme, so setting those alone is enough to recolour a
-   screen. The rest are read by the rules below — they are yours, so a theme
+   One more, which is a length rather than a colour:
+
+     --viewer-gutter          the script's gap from the screen
+                              edges                  (max(1rem, 2.5vi))
+
+   The first two, and the gutter, are applied by the viewer's base stylesheet,
+   which sits underneath every theme, so setting those alone is enough to
+   recolour a screen. The rest are read by the rules below — they are yours, so a theme
    that rewrites a rule takes over that colour with it.
 
    Three things are not yours to set:

@@ -576,6 +576,11 @@ export class Viewer {
 
     const main = <HTMLElement> document.querySelector("#main");
     main.replaceChildren();
+    // Before #pdfWidth() is asked anything: the class takes the script's side
+    // gutter off, and #pdfWidth measures clientWidth, which includes padding.
+    // Asked with the gutter still on, every page renders a gutter too wide for
+    // the box it has to fit in.
+    main.classList.add("pdf");
     const view = await renderPdf(main, data, this.#pdfWidth());
     // A second PDF (or a pdf-clear) landed while this one was rendering.
     if (generation !== this.#pdfGeneration) {
@@ -598,6 +603,8 @@ export class Viewer {
     this.#pdf = null;
     const main = <HTMLElement> document.querySelector("#main");
     main.replaceChildren();
+    // Back to a script, so the side gutter comes back with it.
+    main.classList.remove("pdf");
   }
 
   setContent(content: string) {

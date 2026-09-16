@@ -19,6 +19,12 @@
   --timer-color: yellow;
   --timer-negative-color: red;
   --message-color: red;
+  /* The gap between the script and the edges of the screen. A theme may
+     override it; it is here rather than in a layout so a display gets one
+     whatever layout it is wearing. Both halves of the max() earn their place:
+     the vi term keeps the gutter proportional on a big screen, and the rem
+     floor stops a phone in portrait from getting a gutter of a few pixels. */
+  --viewer-gutter: max(1rem, 2.5vi);
 }
 
 /* A display is dark unless a theme says otherwise. The script is read off a
@@ -66,6 +72,27 @@ html.can-drive body::-webkit-scrollbar {
    is proportional, so 0.4 lands on the same line at any size. A gap declared
    here in rem would not scale with it and the viewers would drift apart by a
    little more with every page. Nothing in CSS may affect the height. */
+/* Keep the script off the bezel. Read at arm's length — often through glass,
+   often on a screen whose edge is a few millimetres from the frame — text that
+   touches the side is the first thing to get lost, and the last character of a
+   line is the one the talent is mid-sentence on.
+
+   On #main rather than on `body` because body is where the sticky clock strip
+   lives, and insetting that would leave a stripe of page showing beside it.
+
+   PDF mode is deliberately exempt, and the exemption is a class rather than a
+   selector trick because #pdfWidth() measures `main.clientWidth`, which
+   *includes* padding: left on, every page would be rendered a gutter wider
+   than the box it has to fit in, and a PDF's page boxes are the one thing in
+   this file that must stay untouched (see .pdf-page below). */
+#main {
+  padding-inline: var(--viewer-gutter);
+}
+
+#main.pdf {
+  padding-inline: 0;
+}
+
 .pdf-page {
   margin-inline: auto;
   background: white;

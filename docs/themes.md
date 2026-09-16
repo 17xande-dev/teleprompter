@@ -29,7 +29,7 @@ zero, which is how the built-in layouts turn it red.
 
 ## The palette
 
-Seven custom properties, declared on `:root` in `viewerBase.css`. The first two
+Eight custom properties, declared on `:root` in `viewerBase.css`. The first two
 are applied _there_, on the layer underneath every theme — so a theme that
 overrides only those two recolours the screen without restating a layout, which
 is the only reason a token is worth having:
@@ -43,10 +43,20 @@ is the only reason a token is worth having:
 | `--timer-color`          | the countdown              |
 | `--timer-negative-color` | the countdown past zero    |
 | `--message-color`        | the message overlay        |
+| `--viewer-gutter`        | the script's side margin   |
 
 The five accents are read by the built-in layouts and by the template a new
 theme starts from, so they follow a theme that keeps those rules and are taken
 over by one that rewrites them.
+
+`--viewer-gutter` is the odd one out: a length, not a colour, and applied in the
+base layer like the first two. It keeps the script off the bezel — text read at
+arm's length through glass loses its last character first, and that is the one
+the talent is mid-sentence on. It is `max()` of a `rem` floor and a `vi` term so
+a phone in portrait still gets a usable margin while a large screen gets a
+proportional one. PDF mode sets it aside: the page column measures the width it
+is given, and a gutter there would render every page wider than the box it has
+to fit in.
 
 A display is white-on-black by default, and that lives in the base layer rather
 than in a layout: a script is read off a screen at arm's length, often in a dark
