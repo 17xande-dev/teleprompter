@@ -55,7 +55,14 @@ import { SettingsControls } from "./settingsControls.ts";
 import { GamepadControls } from "./gamepadControls.ts";
 import { connectController, type ControllerLink } from "./webrtc.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
-import { ratioOf, scrubStep, setRatio, wheelPixels } from "./scrollsync.ts";
+import {
+  blockPosOf,
+  ratioOf,
+  scrollTopOfBlock,
+  scrubStep,
+  setRatio,
+  wheelPixels,
+} from "./scrollsync.ts";
 import {
   clampEditorScale,
   clampTextScale,
@@ -1794,14 +1801,92 @@ export class Teleprompter {
   }
 
   /**
+   * A scroller's blocks, as offsets and heights within it.
+   *
+   * The DOM half of `blockPosOf`/`scrollTopOfBlock`. `offsetTop` is relative to
+   * the offset parent rather than the scroller, so the first block's own offset
+   * is subtracted — that also takes the gutter's padding out, which is what
+   * makes the numbers comparable between two documents whose gutters differ.
+   */
+  #blockMetrics(scroller: Element): { offsets: number[]; heights: number[] } {
+    const blocks = [...scroller.querySelectorAll(":scope > * > *")].length
+      // The editor wraps its content in its own element; a viewer's #main
+      // holds the blocks directly. Take whichever level actually has them.
+      ? this.#deepestBlockParent(scroller)
+      : scroller;
+    const children = [...blocks.children] as HTMLElement[];
+    if (!children.length) return { offsets: [], heights: [] };
+    const base = children[0].offsetTop;
+    return {
+      offsets: children.map((c) => c.offsetTop - base),
+      heights: children.map((c) => c.offsetHeight),
+    };
+  }
+
+  /** Where the blocks actually live under a scroller. */
+  #deepestBlockParent(scroller: Element): Element {
+    // The editor's scrollDOM contains a content element which contains the
+    // blocks; a viewer's #main *is* that element. One level of indirection,
+    // resolved by looking rather than by hardcoding either shape.
+    const content = scroller.querySelector("wg-content, .content, #main");
+    return content ?? scroller;
+  }
+
+  /**
+   * The preview's blocks, which stand in for every display's.
+   *
+   * Since displays are laid out in the reference display's box (see
+   * StageMessage) and the preview *is* that box, the preview's geometry is
+   * every display's geometry — so the control page can translate a position
+   * into a display's coordinates without asking anyone. That is what keeps
+   * both Sync buttons exact with no protocol change at all.
+   */
+  #previewBlockMetrics(): { offsets: number[]; heights: number[] } {
+    const doc = this.ifrmPreview.contentDocument;
+    const main = doc?.querySelector("#main");
+    if (!main) return { offsets: [], heights: [] };
+    return this.#blockMetrics(main);
+  }
+
+  #previewScroller(): Element | null {
+    return this.ifrmPreview.contentDocument?.querySelector("#stage") ?? null;
+  }
+
+  /**
    * Jump this page to where the viewers are.
    *
-   * `#lastRatio` is the pacer's latest sample, and every viewer sits at that
-   * same ratio — the controller relays one position to all of them — so it is
-   * also the position of whichever viewer the preview is mirroring.
+   * **By block, not by ratio**, and the difference is not subtle. A ratio is a
+   * fraction of a document's height, and the editor's document is not a scaled
+   * copy of a display's: measured on a real script, 32,252px at 33.6px text
+   * against 51,460px at 48px — 1.595 times as tall on a 1.43 times larger
+   * font, because a bigger font wraps *long* paragraphs more than short ones.
+   * So the same fraction is a different place, and this used to land about 49
+   * lines from where the displays actually were.
+   *
+   * Both documents are rendered from the same published HTML, so a block index
+   * is a coordinate they share exactly. The preview supplies the displays' half
+   * of the geometry.
    */
   goToViewerPosition() {
-    setRatio(this.#ownScroller(), this.#lastRatio);
+    const previewScroller = this.#previewScroller();
+    const preview = this.#previewBlockMetrics();
+    const own = this.#blockMetrics(this.#ownScroller());
+    // No preview yet, or a document with no blocks at all: the ratio is a worse
+    // answer but it is the only one available, and it is what this did before.
+    if (!previewScroller || !preview.offsets.length || !own.offsets.length) {
+      setRatio(this.#ownScroller(), this.#lastRatio);
+      return;
+    }
+    const pos = blockPosOf(
+      preview.offsets,
+      preview.heights,
+      previewScroller.scrollTop,
+    );
+    this.#ownScroller().scrollTop = scrollTopOfBlock(
+      own.offsets,
+      own.heights,
+      pos,
+    );
   }
 
   /**
@@ -1816,12 +1901,36 @@ export class Teleprompter {
    * so this works while the scroll is running.
    */
   sendMyPosition() {
-    const ratio = ratioOf(this.#ownScroller());
+    // Translated through the preview rather than sent as this pane's own
+    // fraction. See goToViewerPosition for why a fraction cannot cross between
+    // the editor and a display; this is the same conversion in the other
+    // direction, and it stays a plain ratio on the wire because by the time it
+    // is sent it is expressed in the displays' own geometry — which every
+    // display shares, since they are all laid out in the reference box.
+    const ratio = this.#viewerRatioForOwnPosition();
     // Cached so a viewer joining later is caught up to here by #onViewerJoined,
     // which is otherwise only ever fed by the pacer.
     this.#lastRatio = ratio;
     this.link.sendScroll(ratio);
     this.#postToPreview({ type: "scroll", r: ratio, s: 0 });
+  }
+
+  /** Where this pane's top line is, as a ratio in a display's document. */
+  #viewerRatioForOwnPosition(): number {
+    const own = this.#ownScroller();
+    const previewScroller = this.#previewScroller();
+    const preview = this.#previewBlockMetrics();
+    const mine = this.#blockMetrics(own);
+    if (!previewScroller || !preview.offsets.length || !mine.offsets.length) {
+      return ratioOf(own);
+    }
+    const pos = blockPosOf(mine.offsets, mine.heights, own.scrollTop);
+    const top = scrollTopOfBlock(preview.offsets, preview.heights, pos);
+    const max = Math.max(
+      0,
+      previewScroller.scrollHeight - previewScroller.clientHeight,
+    );
+    return max ? Math.min(1, Math.max(0, top / max)) : 0;
   }
 
   /**

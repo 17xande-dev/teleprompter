@@ -209,6 +209,81 @@ export function wheelPixels(
   return deltaY;
 }
 
+/**
+ * A position expressed as "which block, and how far into it".
+ *
+ * The unit the two Sync buttons trade in, because a *fraction* cannot map
+ * between the operator's editor and a display. Measured on a real script: the
+ * editor's document was 32,252px at 33.6px text and the display's 51,460px at
+ * 48px — 1.595 times as tall on a 1.43 times larger font, because a bigger
+ * font wraps *long* paragraphs more than short ones. So the same fraction sits
+ * in different places, and "send my position" landed 2,352px — about 49 lines
+ * — past the line the operator was reading.
+ *
+ * A block index has none of that trouble: both documents are rendered from the
+ * same published HTML, so they have the same blocks in the same order (verified
+ * on that script — 744 each, identical tags), and only their heights differ.
+ */
+export type BlockPos = { index: number; fraction: number };
+
+/**
+ * Which block is at the top of the visible area, and how far through it.
+ *
+ * `offsets` and `heights` are the blocks' own geometry within the scroller, in
+ * document order. Kept as plain arrays so this is testable without a DOM — the
+ * measuring is the caller's job.
+ */
+export function blockPosOf(
+  offsets: readonly number[],
+  heights: readonly number[],
+  scrollTop: number,
+): BlockPos {
+  if (!offsets.length || !Number.isFinite(scrollTop)) {
+    return { index: 0, fraction: 0 };
+  }
+  const top = Math.max(0, scrollTop);
+  // The last block that starts at or above the fold. Linear is fine: this runs
+  // on a button press, not on a frame loop.
+  let index = 0;
+  for (let i = 0; i < offsets.length; i++) {
+    if (offsets[i] <= top) index = i;
+    else break;
+  }
+  const height = heights[index] ?? 0;
+  // How far into that block the fold has cut. Zero-height blocks — a blank
+  // paragraph in a PDF-less document, say — would divide by zero.
+  const fraction = height > 0 ? (top - offsets[index]) / height : 0;
+  return { index, fraction: Math.min(1, Math.max(0, fraction)) };
+}
+
+/**
+ * Where to scroll so that block sits at the top of the visible area.
+ *
+ * The inverse of `blockPosOf` through a *different* document's geometry, which
+ * is the whole point: the index is the shared coordinate and each side supplies
+ * its own heights.
+ *
+ * An index past the end is clamped rather than refused. The editor can hold a
+ * draft with blocks the displays have not been sent — live editing off — and
+ * the nearest end of the script is a better answer for that than doing nothing
+ * at all.
+ */
+export function scrollTopOfBlock(
+  offsets: readonly number[],
+  heights: readonly number[],
+  pos: BlockPos,
+): number {
+  if (!offsets.length) return 0;
+  const index = Math.min(
+    offsets.length - 1,
+    Math.max(0, Math.floor(pos.index)),
+  );
+  const fraction = Number.isFinite(pos.fraction)
+    ? Math.min(1, Math.max(0, pos.fraction))
+    : 0;
+  return offsets[index] + (heights[index] ?? 0) * fraction;
+}
+
 export function makeScrollSync({ el, send }: ScrollSyncOptions): ScrollSync {
   // Scroll events for the document's scrolling element are dispatched at
   // the window, not at the element itself.

@@ -5,12 +5,14 @@
 // scrollTo(), and requestAnimationFrame runs after that.
 import { assertAlmostEquals, assertEquals } from "@std/assert";
 import {
+  blockPosOf,
   carryRemainder,
   makeScrollSync,
   pendingScroll,
   ratioOf,
   scrollQuantum,
   type ScrollSync,
+  scrollTopOfBlock,
   SCRUB_EASE,
   SCRUB_MAX_STEP,
   scrubStep,
@@ -480,4 +482,102 @@ Deno.test("nothing owed asks for nothing, and a non-finite debt cannot wedge the
   assertEquals(scrubStep(NaN), 0);
   assertEquals(scrubStep(Infinity), 0);
   assertEquals(scrubStep(-Infinity), 0);
+});
+
+// A script's blocks as the two Sync buttons see them: the same blocks in the
+// same order on both sides, with different heights. These are the measured
+// shapes — a display's text is bigger, and its long paragraphs wrap more.
+const EDITOR_OFFSETS = [0, 40, 80, 200, 240];
+const EDITOR_HEIGHTS = [40, 40, 120, 40, 40];
+const VIEWER_OFFSETS = [0, 60, 120, 420, 480];
+const VIEWER_HEIGHTS = [60, 60, 300, 60, 60];
+
+Deno.test("a position is the block at the fold, and how far into it", () => {
+  assertEquals(blockPosOf(EDITOR_OFFSETS, EDITOR_HEIGHTS, 0), {
+    index: 0,
+    fraction: 0,
+  });
+  assertEquals(blockPosOf(EDITOR_OFFSETS, EDITOR_HEIGHTS, 80), {
+    index: 2,
+    fraction: 0,
+  });
+  // Half way through the tall third block.
+  assertEquals(blockPosOf(EDITOR_OFFSETS, EDITOR_HEIGHTS, 140), {
+    index: 2,
+    fraction: 0.5,
+  });
+});
+
+Deno.test("a block index lands on the same block in a differently sized document", () => {
+  // The whole reason this exists. The third block is 120px into the editor's
+  // document and 120px into the display's, but the *fifth* is 240 against 480
+  // — a fraction would put the display nowhere near it.
+  const pos = blockPosOf(EDITOR_OFFSETS, EDITOR_HEIGHTS, 240);
+  assertEquals(pos.index, 4);
+  assertEquals(scrollTopOfBlock(VIEWER_OFFSETS, VIEWER_HEIGHTS, pos), 480);
+  // And the fraction within a block is honoured, scaled to that block's own
+  // height rather than carried across as pixels.
+  const half = blockPosOf(EDITOR_OFFSETS, EDITOR_HEIGHTS, 140);
+  assertEquals(scrollTopOfBlock(VIEWER_OFFSETS, VIEWER_HEIGHTS, half), 270);
+});
+
+Deno.test("a round trip through the same geometry is exact", () => {
+  for (const top of [0, 40, 80, 140, 200, 240, 279]) {
+    const pos = blockPosOf(EDITOR_OFFSETS, EDITOR_HEIGHTS, top);
+    assertAlmostEquals(
+      scrollTopOfBlock(EDITOR_OFFSETS, EDITOR_HEIGHTS, pos),
+      top,
+      0.001,
+    );
+  }
+});
+
+Deno.test("a fraction never escapes its block", () => {
+  // Past the last block's end, which the end of a scroller's range allows.
+  const pos = blockPosOf(EDITOR_OFFSETS, EDITOR_HEIGHTS, 99999);
+  assertEquals(pos.index, 4);
+  assertEquals(pos.fraction, 1);
+  // And a negative scrollTop, which a rubber-banding browser can report.
+  assertEquals(blockPosOf(EDITOR_OFFSETS, EDITOR_HEIGHTS, -50), {
+    index: 0,
+    fraction: 0,
+  });
+});
+
+Deno.test("an index past the end is clamped, not refused", () => {
+  // The editor can hold a draft with blocks the displays have never been sent,
+  // which is exactly what live editing off means. The nearest end of the
+  // script beats doing nothing.
+  assertEquals(
+    scrollTopOfBlock(VIEWER_OFFSETS, VIEWER_HEIGHTS, {
+      index: 99,
+      fraction: 0,
+    }),
+    480,
+  );
+  assertEquals(
+    scrollTopOfBlock(VIEWER_OFFSETS, VIEWER_HEIGHTS, {
+      index: -3,
+      fraction: 0,
+    }),
+    0,
+  );
+  assertEquals(
+    scrollTopOfBlock(VIEWER_OFFSETS, VIEWER_HEIGHTS, {
+      index: 1,
+      fraction: NaN,
+    }),
+    60,
+  );
+});
+
+Deno.test("an empty document asks for nothing rather than dividing by zero", () => {
+  assertEquals(blockPosOf([], [], 100), { index: 0, fraction: 0 });
+  assertEquals(scrollTopOfBlock([], [], { index: 2, fraction: 0.5 }), 0);
+  // A zero-height block, which a blank paragraph can be.
+  assertEquals(blockPosOf([0, 0, 40], [0, 0, 40], 0).fraction, 0);
+  assertEquals(blockPosOf(EDITOR_OFFSETS, EDITOR_HEIGHTS, NaN), {
+    index: 0,
+    fraction: 0,
+  });
 });

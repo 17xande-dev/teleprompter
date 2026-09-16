@@ -47,6 +47,35 @@ async function fetchIceConfig(): Promise<RTCConfiguration> {
   }
 }
 
+/**
+ * How long a broken peer connection is given to heal before we restart ICE.
+ *
+ * `disconnected` is not a death sentence: a moment of packet loss, a laptop
+ * roaming between access points, a phone switching to cellular all report it
+ * and then recover on their own within a second or two. Restarting instantly
+ * would renegotiate over every blip. `failed` is terminal, but it is normally
+ * *reached through* `disconnected`, so the same wait already covers it.
+ */
+export const ICE_GRACE_MS = 4000;
+
+/** The longest we ever wait between restart attempts. */
+export const ICE_MAX_WAIT_MS = 30_000;
+
+/**
+ * The wait before the next ICE restart, backing off as attempts fail.
+ *
+ * Unbounded in count on purpose: a display that lost its network for ten
+ * minutes should come back when the network does, and the alternative — giving
+ * up — leaves a black screen in front of the talent with nothing trying to fix
+ * it. Bounded in *rate* instead, so a display that is genuinely gone costs one
+ * renegotiation every 30 seconds until the signalling socket notices and tears
+ * the link down for real.
+ */
+export function iceRestartDelay(attempt: number): number {
+  if (!Number.isFinite(attempt) || attempt <= 0) return ICE_GRACE_MS;
+  return Math.min(ICE_GRACE_MS * 2 ** Math.floor(attempt), ICE_MAX_WAIT_MS);
+}
+
 interface SignalEnvelope {
   kind?: string;
   from?: string;
@@ -85,6 +114,10 @@ function makeLink(opts: LinkOptions): Link {
   let makingOffer = false;
   let ignoreOffer = false;
   let lastScrollSeq = 0;
+  // ICE recovery: the pending attempt, and how many have already been made so
+  // the wait can back off. Reset the moment the connection reports connected.
+  let recoverTimer: ReturnType<typeof setTimeout> | undefined;
+  let recoverAttempt = 0;
   // A negotiated data channel isn't open the instant it's created — it
   // only opens once SDP/ICE negotiation completes. A caller (e.g. "bring
   // this newcomer up to date") can reasonably send control messages before
@@ -173,10 +206,66 @@ function makeLink(opts: LinkOptions): Link {
       }
     };
 
-    if (opts.onStateChange) {
-      pc.onconnectionstatechange = () =>
-        opts.onStateChange!(pc!.connectionState);
-    }
+    // Wired unconditionally — it used to be installed only when a caller
+    // wanted the state, and recovery cannot depend on whether anyone is
+    // watching.
+    pc.onconnectionstatechange = () => {
+      const live = pc;
+      if (!live) return;
+      const state = live.connectionState;
+      if (state === "connected") {
+        // Healed, whether by ICE's own doing or by a restart of ours.
+        clearTimeout(recoverTimer);
+        recoverTimer = undefined;
+        recoverAttempt = 0;
+      } else if (state === "disconnected" || state === "failed") {
+        scheduleIceRestart();
+      }
+      opts.onStateChange?.(state);
+    };
+  }
+
+  /**
+   * Put a broken peer connection back together without rebuilding it.
+   *
+   * The gap this closes: the signalling socket reconnects on its own, but a
+   * peer connection that failed while signalling stayed up had nothing at all
+   * trying to recover it. The display reported "disconnected" and then sat
+   * frozen on whatever it last received — indistinguishable, to the person
+   * reading it, from a working screen showing a stationary script.
+   *
+   * **Only the impolite peer restarts.** A restart *is* an offer, and both ends
+   * offering at once is precisely the glare perfect negotiation exists to
+   * resolve; the polite one would roll its own recovery back. The controller is
+   * impolite, and it is also the side that can see every display, so it is the
+   * right side to own this.
+   *
+   * `restartIce()` rather than a hand-built offer: it marks the connection as
+   * needing fresh ICE credentials and lets `onnegotiationneeded` above send the
+   * offer through the ordinary path, so nothing else in the negotiation code
+   * has to know this feature exists.
+   */
+  function scheduleIceRestart() {
+    // No pc means closed. A timer already pending means an attempt is queued,
+    // and `disconnected` can fire repeatedly on the way to `failed`.
+    if (opts.polite || !pc || recoverTimer) return;
+    recoverTimer = setTimeout(() => {
+      recoverTimer = undefined;
+      const live = pc;
+      if (!live) return;
+      if (live.connectionState === "connected") {
+        recoverAttempt = 0;
+        return;
+      }
+      recoverAttempt++;
+      // Guarded because a browser without it is no worse off than before this
+      // existed, and throwing here would take the whole handler down.
+      live.restartIce?.();
+      // Arm the next attempt from here rather than relying on another state
+      // change: a restart that fails to connect may never transition again,
+      // and then nothing would be left trying.
+      scheduleIceRestart();
+    }, iceRestartDelay(recoverAttempt));
   }
 
   // Walks the frames of one file onto the channel, pausing whenever the send
@@ -266,6 +355,12 @@ function makeLink(opts: LinkOptions): Link {
       // doesn't wake from its bufferedamountlow wait onto a dead channel.
       fileGeneration++;
       pendingFile = null;
+      // And stop trying to recover a link nobody wants any more — otherwise a
+      // viewer that really has left keeps a restart queued against a closed
+      // connection.
+      clearTimeout(recoverTimer);
+      recoverTimer = undefined;
+      recoverAttempt = 0;
       pc?.close();
       pc = null;
       pendingControl.length = 0;

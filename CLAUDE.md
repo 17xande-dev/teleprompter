@@ -725,6 +725,32 @@ WebSocket relay, `ice.go` STUN/TURN config.
   to be dropped. See `carryRemainder` above for the failure that taught this.
   Verified in the browser both ways: a sent position now holds, and 6px/s still
   travels at 6px/s.
+- **Two connections can fail independently, and only one of them used to
+  recover.** A display holds a signalling WebSocket _and_ an
+  `RTCPeerConnection`. `scheduleRetry` re-opens the socket every 2s for both
+  roles, which covers a server restart or a wifi blip — but a peer connection
+  that failed while signalling stayed up had nothing trying to fix it: the
+  display reported `disconnected` once and then sat frozen on whatever it last
+  received, indistinguishable to the talent from a working screen showing a
+  stationary script. `makeLink` now restarts ICE for exactly that case.
+  - **Only the impolite peer restarts**, i.e. the controller. A restart _is_ an
+    offer, so both ends doing it is the glare perfect negotiation exists to
+    resolve, and the polite one would roll its own recovery back.
+  - `restartIce()`, not a hand-built offer: it marks the connection as needing
+    fresh credentials and lets the existing `onnegotiationneeded` send the
+    offer, so the negotiation code does not have to know the feature exists.
+  - **The wait before the first attempt is the point**, not politeness.
+    `disconnected` heals on its own within a second or two — packet loss, a
+    laptop roaming, a phone moving to cellular — so restarting instantly
+    renegotiates over every blip. `failed` is terminal but is normally reached
+    _through_ `disconnected`, so one grace period covers both.
+  - **Unbounded in count, bounded in rate.** A display whose network returns
+    after ten minutes should come back; giving up leaves a black screen in front
+    of the talent with nothing trying. The backoff caps at 30s, and `close()`
+    clears the timer so a viewer that really left stops being chased.
+  - Each attempt re-arms the next from inside its own callback rather than
+    waiting for another state change, because a restart that fails to connect
+    may never transition again — and then nothing would be left trying.
 - **A data channel isn't open when it's created.** Anything sent between
   `createDataChannel` and negotiation completing is dropped unless queued —
   `makeLink` queues control sends, and `connectViewer` queues again for the
