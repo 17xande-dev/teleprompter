@@ -99,6 +99,20 @@ That split is not tidiness. `clock.ts` imports Web Awesome components, which
 construction — which is why the countdown had no tests at all until its
 arithmetic moved to `timer.ts`.
 
+## Verifying in a browser
+
+CLAUDE.md asks for UI changes to be checked in a real browser rather than only
+type-checked, and the Chrome DevTools MCP server is how that is done. Configure
+it in your own `~/.claude.json`, not in a `.mcp.json` in this repo.
+
+The reason is that a project-level MCP entry overrides the user-level one, while
+the browser's executable path is per-machine. A project entry with no
+`-e`/`--executablePath` flag therefore wins and then fails looking for Chrome at
+`/opt/google/chrome/chrome` on a machine that has Chromium — with a perfectly
+good user-level config sitting underneath it, unused, carrying
+`-e /usr/bin/chromium`. The failure reads as "the MCP is broken" rather than as
+a config being shadowed.
+
 ## Before you change anything
 
 Read [../CLAUDE.md](../CLAUDE.md). It is long and it is the useful document: the
