@@ -17,9 +17,10 @@
 // resolve it), the same split clock.ts/timer.ts and docControls.ts/doc.ts use.
 // Keep it that way — nothing in here should do sums or build format strings.
 
-import { Menu } from "wordgard/command";
+import { type Command, Menu } from "wordgard/command";
 import { Mark, parse } from "wordgard/doc";
-import { GardState } from "wordgard/state";
+import { Dialog, type Wordgard } from "wordgard/editor";
+import { GardSelection, GardState } from "wordgard/state";
 
 import {
   clampMultiplier,
@@ -27,6 +28,8 @@ import {
   formatMultiplier,
   parseFontSize,
   SECTION_SIZE_DEFAULT,
+  SECTION_SIZE_MAX,
+  SECTION_SIZE_MIN,
   SECTION_SIZES,
 } from "./sectionsize.ts";
 
@@ -88,6 +91,106 @@ export const SectionSize = Mark.Type.define<number>("tpTextSize", {
  * `parent` is passed in rather than imported so this module never depends on
  * editor.ts, which imports it — the same reason textSizeMenu.ts takes one.
  */
+/**
+ * Set a size over the selection, or arm it for what is typed next.
+ *
+ * Two branches because a mark is two different things depending on the
+ * selection, and this is the shape Wordgard's own `setColor` uses. With a range
+ * selected the mark is added over it; with a bare cursor there is nothing to
+ * mark, so it goes into the selection's stored marks and applies to the next
+ * thing typed. `addToSet` is documented to *overwrite* an existing instance of
+ * the same mark type, which is why setting 200% over a 150% run replaces it
+ * rather than nesting — verified in the browser.
+ *
+ * `close` is dispatched in the same transaction as the change, which the Dialog
+ * docs ask for: left to close itself the dialog fires a second transaction
+ * immediately afterwards, and that lands in the undo history as a separate step.
+ */
+function applySectionSize(
+  wg: Wordgard,
+  multiplier: number,
+  close: ReturnType<typeof Dialog.show>["close"],
+) {
+  const { state } = wg;
+  const mark = SectionSize.of(clampMultiplier(multiplier));
+  const { selection } = state;
+  if (selection instanceof GardSelection.Text && selection.empty) {
+    wg.dispatch({
+      selection: GardSelection.Text.create({
+        anchor: selection.anchor,
+        headSide: selection.headSide,
+        goalColumn: selection.goalColumn,
+        marks: mark.addToSet(state.sel.activeMarks),
+      }),
+      userEvent: "mark.add",
+      effects: close,
+    });
+    return;
+  }
+  wg.dispatch({
+    changes: selection.ranges.map((r) => ({
+      from: r.from,
+      to: r.to,
+      add: mark,
+    })),
+    userEvent: "mark.add",
+    effects: close,
+  });
+}
+
+/**
+ * Ask for a size the presets do not offer.
+ *
+ * `Dialog.show` rather than a popup of our own: it is the mechanism Wordgard
+ * uses for its own image insertion, it builds the labelled form and the input
+ * from this config, and it wires up submit and Escape itself. Nothing here has
+ * to know how the editor's panels are laid out or styled.
+ *
+ * The command returns `true` before the operator has typed anything, because a
+ * Command must answer synchronously and the answer is "yes, this was handled" —
+ * the dialog is open. The work happens when the promise resolves, and a
+ * cancelled dialog resolves to null, which is why the `form` is checked rather
+ * than assumed.
+ */
+const promptForSectionSize: Command = (wg) => {
+  if (wg.state.readOnly) return false;
+  const existing = SectionSize.isInSet(wg.state.sel.activeMarks);
+  const current = Math.round((existing?.value ?? SECTION_SIZE_DEFAULT) * 100);
+
+  const { close, result } = Dialog.show(wg, {
+    label: "Text size (%)",
+    input: {
+      type: "number",
+      min: `${SECTION_SIZE_MIN * 100}`,
+      max: `${SECTION_SIZE_MAX * 100}`,
+      step: "5",
+      value: `${current}`,
+      // The presets are round numbers; this box exists for the ones that are
+      // not, so it accepts anything in range rather than snapping to the step.
+      "aria-label": "Text size, percent",
+    },
+    submitLabel: "Set",
+    class: "wg-tp-size-dialog",
+    focus: true,
+  });
+
+  result.then((form) => {
+    if (!form) return; // Escaped or dismissed: nothing to apply, nothing to close.
+    const raw = form.querySelector("input")?.value ?? "";
+    const percent = Number(raw);
+    if (!Number.isFinite(percent) || raw.trim() === "") {
+      // An empty or unreadable box is not a size. Close without touching the
+      // document — clampMultiplier would turn NaN into 100% and silently
+      // "apply" a change the operator did not ask for.
+      wg.dispatch({ effects: close });
+      return;
+    }
+    applySectionSize(wg, percent / 100, close);
+  });
+
+  return true;
+};
+
 export function sectionSizeMenu(parent: Menu.Group): GardState.Extension {
   const buttons = SECTION_SIZES.map((m, i) =>
     Menu.Button.toggleMark({
@@ -96,6 +199,26 @@ export function sectionSizeMenu(parent: Menu.Group): GardState.Extension {
       rank: 10 + i,
     })
   );
+
+  const custom = Menu.Button.define({
+    run: promptForSectionSize,
+    // Short, because this label can end up in the bar: a submenu with no
+    // `label` of its own shows whichever child is active, so a 137% run shows
+    // this one. "Custom size…" would be truncated at the submenu's width.
+    label: "Other…",
+    // After the presets, so the common choices stay under the pointer.
+    rank: 100,
+    enable: (state) => !state.readOnly,
+    // Active when a size is set that no preset offers. Without this the bar
+    // read "100%" with the cursor in a 1.37em run — the submenu falls back to
+    // its defaultLabel when no child is active, so it claimed a size that was
+    // not set. Measured; it is the one thing a size control must not do.
+    active: (state) => {
+      const mark = SectionSize.isInSet(state.sel.activeMarks);
+      if (!mark) return false;
+      return !SECTION_SIZES.some((m) => m === mark.value);
+    },
+  });
 
   const submenu = Menu.Submenu.define({
     // What the bar reads when the selection carries no size, which is most of
@@ -110,7 +233,7 @@ export function sectionSizeMenu(parent: Menu.Group): GardState.Extension {
     // Resolved directly from here rather than through the facet and a "..."
     // hole, so which sizes are offered is a decision in this file instead of a
     // consequence of rank ordering.
-    content: buttons,
+    content: [...buttons, custom],
   });
 
   // The mark has to be *in the schema*, and the config array does not accept a

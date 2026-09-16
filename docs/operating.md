@@ -99,8 +99,9 @@ setting says, because they are absolute and would ignore Text Scale.
 ### Making one part bigger than the rest
 
 Select some text and pick a size from the **100%** dropdown in the toolbar: 75%,
-100%, 125%, 150% or 200%. Unlike the two controls above, this is part of the
-script, so it travels to every display along with the words.
+100%, 125%, 150% or 200%, or **Other…** to type any value between 50% and 400%.
+Unlike the two controls above, this is part of the script, so it travels to
+every display along with the words.
 
 The sizes are _relative_, and deliberately so. A 150% line is half again as big
 as whatever the script is at the time, so the Text Scale slider still sizes the
@@ -110,12 +111,15 @@ move from a chapel to a hall would stop working on exactly the lines you cared
 enough about to mark.
 
 The dropdown reads the size of whatever the cursor is in, so it says 100% for
-ordinary text. A pasted document's own font sizes are dropped rather than
-honoured, for the same reason: they are absolute, so they would ignore Text
-Scale.
+ordinary text, or **Other…** when the size is one the presets do not list. A
+pasted document's own font sizes are dropped rather than honoured, for the same
+reason: they are absolute, so they would ignore Text Scale.
 
-Next to it, **Paragraph** sets headings and code blocks. Headings are sized
-relative to the script too, so they scale with it.
+Next to it, **Paragraph** sets headings and code blocks — six heading levels,
+also reachable as `Ctrl+Shift+1` through `Ctrl+Shift+6`, with `Ctrl+Shift+0` for
+a plain paragraph. Headings are sized relative to the script too, so they scale
+with it. Typing `#` at the start of a line makes a heading as well, one `#` per
+level.
 
 ### PDFs
 

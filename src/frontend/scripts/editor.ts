@@ -1,5 +1,5 @@
 import { menuBar, Wordgard } from "wordgard/editor";
-import { Menu } from "wordgard/command";
+import { Command, Menu, setTextblockType } from "wordgard/command";
 import {
   backgroundColor,
   code,
@@ -14,6 +14,8 @@ import {
   underline,
 } from "wordgard/schema";
 import { history } from "wordgard/history";
+import { Heading } from "wordgard/types";
+import type { Plot } from "wordgard/doc";
 import { GardState } from "wordgard/state";
 import { brightenPastedHtml } from "./pasteColors.ts";
 import { sectionSizeMenu } from "./sectionSizeMenu.ts";
@@ -114,6 +116,45 @@ function menuTemplate() {
   );
 }
 
+/**
+ * Whether the selection sits in a textblock of this type.
+ *
+ * A copy of Wordgard's own `selectionInType`, which it uses for the heading
+ * buttons it ships and does not export. Four lines of public API, so copying is
+ * cheaper than doing without: no `active` means the button never highlights and
+ * — because a submenu takes its label from the active child — the dropdown
+ * would read "Paragraph" while the cursor sat in a Heading 5.
+ */
+function selectionInType(tag: Plot.Tag) {
+  return (state: GardState) => {
+    const { sel } = state;
+    const block = sel.head.textblockParent;
+    return !!block && block.start == sel.anchor.textblockParent?.start &&
+      block.node.tag.eq(tag);
+  };
+}
+
+/**
+ * Buttons for headings 4, 5 and 6.
+ *
+ * The schema already supports all six levels — `Ctrl-Shift-4/5/6` and the
+ * `#### ` input rule have always worked — but `heading()` only contributes
+ * buttons for the first three, so the deeper levels were keyboard-only and
+ * invisible in the dropdown. Defined with the same exported `setTextblockType`
+ * and `Heading.of(n)` its own buttons use, parented to the same submenu, at the
+ * ranks that continue its sequence (it uses 50, 51, 52).
+ */
+const deepHeadingButtons = [4, 5, 6].map((level) =>
+  Menu.Button.define({
+    run: Command.bind(setTextblockType, Heading.of(level)),
+    active: selectionInType(Heading.of(level)),
+    label: `Heading ${level}`,
+    enable: (state) => !state.readOnly,
+    parent: Menu.Submenu.textblockStyle,
+    rank: 52 + (level - 3),
+  })
+);
+
 function buildConfig(
   onUpdate?: (wg: Wordgard) => void,
   textSize?: TextSizeAccess,
@@ -128,6 +169,8 @@ function buildConfig(
     // Registered conditionally, opening a saved script with sized sections
     // would silently replace it with "New Document".
     sectionSizeMenu(formatting),
+    // Buttons only; the keybindings for these levels come from fullSchema().
+    ...deepHeadingButtons,
     history(),
     menuBar({ template: menuTemplate() }),
     // The size control is the operator's own reading size, so it is only
