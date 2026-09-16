@@ -379,6 +379,88 @@ WebSocket relay, `ice.go` STUN/TURN config.
   expecting a template to hold them. Its `"..."` slot is still in the template
   so a mark from a future extension lands somewhere visible rather than
   vanishing.
+- **A per-section size is a custom mark, and three things about it are
+  load-bearing.** `SectionSize` in `sectionSizeMenu.ts` is shaped exactly like
+  Wordgard's own `Color`: an attribute shape on `style/font-size`, registered
+  through `GardState.schemaElement.of(...)` because the config array does not
+  accept a bare `Mark.Type`. The three:
+  - `spanning: true`. `editor.js` applies an attribute mark to text only when
+    `mark.spanning || !tag.isText`, so without it the mark sits in the document
+    JSON and renders nothing at all, on every screen, with nothing in any
+    console.
+  - `validate: "number"` is a _typeof_ check and must not become a range check.
+    A throwing `validate` makes `GardState.fromJSON` reject the whole document,
+    and `restoreEditor` catches that and starts a fresh blank editor — so one
+    out-of-range number would silently replace the operator's script with "New
+    Document". The range is enforced at render time by `clampMultiplier`, where
+    being wrong costs a wrong size rather than the text.
+  - It is registered **unconditionally**, outside the `textSize ?` guard in
+    `buildConfig`. `buildConfig` is also what `fromJSON` is handed, and
+    `marksFromJSON` throws on a mark the schema does not know — same blank
+    editor. This is document state, not a preference.
+
+  **The size is in `em` and must stay relative.** A px or rem value would
+  override the Text Scale slider, which is the one control an operator changes
+  per venue, on precisely the lines they cared enough to mark. `em` also needs
+  no viewer CSS at all, which matters because a user theme replaces the layout
+  layer wholesale — a size depending on a rule in `viewerThemes.css` would
+  quietly stop working under a custom theme, and that rules out
+  `calc(var(--textScale) * k)` as well. `sectionsize_test.ts` asserts the unit.
+  Note a document saved with size marks is unreadable by a build whose schema
+  lacks the mark, and falls back to a blank editor: the same one-way door as the
+  Quill→Wordgard migration.
+- **A toolbar control whose state is the _selection's_ cannot be a
+  `CustomControl`.** `render` runs once and there is no update hook, which is
+  survivable for `textSizeMenu`'s slider — its state is a stored preference it
+  can `subscribe()` to — and not survivable for anything reading the current
+  selection, which changes on every cursor move. It would show a stale value and
+  the operator would set a size from a number that is not the one in front of
+  them. `Menu.Button`'s `active` is re-evaluated on every document and selection
+  change, so a set of buttons is also a radio group for free, and a submenu with
+  no `label` takes the active child's.
+- **Wordgard's textblock dropdown is parented to `Group.top`, which has no
+  `"..."` in our template** — so Paragraph / Heading 1-3 / Code block had no
+  button in the bar at all for a long time, while staying reachable by
+  `Ctrl-Shift-0..6` and the `#␣` input rule. That is why it was possible to
+  remember having had them. It is templated explicitly now.
+  `Menu.Group.block.template("...")` does _not_ cover it: that group only ever
+  receives alignment, direction, the two lists and blockquote.
+- **A paste is recoloured through `Wordgard.clipboardInputHTMLFilter`**, which
+  `readClipboard` runs on the raw `text/html` _before_ parsing it — so the
+  script arrives already correct and nothing downstream, not the document, not
+  `pushContent`, not a display, has to know. Three consequences worth knowing:
+  `readClipboard` is shared with drop and drag, so those come free; the
+  plain-text branch never reaches the filter, which is what makes `Ctrl+Shift+V`
+  the way to paste colours untouched; and the filter takes a _thunk_, because
+  the editor is built at page load, before `this.settings` exists, and the
+  switch can be flipped afterwards. **Only inline
+  `style="color:…"`/`background-color` produces a colour mark in this schema** —
+  `Color` and `BackgroundColor` are defined with no `parseRules`, so their rule
+  is derived from the attribute shape and reads `elt.style` only. So
+  `class`-based colouring, `<font color>` and Word's `color: windowtext` all
+  arrive with no colour and inherit the bright default, correct by accident. The
+  target set is much narrower than it looks.
+- **The paste walk uses a `<template>`, not a `div` and not `DOMParser`.** A
+  `div` in the live document fetches Word's `<img>` side-files the moment the
+  markup lands; `DOMParser` with `body.innerHTML` drops a bare `<tr>…</tr>` on
+  the floor, which is why Wordgard carries its own `wrapMap`. A template's
+  content is parsed in the "in template" insertion mode, keeps orphan rows, and
+  is inert.
+- **`contrast.ts` decides in WCAG luminance and moves in OkLCH**, and it needs
+  both. Luminance is the metric the requirement is written in and catches what
+  perceptual lightness misses — pure blue is 2.44:1 on black while its OkLab
+  lightness is 0.452, so a lightness-only rule leaves it as unreadable as it
+  found it. Luminance is useless as a transform axis, because scaling channels
+  either desaturates or clips a hue. Two things not to "tidy":
+  - **A grey is dropped, never replaced with white.** Dropping is what lets it
+    inherit `--viewer-color` and follow a user theme; hard-coding white defeats
+    the palette.
+  - **`adaptBackgroundColor` tests darkness _before_ greyness**, and the order
+    is what makes it idempotent. Darkening a barely chromatic colour lowers its
+    chroma too: `#566` sits just above the achromatic threshold and darkens to
+    `#223131`, just below it, so with the tests the other way round a second
+    pass dropped what the first had kept. Found by the 4096-colour sweep in
+    `contrast_test.ts`, not by reasoning.
 - **`Wordgard.styles` keys are _element_ selectors, not classes.** That is the
   convention its own colour picker follows — `wg-color-picker-color` is a real
   element. A key that reads like a class name never matches and fails silently:
@@ -488,6 +570,28 @@ WebSocket relay, `ice.go` STUN/TURN config.
   Anything carrying `Alt` is written as a `code` (`BracketRight`), and without a
   `KEY_LABELS` entry the palette advertises the chord as literally
   "Ctrl+Alt+BracketRight". Type-checking cannot see this; the palette can.
+- **The catch-up list is built in one place, and it has to stay that way.**
+  `catchUpMessages` in `protocol.ts` is what a display gets when it joins, and
+  it has two callers: `#onViewerJoined` and the preview iframe's `load` handler.
+  They were two hand-written sequences and drifted three times — the theme, then
+  the text scale, then the message and the scroll position — each time leaving
+  the preview showing something no display was showing, which is the one thing
+  it exists not to do. It lives in `protocol.ts` rather than `teleprompter.ts`
+  because that is what makes it testable: anything in the control page imports
+  Web Awesome and Wordgard, which `deno test` cannot resolve. `protocol_test.ts`
+  asserts the list and its order, and has been watched failing with a message
+  removed. Add a viewer-visible thing and it goes in the builder, not in a call
+  site.
+- **`dims` reports the layout viewport, not `innerWidth`/`innerHeight`.** Those
+  dimensions shape the preview iframe, and the ratio every display shares is
+  computed against `document.scrollingElement` — the same element
+  `makeScrollSync` binds to. Report the visual viewport instead and the
+  preview's layout viewport is a different height from the display's, so the
+  same ratio lands on a different line. `innerHeight` reads more natural and is
+  what someone will change it back to: on a phone or tablet acting as a display
+  it tracks the visual viewport and shrinks as the URL bar collapses, 60-110 CSS
+  px away from the layout viewport, and a display with classic scrollbars does
+  the same.
 - **The preview iframe only knows what it is told on `load`.** It is not a
   WebRTC peer, so it misses `#onViewerJoined`'s catch-up snapshot entirely —
   anything a joining viewer is sent has to be posted to the iframe in that
@@ -632,10 +736,19 @@ WebSocket relay, `ice.go` STUN/TURN config.
   `#previewID()` is a separate pick because viewers can have entirely different
   sizes and aspect ratios and the preview renders at one viewer's _real_ pixel
   size. They were one function once, which meant granting drive silently
-  reshaped the preview. Scroll is not part of the preview choice — every viewer
-  sits at the same ratio, so the driver's position is right to show in a box
-  shaped like any of them, and `#lastRatio` doubles as "where the previewed
-  viewer is" for the sync buttons.
+  reshaped the preview. Scroll is not part of the preview choice, and
+  `#lastRatio` doubles as "where the previewed viewer is" for the sync buttons.
+  **The reason given here used to be that "every viewer sits at the same ratio,
+  so the driver's position is right to show in a box shaped like any of them",
+  and that is false in pixels.** A shared ratio means a shared _fraction of the
+  scrollable range_, and `setRatio` maps it to
+  `r * (scrollHeight -
+  clientHeight)` — so two displays of different heights,
+  given the same ratio, sit on different lines, by `r` times the difference.
+  Everything downstream of that is still correct: the ratio is the right thing
+  to show in any box. What is not true is that the displays agree with each
+  other, which is why this looked like a preview bug when it is a sync one. See
+  `#reportDims`.
 - **A viewer can only be scrolled by hand while it holds drive.**
   `viewerBase.css` locks the viewport and `viewer.ts` lifts it from the
   `set-driver` message via a class on `<html>`. The lock is `overflow: hidden`
@@ -900,6 +1013,22 @@ position and the pacer carries on from there at the set speed.
   scroll event has to be sampled and reported, which is the same reason
   `smoothScroll` uses a bare `scrollBy` to produce the driver's samples. Routing
   it through the echo guard would swallow the very thing that has to travel.
+- **A wheel scrub is eased, and that is not the easing the sync path forbids.**
+  The rule against throttling or interpolating the fan-out is about the pacer's
+  ~60Hz samples: they describe where a display _is_ and must be applied the
+  instant they land. `scrubStep` is on the other end of the wire — a gesture, on
+  the control page, before anything has been sent — and it turns one coarse
+  sample into a stream of fine ones, so viewers get _more_ positions, each still
+  applied immediately. Easing the fan-out adds lag to someone else's motion;
+  easing a gesture adds frames to your own. **Only the wheel.** A drag is direct
+  manipulation and has to track the finger.
+- **Every drained scrub frame renews `#scrubUntil`.** The hold is 300ms and a
+  glide can run longer, so renewing it only on the wheel event lets the
+  operator's authority lapse mid-gesture — and the driver's in-flight samples
+  then fight the tail of every scroll, which is exactly the judder the constant
+  exists to prevent. It is also why a debt that cannot be spent is dropped
+  rather than carried: a frame loop kept alive for a hundredth of a pixel keeps
+  suppressing the driver with it.
 - **`SCRUB_HOLD_MS` is not about the echo guard.** The gesture never passes
   through `applyRemote`, so it cannot be swallowed. The window drops the
   driver's _in-flight_ samples, which for about a round trip still describe the
