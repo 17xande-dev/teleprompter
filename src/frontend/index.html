@@ -364,6 +364,14 @@
     <wa-switch id="swRollTarget" hint="When a countdown's target time has already passed today, count down to the same time tomorrow instead of counting up past zero.">
       Roll a past target time to tomorrow
     </wa-switch>
+    <!-- Defaults on, unlike the switches above: a wheel notch forwarded whole
+         moves every display in one jolt, which is what the code happened to do
+         rather than anything anyone chose. Only the wheel is eased — a drag has
+         to keep tracking the finger. -->
+    <wa-switch id="swSmoothScrub" checked
+      hint="Ease a wheel scroll over the preview over a few frames instead of jumping straight there. Turn this off if you would rather the displays move the instant you scroll.">
+      Smooth scrolling from the preview
+    </wa-switch>
     <wa-button name="close" slot="footer" variant="primary">Done</wa-button>
   </wa-dialog>
   <!-- The command palette (Ctrl+K), which doubles as the shortcut cheatsheet

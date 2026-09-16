@@ -55,7 +55,7 @@ import { SettingsControls } from "./settingsControls.ts";
 import { GamepadControls } from "./gamepadControls.ts";
 import { connectController, type ControllerLink } from "./webrtc.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
-import { ratioOf, setRatio } from "./scrollsync.ts";
+import { ratioOf, scrubStep, setRatio } from "./scrollsync.ts";
 import {
   clampEditorScale,
   clampTextScale,
@@ -763,7 +763,11 @@ export class Teleprompter {
       // scroll is not a slider. Nor is it divided by #previewScale — a notch
       // means "advance the script about a notch", the same as it would on the
       // display itself, and scaling it up would send half a page per click.
-      this.#scrubBy(e.deltaY);
+      //
+      // Read per event rather than cached, like every other preference, or the
+      // switch and the gesture disagree until a reload.
+      if (this.settings.smoothScrub) this.#scrubSmoothly(e.deltaY);
+      else this.#scrubBy(e.deltaY);
     }, { passive: false });
 
     // Drag and touch, where the opposite is true: direct manipulation has to
@@ -784,6 +788,54 @@ export class Teleprompter {
   #scrubBy(px: number) {
     this.#scrubUntil = Date.now() + Teleprompter.SCRUB_HOLD_MS;
     this.#postToPreview({ type: "scroll-by", px });
+  }
+
+  // A wheel gesture that has not been spent yet, and the frame it is being
+  // spent on. Pixels of the preview's own document, same as #scrubBy takes.
+  #scrubDebt = 0;
+  #scrubFrame = 0;
+
+  /**
+   * Spend a wheel notch over several frames instead of all at once.
+   *
+   * Notches accumulate rather than replace, so a fast flick of the wheel
+   * travels the whole distance — three notches in one frame is a bigger
+   * gesture, not the last notch's worth. The drain is one frame at a time
+   * because each step goes out as its own `scroll-by`, and the resulting
+   * stream of positions is what the displays follow; the fan-out is never
+   * eased, only fed more often (see scrubStep for why that is not the easing
+   * the sync path forbids).
+   *
+   * **Every drained frame renews #scrubUntil, via #scrubBy.** That is
+   * load-bearing rather than incidental: the hold is 300ms and a glide can run
+   * longer, so renewing it only on the wheel event would let the operator's
+   * authority lapse mid-gesture, and the driver's in-flight samples — which
+   * for about a round trip still describe where it was before the scrub
+   * reached it — would fight the tail of every scroll. That is exactly the
+   * judder SCRUB_HOLD_MS exists to prevent.
+   */
+  #scrubSmoothly(px: number) {
+    this.#scrubDebt += px;
+    if (this.#scrubFrame) return;
+    this.#scrubFrame = requestAnimationFrame(() => this.#drainScrub());
+  }
+
+  #drainScrub() {
+    this.#scrubFrame = 0;
+    const step = scrubStep(this.#scrubDebt);
+    if (step === 0) {
+      // Nothing worth moving, and nothing worth keeping: a debt that cannot be
+      // spent (a non-finite deltaY from a broken device) would otherwise keep
+      // this loop — and the scrub's authority with it — alive for the life of
+      // the page.
+      this.#scrubDebt = 0;
+      return;
+    }
+    this.#scrubDebt -= step;
+    this.#scrubBy(step);
+    if (this.#scrubDebt !== 0) {
+      this.#scrubFrame = requestAnimationFrame(() => this.#drainScrub());
+    }
   }
 
   /**

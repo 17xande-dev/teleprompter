@@ -71,6 +71,25 @@ export type Settings = {
    * away, which is the late-night case the switch exists for.
    */
   rollTargetToTomorrow: boolean;
+  /**
+   * Whether a wheel scrub over the preview eases, rather than jumping.
+   *
+   * A wheel notch arrives as one large deltaY, and forwarded whole it moves
+   * every display in a single step — which reads as a jolt on a screen someone
+   * is reading from, and overshoots what the operator meant. On, the notch is
+   * spent over about ten frames, shrinking as it goes (see scrubStep).
+   *
+   * Default on, unlike the other switches here, because the jump is not a
+   * behaviour anyone would choose; it is what the code happened to do. Off is
+   * kept for the case a fraction of a second of easing is worse than a jolt —
+   * chasing an unexpected cut, where the operator wants the position *now* and
+   * will correct by eye.
+   *
+   * Only the wheel is eased. A drag is direct manipulation and has to track
+   * the finger, so easing it would add lag to the one gesture that must not
+   * have any.
+   */
+  smoothScrub: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -78,6 +97,7 @@ export const DEFAULT_SETTINGS: Settings = {
   liveEditing: true,
   previewScrub: false,
   rollTargetToTomorrow: false,
+  smoothScrub: true,
 };
 
 /**
@@ -180,6 +200,15 @@ export class SettingsStorage {
 
   set rollTargetToTomorrow(value: boolean) {
     this.#settings.rollTargetToTomorrow = value;
+    this.#save();
+  }
+
+  get smoothScrub(): boolean {
+    return this.#settings.smoothScrub;
+  }
+
+  set smoothScrub(value: boolean) {
+    this.#settings.smoothScrub = value;
     this.#save();
   }
 

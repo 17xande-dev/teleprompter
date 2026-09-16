@@ -23,12 +23,14 @@ export class SettingsControls {
   #swInvertWheel: WaSwitch;
   #swPreviewScrub: WaSwitch;
   #swRollTarget: WaSwitch;
+  #swSmoothScrub: WaSwitch;
 
   constructor() {
     this.#dialog = document.querySelector("#dlgSettings")!;
     this.#swInvertWheel = document.querySelector("#swInvertWheel")!;
     this.#swPreviewScrub = document.querySelector("#swPreviewScrub")!;
     this.#swRollTarget = document.querySelector("#swRollTarget")!;
+    this.#swSmoothScrub = document.querySelector("#swSmoothScrub")!;
     (<WaButton> document.querySelector("#btnSettings")).addEventListener(
       "click",
       () => this.open(),
@@ -45,6 +47,10 @@ export class SettingsControls {
     // for it at the moment Reset is pressed and never before.
     this.#swRollTarget.addEventListener("change", () => {
       this.storage.rollTargetToTomorrow = this.#swRollTarget.checked;
+    });
+
+    this.#swSmoothScrub.addEventListener("change", () => {
+      this.storage.smoothScrub = this.#swSmoothScrub.checked;
     });
 
     // Reported rather than written straight to storage, unlike the switch
@@ -66,6 +72,7 @@ export class SettingsControls {
     this.#swInvertWheel.checked = this.storage.invertWheel;
     this.#swPreviewScrub.checked = this.storage.previewScrub;
     this.#swRollTarget.checked = this.storage.rollTargetToTomorrow;
+    this.#swSmoothScrub.checked = this.storage.smoothScrub;
     this.#dialog.open = true;
   }
 
@@ -104,6 +111,11 @@ export class SettingsControls {
   /** Asked at the moment Reset is pressed, never cached — see invertWheel. */
   get rollTargetToTomorrow(): boolean {
     return this.storage.rollTargetToTomorrow;
+  }
+
+  /** Asked per gesture, never cached — see invertWheel. */
+  get smoothScrub(): boolean {
+    return this.storage.smoothScrub;
   }
 
   /** The switch the control page listens to, so it can re-render the marker. */

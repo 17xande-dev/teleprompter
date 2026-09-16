@@ -61,6 +61,24 @@ Deno.test("a missing key keeps its default rather than reading as false", () => 
   assertEquals(parseSettings('{"previewScrub":true}').previewScrub, true);
   // Wrong type is dropped, not coerced — same rule as invertWheel above.
   assertEquals(parseSettings('{"liveEditing":"false"}').liveEditing, true);
+  // Smooth scrubbing defaults on, so settings written before it existed must
+  // come back easing rather than jumping.
+  assertEquals(parseSettings("{}").smoothScrub, true);
+  assertEquals(parseSettings('{"smoothScrub":false}').smoothScrub, false);
+  // And a stringy "false" is the trap this file already documents: read as a
+  // value rather than dropped, it would turn the feature off by accident.
+  assertEquals(parseSettings('{"smoothScrub":"false"}').smoothScrub, true);
+});
+
+Deno.test("smooth scrubbing persists like the rest", () => {
+  const store = fakeStore();
+  const settings = new SettingsStorage(store);
+  assertEquals(settings.smoothScrub, true);
+  settings.smoothScrub = false;
+  assertEquals(new SettingsStorage(store).smoothScrub, false);
+  // And it does not disturb its neighbours on the way.
+  assertEquals(new SettingsStorage(store).liveEditing, true);
+  assertEquals(new SettingsStorage(store).previewScrub, false);
 });
 
 Deno.test("live editing persists on its own, alongside the wheel", () => {

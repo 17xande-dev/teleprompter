@@ -11,6 +11,8 @@ import {
   ratioOf,
   scrollQuantum,
   type ScrollSync,
+  SCRUB_EASE,
+  scrubStep,
   setRatio,
 } from "./scrollsync.ts";
 
@@ -338,4 +340,85 @@ Deno.test("a moving viewer still carries its sub-pixel remainder", () => {
   assertEquals(pendingScroll(-6, 16, 0), -0.096);
   // A frame that took no time asks only for what was already owed.
   assertEquals(pendingScroll(60, 0, 0.5), 0.5);
+});
+
+Deno.test("a scrub spends a shrinking share of what is left, so it eases out", () => {
+  // The whole point: the step gets smaller as the debt does. A constant step
+  // would arrive as a linear slide and stop dead.
+  const first = scrubStep(100);
+  const later = scrubStep(100 - first);
+  assertAlmostEquals(first, 100 * SCRUB_EASE);
+  assertEquals(later < first, true);
+  assertAlmostEquals(later, (100 - first) * SCRUB_EASE);
+});
+
+Deno.test("a scrub settles in about ten frames rather than crawling forever", () => {
+  let debt = 300;
+  let frames = 0;
+  while (debt !== 0 && frames < 1000) {
+    debt -= scrubStep(debt);
+    frames++;
+  }
+  // Watched: an exponential alone never reaches zero, so without the two
+  // floors this loop runs until the double underflows. Ten to twenty frames is
+  // a glide; a hundred is a display still drifting after the operator stopped.
+  assertEquals(debt, 0);
+  assertEquals(frames <= 20, true, `settled in ${frames} frames`);
+});
+
+Deno.test("the last pixel is spent outright, not chased", () => {
+  // Under a pixel is not worth another frame — and a frame loop kept alive for
+  // it also keeps renewing the scrub's authority over everyone's position.
+  assertEquals(scrubStep(1), 1);
+  assertEquals(scrubStep(0.4), 0.4);
+  assertEquals(scrubStep(-0.4), -0.4);
+  assertEquals(scrubStep(-1), -1);
+});
+
+Deno.test("a step is never a fraction of a pixel, so a long fling does not crawl", () => {
+  // 3 * 0.28 is 0.84: without the floor the tail of a fling takes another
+  // forty frames after the motion has visibly stopped.
+  assertEquals(scrubStep(3), 1);
+  assertEquals(scrubStep(-3), -1);
+  for (const debt of [1.01, 2, 3, 3.5, -1.01, -2, -3.5]) {
+    assertEquals(Math.abs(scrubStep(debt)) >= 1, true, `debt ${debt}`);
+  }
+});
+
+Deno.test("a scrub never overshoots what it was asked for", () => {
+  for (const total of [2, 10, 100, 1000, -2, -10, -100, -1000]) {
+    let debt = total;
+    let moved = 0;
+    for (let i = 0; i < 1000 && debt !== 0; i++) {
+      const step = scrubStep(debt);
+      moved += step;
+      debt -= step;
+      // Never meaningfully past the target, and never backwards. The
+      // tolerance is float accumulation over a few dozen frames, measured at
+      // 2e-13px on a 1000px fling — a scroll cannot express it.
+      assertEquals(
+        Math.abs(moved) <= Math.abs(total) + 1e-9,
+        true,
+        `total ${total}, moved ${moved}`,
+      );
+      assertEquals(
+        Math.sign(step) === Math.sign(total),
+        true,
+        `total ${total}`,
+      );
+    }
+    // And it lands where it was asked to, so the displays end where the
+    // preview did rather than a pixel short of it.
+    assertAlmostEquals(moved, total);
+  }
+});
+
+Deno.test("nothing owed asks for nothing, and a non-finite debt cannot wedge the loop", () => {
+  assertEquals(scrubStep(0), 0);
+  // A NaN would otherwise survive every comparison and keep the frame loop
+  // running for the life of the page, with #scrubUntil renewed on each one —
+  // which would suppress the driver's samples indefinitely.
+  assertEquals(scrubStep(NaN), 0);
+  assertEquals(scrubStep(Infinity), 0);
+  assertEquals(scrubStep(-Infinity), 0);
 });

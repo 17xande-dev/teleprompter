@@ -117,6 +117,41 @@ export function pendingScroll(
   return carried + (speed / 1000) * elapsedMs;
 }
 
+/**
+ * How much of an unspent scrub gesture to spend this frame.
+ *
+ * A wheel notch over the preview arrives as one large `deltaY`, and forwarding
+ * it whole moves every display in one jump. Spending a fraction of what is left
+ * each frame turns that into a glide: the step shrinks as the debt does, which
+ * is an ease-out, and it settles in about ten frames at the default fraction.
+ *
+ * **This is not the easing the sync path forbids, and the difference is which
+ * end of the wire it is on.** The rule above — never throttle or interpolate
+ * the fan-out — is about the pacer's ~60Hz samples, which describe where a
+ * display *is* and must be applied the instant they land. This is about a
+ * gesture, on the control page, before anything has been sent: it turns one
+ * coarse sample into a stream of fine ones, so viewers receive *more*
+ * positions, not fewer, and each is still applied immediately. Easing the
+ * fan-out adds lag to someone else's motion; easing a gesture adds
+ * intermediate frames to your own.
+ *
+ * Two floors, both earned. Under a pixel of debt is spent outright rather than
+ * chased across more frames — the tail of an exponential never reaches zero,
+ * and a frame loop kept alive to move a hundredth of a pixel is a loop that
+ * also keeps refreshing the scrub's authority over the position (see
+ * SCRUB_HOLD_MS). And a step is never smaller than a whole pixel, or the last
+ * fifth of a long fling crawls for another forty frames after the motion has
+ * visibly stopped.
+ */
+export const SCRUB_EASE = 0.28;
+
+export function scrubStep(debt: number, fraction = SCRUB_EASE): number {
+  if (!Number.isFinite(debt) || debt === 0) return 0;
+  if (Math.abs(debt) <= 1) return debt;
+  const step = debt * fraction;
+  return Math.abs(step) < 1 ? Math.sign(debt) : step;
+}
+
 export function makeScrollSync({ el, send }: ScrollSyncOptions): ScrollSync {
   // Scroll events for the document's scrolling element are dispatched at
   // the window, not at the element itself.
