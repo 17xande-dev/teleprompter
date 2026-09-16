@@ -389,6 +389,16 @@ export interface ControllerCallbacks {
 
 export interface ControllerLink {
   broadcast(msg: ControlMessage): void;
+  /**
+   * Give up on one viewer's link and forget it.
+   *
+   * For a connection that has failed and is not coming back. Note the server
+   * is still authoritative about who is in the room: if that peer's signalling
+   * socket is somehow alive, the next `viewer-list` will legitimately bring it
+   * back — and it will get a fresh link and a fresh negotiation, which is the
+   * better outcome anyway. This removes a *dead* link, not a membership.
+   */
+  drop(id: string): void;
   sendTo(id: string, msg: ControlMessage): void;
   broadcastFile(name: string, bytes: ArrayBuffer): void;
   sendFileTo(id: string, name: string, bytes: ArrayBuffer): void;
@@ -465,9 +475,23 @@ export function connectController(
             closed = true;
             cb.onSignalingStatus?.("denied");
             return;
-          case "viewer-list":
-            (msg.peers ?? []).forEach(addViewer);
+          case "viewer-list": {
+            // The server's authoritative membership, sent on every (re)connect
+            // — so it has to be *reconciled*, not merely added to. This used to
+            // be a bare forEach(addViewer), and the peers it left behind were
+            // invisible until someone noticed a display that had gone hours
+            // ago still listed: a dropped signalling socket is usually *why* a
+            // peer connection failed, so the reconnect arrived with a list that
+            // no longer mentioned the dead display and nothing removed it.
+            // addViewer early-returns on an id it already has, so the stale
+            // link was never even renegotiated.
+            const present = new Set(msg.peers ?? []);
+            for (const id of [...links.keys()]) {
+              if (!present.has(id)) removeViewer(id);
+            }
+            present.forEach(addViewer);
             return;
+          }
           case "peer-joined":
             if (msg.from) addViewer(msg.from);
             return;
@@ -488,6 +512,9 @@ export function connectController(
     },
     sendTo(id, msg) {
       links.get(id)?.sendControl(msg);
+    },
+    drop(id) {
+      removeViewer(id);
     },
     broadcastFile(name, bytes) {
       for (const link of links.values()) link.sendFile(name, bytes);

@@ -657,6 +657,22 @@ tp-clock-control tp-clock {
   opacity: 0.7;
 }
 
+/* Only rendered for a failed or closed link, so it is allowed to look like
+   the exception it is. A plain button rather than a wa-button: the row is
+   built in JS from plain elements, and one component here would be the only
+   thing on the page waiting for a custom-element upgrade in a list that is
+   rebuilt on every dims report. */
+.viewer-row .viewer-drop {
+  margin-inline-start: auto;
+  padding: 0 var(--wa-space-xs);
+  font: inherit;
+  color: var(--wa-color-danger-on-quiet);
+  background: none;
+  border: var(--wa-border-width-s) solid var(--wa-color-danger-border-quiet);
+  border-radius: var(--wa-border-radius-s);
+  cursor: pointer;
+}
+
 /* Which machine a display is on. Given a border rather than left as plain
    text because it sits between two pieces of plain text (the id and the RTC
    state) and is a different kind of fact from either — one an operator scans

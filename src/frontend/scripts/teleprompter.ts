@@ -89,6 +89,10 @@ interface ViewerEntry {
   // Whether this display is on this machine. Null until its first dims
   // report, the same "not known yet" the dimensions themselves start at.
   local: boolean | null;
+  // Armed while the connection is failed, so a link that never recovers stops
+  // occupying a row that reads like a working screen. Undefined is the "not
+  // armed" sentinel, the same shape clock.ts's tickTimer uses.
+  dropTimer?: ReturnType<typeof setTimeout>;
 }
 
 export class Teleprompter {
@@ -1064,6 +1068,8 @@ export class Teleprompter {
   }
 
   #onViewerLeft(id: string) {
+    // Or it fires against an id that is gone and drops whoever reuses it.
+    clearTimeout(this.viewers.get(id)?.dropTimer);
     this.viewers.delete(id);
     // This may have been the pacer; whoever is left has to take over.
     this.#applyScrollRoles();
@@ -1226,11 +1232,57 @@ export class Teleprompter {
     }
   }
 
+  /**
+   * How long a display may sit in a failed state before it is dropped.
+   *
+   * Paired with the ICE restart's backoff (4s, 8s, 16s, then 30s): ninety
+   * seconds is about five attempts, which is a real effort at recovery before
+   * giving up. Shorter and a display on a slow reconnect is dropped while it
+   * would still have come back; longer and a dead row sits in the operator's
+   * list looking like a screen they have.
+   */
+  static readonly FAILED_DROP_MS = 90_000;
+
   #onViewerState(id: string, state: RTCPeerConnectionState) {
     const entry = this.viewers.get(id);
     if (!entry) return;
     entry.state = state;
+
+    // Any state but failed means it is either working or still trying, so an
+    // armed drop is no longer wanted. Cleared on every transition rather than
+    // only on "connected", because "connecting" after a restart is progress.
+    if (state !== "failed") {
+      clearTimeout(entry.dropTimer);
+      entry.dropTimer = undefined;
+    } else if (entry.dropTimer === undefined) {
+      entry.dropTimer = setTimeout(() => {
+        const current = this.viewers.get(id);
+        // Recovered, or already gone, while the timer was pending.
+        if (!current || current.state !== "failed") return;
+        this.#dropViewer(id);
+      }, Teleprompter.FAILED_DROP_MS);
+    }
+
     this.#renderViewers();
+  }
+
+  /**
+   * Forget a display whose link is not coming back.
+   *
+   * Local to the control page: the server stays authoritative about who is in
+   * the room, so if that display's signalling socket is somehow still alive the
+   * next `viewer-list` will bring it back — with a fresh link and a fresh
+   * negotiation, which is a better outcome than the dead one it replaces. What
+   * this removes is a stale *link*, and with it a row that told the operator
+   * they had a screen they did not have.
+   */
+  #dropViewer(id: string) {
+    const entry = this.viewers.get(id);
+    clearTimeout(entry?.dropTimer);
+    // link.drop calls back into #onViewerLeft, which is what actually deletes
+    // the entry and recomputes the driver, the stage and the preview — so the
+    // two routes out of the list cannot drift apart.
+    this.link.drop(id);
   }
 
   #setDriver(id: string) {
@@ -1299,12 +1351,31 @@ export class Teleprompter {
     return parts.join(" · ");
   }
 
+  /**
+   * Displays actually showing this, which is not the same as rows in the list.
+   *
+   * The badge used to read `viewers.size`, so a display whose connection had
+   * failed still said "Live" — the single most misleading thing the app could
+   * tell an operator ten seconds before a service. A failed link is a frozen
+   * screen: it holds whatever it last received and follows nothing. "connected"
+   * is the only state that means the words are moving, and a viewer spends a
+   * moment in "connecting" on the way in, during which "No viewers" is the
+   * honest answer rather than a gap in the badge.
+   */
+  #liveViewers(): number {
+    let live = 0;
+    for (const entry of this.viewers.values()) {
+      if (entry.state === "connected") live++;
+    }
+    return live;
+  }
+
   #renderStatus() {
     const shown = this.#signaling === "denied"
       ? { variant: "danger", text: "No control", attention: "none" }
       : this.#signaling === "disconnected"
       ? { variant: "warning", text: "Reconnecting", attention: "none" }
-      : this.viewers.size === 0
+      : this.#liveViewers() === 0
       ? { variant: "neutral", text: "No viewers", attention: "none" }
       : { variant: "success", text: "Live", attention: "pulse" };
     this.#bdgSignaling.variant = <WaBadge["variant"]> shown.variant;
@@ -1390,6 +1461,22 @@ export class Teleprompter {
       driveLabel.appendChild(driveRadio);
       driveLabel.appendChild(document.createTextNode("drive"));
       row.appendChild(driveLabel);
+
+      // A way out for a link that has failed and is not coming back. Offered
+      // only for an unhealthy connection, deliberately: dropping a *working*
+      // display would black it out until it reloaded — it is the polite peer,
+      // so it waits for an offer and never asks for one — which is a footgun
+      // on a row the operator clicks to choose a preview.
+      if (entry.state === "failed" || entry.state === "closed") {
+        const drop = document.createElement("button");
+        drop.type = "button";
+        drop.className = "viewer-drop";
+        drop.textContent = "Remove";
+        drop.title = "Forget this display. Its connection has failed; if it " +
+          "is still reachable it will rejoin with a fresh link.";
+        drop.addEventListener("click", () => this.#dropViewer(id));
+        row.appendChild(drop);
+      }
 
       // No separate "pacing" badge any more: the driver *is* the pacer, and
       // the radio above already says which one that is.
