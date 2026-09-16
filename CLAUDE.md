@@ -1082,6 +1082,15 @@ position and the pacer carries on from there at the set speed.
   scroll event has to be sampled and reported, which is the same reason
   `smoothScroll` uses a bare `scrollBy` to produce the driver's samples. Routing
   it through the echo guard would swallow the very thing that has to travel.
+- **`deltaY` is only pixels when `deltaMode` says so.** Chrome on Windows sends
+  pixels, about 100-120 a notch; Firefox on Windows sends _lines_, `deltaY: 3`
+  for the same notch. Read as pixels that notch moved the show three pixels, so
+  the scrub did almost nothing in one browser and worked in the other with
+  nothing in any console. `wheelPixels` normalises it, and a line is a
+  **constant** 40px rather than the script's own line height: that height
+  changes with the Text Scale slider, so tying a notch to it would make the same
+  gesture travel a different distance at every venue. Measured after: a
+  line-mode notch and a pixel-mode notch both move 119px.
 - **A wheel scrub is eased, and that is not the easing the sync path forbids.**
   The rule against throttling or interpolating the fan-out is about the pacer's
   ~60Hz samples: they describe where a display _is_ and must be applied the
@@ -1091,6 +1100,18 @@ position and the pacer carries on from there at the set speed.
   applied immediately. Easing the fan-out adds lag to someone else's motion;
   easing a gesture adds frames to your own. **Only the wheel.** A drag is direct
   manipulation and has to track the finger.
+- **The scrub's easing is tuned for a _coarse_ wheel, and needs both a fraction
+  and a cap.** The first attempt spent 28% of the remaining debt each frame,
+  which settled in about ten frames and still read as jumpy on the cheap Windows
+  mouse the feature exists for — a notch arrives as one 120px chunk and 28% of
+  it is a 33px pop. It is 11% now: a notch spreads over ~31 frames with a 13px
+  peak, and consecutive notches accumulate so velocity _builds_ (13, 23, 29)
+  into one continuous movement instead of five separate pops. The fraction alone
+  is not enough, though: a fling puts hundreds of pixels of debt in within a few
+  frames and 11% of that is the jump the easing exists to remove, so
+  `SCRUB_MAX_STEP` caps a frame at 80px — measured engaging at exactly 80 on a
+  1440px fling, where the uncapped first step would have been 158. The cap never
+  bites on a single notch, so ordinary scrolling is governed by the fraction.
 - **Every drained scrub frame renews `#scrubUntil`.** The hold is 300ms and a
   glide can run longer, so renewing it only on the wheel event lets the
   operator's authority lapse mid-gesture — and the driver's in-flight samples

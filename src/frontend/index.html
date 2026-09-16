@@ -366,11 +366,13 @@
     </wa-switch>
     <!-- Defaults on, unlike the switches above: a wheel notch forwarded whole
          moves every display in one jolt, which is what the code happened to do
-         rather than anything anyone chose. Only the wheel is eased — a drag has
-         to keep tracking the finger. -->
+         rather than anything anyone chose. Worth keeping the off position
+         though — a good trackpad already sends a smooth stream of small
+         deltas, and easing that only adds lag. Only the wheel is eased; a drag
+         has to keep tracking the finger. -->
     <wa-switch id="swSmoothScrub" checked
-      hint="Ease a wheel scroll over the preview over a few frames instead of jumping straight there. Turn this off if you would rather the displays move the instant you scroll.">
-      Smooth scrolling from the preview
+      hint="Smooths a wheel scroll over the preview, for a mouse that jumps several lines per notch. Turn it off for raw scrolling, which a good trackpad or a high-resolution wheel does not need.">
+      Smooth mouse scrolling over the preview
     </wa-switch>
     <!-- Defaults on, like live editing and unlike the rest: there is no light
          mode for a pasted white page to be correct against, so off is not a

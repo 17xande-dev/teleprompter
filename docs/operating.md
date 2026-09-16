@@ -273,12 +273,15 @@ Per-browser preferences, in the gear:
 - **Scroll the show from the preview** — described above.
 - **Brighten pasted text** — on by default. Described under Pasting a script
   below.
-- **Smooth scrolling from the preview** — on by default. A wheel notch is spent
-  over about ten frames instead of all at once, so the displays glide to the new
-  position rather than jumping to it. A drag is never eased: it has to keep
-  tracking your finger. Turn this off if you would rather the displays move the
-  instant you scroll — chasing an unexpected cut, say, where you want the
-  position now and will correct by eye.
+- **Smooth mouse scrolling over the preview** — on by default, and it exists for
+  a specific device. A cheap mouse reports one coarse notch at a time, a
+  hundred-odd pixels or three whole lines, and sent straight through that moves
+  every display in a single jolt. On, a notch is spread over a shrinking series
+  of frames and capped per frame, so several notches in a row blend into one
+  continuous movement. A good trackpad or a high-resolution wheel already sends
+  a smooth stream of small deltas, and easing those only adds lag — turn it off
+  for raw scrolling there. A drag is never eased either way: it has to keep
+  tracking your finger.
 
 **Live editing** is remembered the same way but its switch is in the Sync card,
 where the other "what do the displays have" actions are.

@@ -143,13 +143,70 @@ export function pendingScroll(
  * fifth of a long fling crawls for another forty frames after the motion has
  * visibly stopped.
  */
-export const SCRUB_EASE = 0.28;
+export const SCRUB_EASE = 0.11;
 
-export function scrubStep(debt: number, fraction = SCRUB_EASE): number {
+/**
+ * The most a scrub may move in one frame, in the reference display's pixels.
+ *
+ * A fraction of the debt alone is not enough: spin a chunky wheel and several
+ * hundred pixels of debt arrive within a few frames, and 11% of *that* is a
+ * visible jump — the exact thing the easing exists to remove. 80px a frame is
+ * about 4800px/s, fast enough that a long scrub does not crawl and slow enough
+ * that a single frame is a tenth of a 800-tall screen rather than a teleport.
+ *
+ * It only bites on a fling. A single notch never reaches it, so ordinary
+ * scrolling is governed by the fraction above and feels the same as before.
+ */
+export const SCRUB_MAX_STEP = 80;
+
+export function scrubStep(
+  debt: number,
+  fraction = SCRUB_EASE,
+  maxStep = SCRUB_MAX_STEP,
+): number {
   if (!Number.isFinite(debt) || debt === 0) return 0;
   if (Math.abs(debt) <= 1) return debt;
-  const step = debt * fraction;
-  return Math.abs(step) < 1 ? Math.sign(debt) : step;
+  const eased = debt * fraction;
+  const capped = Math.sign(debt) * Math.min(Math.abs(eased), maxStep);
+  return Math.abs(capped) < 1 ? Math.sign(debt) : capped;
+}
+
+/**
+ * A wheel event's delta in pixels, whatever unit the browser chose to send.
+ *
+ * `deltaY` is only pixels when `deltaMode` says so, and browsers disagree: on
+ * Windows, Chrome reports pixels (about 100 per notch) while Firefox reports
+ * *lines* — `deltaY: 3` for one notch. Read as pixels, that notch moves the
+ * show three pixels, so the scrub silently does almost nothing on one browser
+ * and works on another. Nothing errors; it just feels broken.
+ *
+ * A line is normalised to a constant rather than to the script's own line
+ * height, deliberately. The script's line height changes with the Text Scale
+ * slider, so tying a notch to it would make the same gesture travel a different
+ * distance at every venue — and the operator's muscle memory is in notches.
+ * 40px is chosen to land a three-line notch near the ~120px Chrome sends, so
+ * the gesture feels the same in both browsers.
+ */
+export const WHEEL_LINE_PIXELS = 40;
+
+export function wheelPixels(
+  deltaY: number,
+  deltaMode: number,
+  pageHeight: number,
+  linePixels = WHEEL_LINE_PIXELS,
+): number {
+  if (!Number.isFinite(deltaY)) return 0;
+  // DOM_DELTA_LINE
+  if (deltaMode === 1) return deltaY * linePixels;
+  // DOM_DELTA_PAGE — a notch means a screenful, so it is worth honouring
+  // rather than clamping: it is what the operator asked for.
+  if (deltaMode === 2) {
+    return deltaY *
+      (Number.isFinite(pageHeight) && pageHeight > 0 ? pageHeight : linePixels);
+  }
+  // DOM_DELTA_PIXEL, and anything a future browser invents: taking it at face
+  // value is the conservative answer.
+  return deltaY;
 }
 
 export function makeScrollSync({ el, send }: ScrollSyncOptions): ScrollSync {

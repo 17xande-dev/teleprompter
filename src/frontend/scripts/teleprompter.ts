@@ -55,7 +55,7 @@ import { SettingsControls } from "./settingsControls.ts";
 import { GamepadControls } from "./gamepadControls.ts";
 import { connectController, type ControllerLink } from "./webrtc.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
-import { ratioOf, scrubStep, setRatio } from "./scrollsync.ts";
+import { ratioOf, scrubStep, setRatio, wheelPixels } from "./scrollsync.ts";
 import {
   clampEditorScale,
   clampTextScale,
@@ -765,16 +765,22 @@ export class Teleprompter {
     this.#previewFrame.addEventListener("wheel", (e: WheelEvent) => {
       if (!this.settings.previewScrub) return;
       e.preventDefault();
-      // deltaY straight through, deliberately not via wheelStep: that setting
-      // is about which way a wheel moves a slider *thumb*, and a document
-      // scroll is not a slider. Nor is it divided by #previewScale — a notch
-      // means "advance the script about a notch", the same as it would on the
-      // display itself, and scaling it up would send half a page per click.
+      // Normalised out of whatever unit the browser chose, because deltaY is
+      // only pixels when deltaMode says so — Firefox on Windows sends lines,
+      // and read as pixels a notch moved the show three of them. See
+      // wheelPixels.
+      //
+      // Not divided by #previewScale — a notch means "advance the script about
+      // a notch", the same as it would on the display itself, and scaling it up
+      // would send half a page per click. And deliberately not via wheelStep:
+      // that setting is about which way a wheel moves a slider *thumb*, and a
+      // document scroll is not a slider.
       //
       // Read per event rather than cached, like every other preference, or the
       // switch and the gesture disagree until a reload.
-      if (this.settings.smoothScrub) this.#scrubSmoothly(e.deltaY);
-      else this.#scrubBy(e.deltaY);
+      const px = wheelPixels(e.deltaY, e.deltaMode, this.#stageDims().height);
+      if (this.settings.smoothScrub) this.#scrubSmoothly(px);
+      else this.#scrubBy(px);
     }, { passive: false });
 
     // Drag and touch, where the opposite is true: direct manipulation has to

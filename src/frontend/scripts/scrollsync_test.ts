@@ -12,8 +12,11 @@ import {
   scrollQuantum,
   type ScrollSync,
   SCRUB_EASE,
+  SCRUB_MAX_STEP,
   scrubStep,
   setRatio,
+  WHEEL_LINE_PIXELS,
+  wheelPixels,
 } from "./scrollsync.ts";
 
 function installRAFPolyfill() {
@@ -352,18 +355,74 @@ Deno.test("a scrub spends a shrinking share of what is left, so it eases out", (
   assertAlmostEquals(later, (100 - first) * SCRUB_EASE);
 });
 
-Deno.test("a scrub settles in about ten frames rather than crawling forever", () => {
+Deno.test("a scrub settles in well under a second, without crawling forever", () => {
   let debt = 300;
   let frames = 0;
   while (debt !== 0 && frames < 1000) {
     debt -= scrubStep(debt);
     frames++;
   }
-  // Watched: an exponential alone never reaches zero, so without the two
-  // floors this loop runs until the double underflows. Ten to twenty frames is
-  // a glide; a hundred is a display still drifting after the operator stopped.
+  // Watched: an exponential alone never reaches zero, so without the floors
+  // this loop runs until the double underflows.
   assertEquals(debt, 0);
-  assertEquals(frames <= 20, true, `settled in ${frames} frames`);
+  // The gentler fraction is the point of the retune — a cheap Windows mouse
+  // sends a notch as one chunk of about 100px, and the old 0.28 spent 28 of
+  // them on the first frame, which reads as a pop rather than a glide. The
+  // cost is a longer tail, and this is the bound on it: about 45 frames, or
+  // three quarters of a second at 60Hz. Past a second a display is still
+  // drifting long after the operator stopped, which is its own problem.
+  assertEquals(frames <= 60, true, `settled in ${frames} frames`);
+  assertEquals(frames >= 20, true, `settled too abruptly, in ${frames}`);
+});
+
+Deno.test("a fling is capped per frame, so a big debt is not a jump", () => {
+  // The fraction alone is not enough: spin the wheel and several hundred
+  // pixels arrive within a few frames, and 11% of that is the visible jump the
+  // easing exists to remove.
+  assertEquals(scrubStep(5000), SCRUB_MAX_STEP);
+  assertEquals(scrubStep(-5000), -SCRUB_MAX_STEP);
+  assertEquals(scrubStep(1000), SCRUB_MAX_STEP);
+  // And it only bites on a fling: one notch is governed by the fraction.
+  assertAlmostEquals(scrubStep(100), 100 * SCRUB_EASE);
+  assertEquals(Math.abs(scrubStep(100)) < SCRUB_MAX_STEP, true);
+});
+
+Deno.test("a wheel delta is read in the unit the browser actually sent", () => {
+  // deltaY is only pixels when deltaMode says so. Firefox on Windows sends
+  // lines — deltaY 3 for one notch — and read as pixels that notch moved the
+  // show three pixels, so the scrub did almost nothing on one browser and
+  // worked on another, with nothing in any console.
+  assertEquals(wheelPixels(120, 0, 800), 120);
+  assertEquals(wheelPixels(3, 1, 800), 3 * WHEEL_LINE_PIXELS);
+  assertEquals(wheelPixels(-3, 1, 800), -3 * WHEEL_LINE_PIXELS);
+  // A page is a screenful of the *reference* display, which is what every
+  // display is laid out in.
+  assertEquals(wheelPixels(1, 2, 800), 800);
+  assertEquals(wheelPixels(-2, 2, 800), -1600);
+});
+
+Deno.test("a line notch lands near what a pixel-mode browser sends", () => {
+  // The whole reason the constant is 40 rather than a real line height: the
+  // same gesture should travel about the same distance in both browsers.
+  const firefoxNotch = wheelPixels(3, 1, 800);
+  const chromeNotch = wheelPixels(120, 0, 800);
+  assertEquals(
+    Math.abs(firefoxNotch - chromeNotch) <= 20,
+    true,
+    `${firefoxNotch} vs ${chromeNotch}`,
+  );
+});
+
+Deno.test("an unreadable wheel delta moves nothing, and an odd mode is taken at face value", () => {
+  assertEquals(wheelPixels(NaN, 0, 800), 0);
+  assertEquals(wheelPixels(Infinity, 1, 800), 0);
+  // A mode nobody has invented yet: treating deltaY as pixels is the
+  // conservative answer, not a throw.
+  assertEquals(wheelPixels(50, 99, 800), 50);
+  // A page mode with no usable page height falls back rather than multiplying
+  // by zero and moving nothing.
+  assertEquals(wheelPixels(1, 2, 0), WHEEL_LINE_PIXELS);
+  assertEquals(wheelPixels(1, 2, NaN), WHEEL_LINE_PIXELS);
 });
 
 Deno.test("the last pixel is spent outright, not chased", () => {

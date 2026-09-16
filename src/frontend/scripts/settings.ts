@@ -74,16 +74,21 @@ export type Settings = {
   /**
    * Whether a wheel scrub over the preview eases, rather than jumping.
    *
-   * A wheel notch arrives as one large deltaY, and forwarded whole it moves
-   * every display in a single step — which reads as a jolt on a screen someone
-   * is reading from, and overshoots what the operator meant. On, the notch is
-   * spent over about ten frames, shrinking as it goes (see scrubStep).
+   * The two positions are for two kinds of pointing device, which is why this
+   * is a setting rather than a constant someone has to be right about. A cheap
+   * mouse reports one coarse notch at a time — a hundred-odd pixels, or three
+   * whole lines — and forwarded whole that moves every display in a single
+   * jolt. A good trackpad or a high-resolution wheel already sends a stream of
+   * small deltas, which is smooth on its own, and easing it only adds lag.
    *
-   * Default on, unlike the other switches here, because the jump is not a
-   * behaviour anyone would choose; it is what the code happened to do. Off is
-   * kept for the case a fraction of a second of easing is worse than a jolt —
-   * chasing an unexpected cut, where the operator wants the position *now* and
-   * will correct by eye.
+   * On, a notch is spent over a shrinking series of frames and capped per
+   * frame, so several notches in quick succession blend into continuous motion
+   * instead of a staccato of jumps — see scrubStep, whose constants were
+   * retuned after the first attempt still read as jumpy on exactly the cheap
+   * Windows mouse this exists for.
+   *
+   * Default on, because the jump is not a behaviour anyone would choose; it is
+   * what the code happened to do.
    *
    * Only the wheel is eased. A drag is direct manipulation and has to track
    * the finger, so easing it would add lag to the one gesture that must not
