@@ -15,6 +15,7 @@ import {
 } from "wordgard/schema";
 import { history } from "wordgard/history";
 import { GardState } from "wordgard/state";
+import { sectionSizeMenu } from "./sectionSizeMenu.ts";
 import { type TextSizeAccess, textSizeMenu } from "./textSizeMenu.ts";
 
 // The editor pane's height, matching #pdfPane so the two modes occupy the same
@@ -81,6 +82,15 @@ const overflow = Menu.Submenu.define({
 function menuTemplate() {
   return Menu.Group.top.template(
     Menu.Group.commands.template("..."),
+    // Paragraph / Heading 1-3 / Code block. Wordgard defines this submenu
+    // parented to Group.top and its children parented to *it*, and a template
+    // is walked literally — so with no "..." at this level the submenu was
+    // never resolved and none of those buttons appeared in the bar at all.
+    // They stayed reachable by Ctrl-Shift-0..6 and the "# " input rule, which
+    // is why an operator could remember having had them without anyone
+    // noticing they had gone. Templated here rather than left to the hole
+    // because position in the bar is a decision.
+    Menu.Submenu.textblockStyle.template("..."),
     formatting.template(
       strong.button,
       emphasis.button,
@@ -109,6 +119,13 @@ function buildConfig(
 ) {
   return [
     fullSchema(),
+    // Unconditional, and it has to be: this is document state, not a
+    // preference. buildConfig is also what GardState.fromJSON is given in
+    // restoreEditor, and marksFromJSON throws on a mark the schema does not
+    // know — which restoreEditor catches and turns into a fresh blank editor.
+    // Registered conditionally, opening a saved script with sized sections
+    // would silently replace it with "New Document".
+    sectionSizeMenu(formatting),
     history(),
     menuBar({ template: menuTemplate() }),
     // The size control is the operator's own reading size, so it is only

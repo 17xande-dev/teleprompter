@@ -26,7 +26,7 @@
     "npm:pdfjs-dist@*": "6.3.289",
     "npm:pdfjs-dist@^6.3.289": "6.3.289",
     "npm:tinykeys@^3.1.0": "3.1.0",
-    "npm:wordgard@latest": "0.5.0"
+    "npm:wordgard@0.5": "0.5.2"
   },
   "jsr": {
     "@std/assert@1.0.19": {
@@ -490,8 +490,8 @@
     "web-streams-polyfill@3.3.3": {
       "integrity": "sha512-d2JWLCivmZYTSIoge9MsgFCZrt571BikcWGYkjC1khllbTeDlGqZ2D8vD8E/lJa8WGWbb7Plm8/XJYV7IJHZZw=="
     },
-    "wordgard@0.5.0": {
-      "integrity": "sha512-DgUFgrKLa1MOUVCCna7VNYE9qKaW3j3qOEh4JuT/ENPlPJSPSq6ahhkmfz96LJVs2eXcsn6LHd+TSYTkyVlcJA==",
+    "wordgard@0.5.2": {
+      "integrity": "sha512-GaP/WbtSYi6+FM0dp9qVRE4W+5tOnz5UOrM/olqIuoEdU4csNc9XqMhKEHFKtXk5heN95UheNM+0HNxpGkLQIg==",
       "dependencies": [
         "@marijn/find-cluster-break",
         "crelt",
@@ -512,7 +512,7 @@
       "npm:codemirror@^6.0.2",
       "npm:pdfjs-dist@^6.3.289",
       "npm:tinykeys@^3.1.0",
-      "npm:wordgard@latest"
+      "npm:wordgard@0.5"
     ]
   }
 }

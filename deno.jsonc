@@ -116,6 +116,11 @@
     // graph only, for the same reason as CodeMirror above — and it is eval
     // free, which the page's script-src requires.
     "tinykeys": "npm:tinykeys@^3.1.0",
-    "wordgard": "npm:wordgard@latest"
+    // Pinned to a minor range rather than @latest since sectionSizeMenu.ts
+    // started depending on Wordgard's *schema* API (Mark.Type.define and the
+    // Shape.Attribute spec) and not just its editor API. A lock refresh moving
+    // that spec under us would break the mark, and a document saved with sized
+    // sections is not readable by a build whose schema lacks the mark.
+    "wordgard": "npm:wordgard@^0.5.0"
   }
 }
