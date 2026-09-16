@@ -198,6 +198,12 @@ Per-browser preferences, in the gear:
   pointing device and the OS's "natural scrolling", neither of which the page
   can see, so this is a switch rather than something someone had to guess.
 - **Scroll the show from the preview** — described above.
+- **Smooth scrolling from the preview** — on by default. A wheel notch is spent
+  over about ten frames instead of all at once, so the displays glide to the new
+  position rather than jumping to it. A drag is never eased: it has to keep
+  tracking your finger. Turn this off if you would rather the displays move the
+  instant you scroll — chasing an unexpected cut, say, where you want the
+  position now and will correct by eye.
 
 **Live editing** is remembered the same way but its switch is in the Sync card,
 where the other "what do the displays have" actions are.
