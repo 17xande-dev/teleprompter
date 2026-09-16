@@ -175,3 +175,49 @@ export type ControlMessage =
   | SetDriverMessage
   | DimsMessage
   | ScrollControlMessage;
+
+/**
+ * What a display has to be told to agree with the ones already running.
+ *
+ * Built here, DOM-free and away from the control page, for two reasons. It has
+ * two callers — a viewer joining over WebRTC, and the preview iframe's `load`
+ * — and a message that reaches only one of them is a bug by construction: that
+ * pair has drifted three times, first on the theme, then on the text scale,
+ * then on the message and the scroll position, and every time the symptom was
+ * a preview quietly showing something no display was showing. And keeping it
+ * out of teleprompter.ts is what makes it testable at all; anything in there
+ * imports Web Awesome and Wordgard, which `deno test` cannot resolve.
+ *
+ * Order is deliberate. The two that change the document's *height* — the theme
+ * and the text scale — go first, so `setContent`'s own re-anchor lands against
+ * the final height rather than against an inherited 16px. The trailing scroll
+ * position re-anchors regardless, which makes the ordering a belt rather than
+ * the only thing holding it up.
+ *
+ * A PDF is not in here: it travels as a file over its own channel, so each
+ * caller substitutes it for the `content` message in the way its transport
+ * allows.
+ */
+export function catchUpMessages(show: {
+  theme: ThemeMessage;
+  /** Wire speed, forward positive — i.e. already negated from the slider. */
+  speed: number;
+  textScale: number;
+  message: string;
+  html: string;
+  clock: Omit<ClockMessage, "type">;
+  ratio: number;
+}): ControlMessage[] {
+  return [
+    show.theme,
+    {
+      type: "settings",
+      speed: show.speed,
+      textScale: show.textScale,
+      message: show.message,
+    },
+    { type: "content", html: show.html },
+    { type: "clock", ...show.clock },
+    { type: "scroll", r: show.ratio, s: 0 },
+  ];
+}

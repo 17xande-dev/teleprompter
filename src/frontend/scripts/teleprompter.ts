@@ -66,7 +66,7 @@ import {
   tenthsToRem,
 } from "./textscale.ts";
 import { LOCAL_CHANNEL } from "./protocol.ts";
-import { isPreviewScroll } from "./protocol.ts";
+import { catchUpMessages, isPreviewScroll } from "./protocol.ts";
 import type { ControlMessage, ThemeMessage } from "./protocol.ts";
 import { wheelStep } from "./settings.ts";
 import { ThemeControls } from "./themeControls.ts";
@@ -468,25 +468,26 @@ export class Teleprompter {
     });
 
     this.ifrmPreview.addEventListener("load", () => {
-      // The iframe starts on the built-in default in its own markup, so a
-      // persisted custom layout has to be pushed to it the same way a real
-      // viewer gets it on join.
-      this.#postToPreview(this.themeControls.themeMessage());
-      // And the same for the text scale, for the same reason. Without it the
-      // preview never receives a textScale at all, so its `font-size:
-      // var(--textScale)` is invalid at computed-value time and inherits 16px
-      // while every real viewer sits at whatever the slider says — the preview
-      // was lying about the one thing it exists to show.
-      this.#postToPreview({
-        type: "settings",
-        textScale: this.rngScale.value / 10,
-      });
-      // The published script, not the editor's: the preview is a mirror of
-      // what the displays show, which is the one thing it exists for.
-      this.#pushPublished();
-      // And the countdown, for the same reason a joining display gets it: the
-      // iframe starts at its own markup's zero.
-      this.#pushClock();
+      // The iframe is a display that has just joined: it starts on the layout
+      // in its own markup, with no script, a zeroed countdown and no position,
+      // so it needs exactly what a real viewer gets on join. Sent from the one
+      // builder rather than a hand-kept copy of the list — see
+      // #catchUpMessages for the three times these two drifted apart.
+      //
+      // In PDF mode the file goes separately, because the preview is not a
+      // WebRTC peer and cannot be sent one over a data channel; openPdf posts
+      // it directly.
+      for (const msg of this.#catchUpMessages()) {
+        if (msg.type === "content" && this.#pdfBytes) continue;
+        this.#postToPreview(msg);
+      }
+      if (this.#pdfBytes) {
+        this.#postToPreview({
+          type: "pdf",
+          name: this.#pdfName ?? "document.pdf",
+          data: this.#pdfBytes,
+        });
+      }
     });
 
     // The preview fits the box it is given, so it has to be refitted whenever
@@ -942,39 +943,46 @@ export class Teleprompter {
     this.#postToPreview(msg);
   }
 
+  /**
+   * This show's state, in the form the shared catch-up builder wants.
+   *
+   * The values are read at the moment they are asked for, never cached — the
+   * countdown especially, since a remembered `remainingMs` stops being true
+   * the instant it is taken (see TPClockControl.state). `#publishedHtml` is
+   * deliberately not the editor's content: while live editing is off the
+   * editor holds a draft nobody is meant to see, and a display coming back
+   * mid-service has to agree with the others.
+   */
+  #catchUpMessages(): ControlMessage[] {
+    return catchUpMessages({
+      theme: this.themeControls.themeMessage(),
+      speed: -this.rngSpeed.value,
+      textScale: this.rngScale.value / 10,
+      message: this.#currentMessage,
+      html: this.#publishedHtml,
+      clock: this.tpClockControl.state(),
+      ratio: this.#lastRatio,
+    });
+  }
+
   #onViewerJoined(id: string) {
     this.viewers.set(id, { dims: null, state: "new", local: null });
     // Bring the newcomer up to date rather than leaving it blank until the
     // next edit/setting change. In PDF mode that means re-sending the whole
     // file — the channel isn't open yet at this point, so this relies on the
     // pending-file slot in webrtc.ts.
-    if (this.#pdfBytes) {
-      this.link.sendFileTo(id, this.#pdfName ?? "document.pdf", this.#pdfBytes);
-    } else {
-      // #publishedHtml, not the editor: while live editing is off the editor
-      // holds a draft nobody is meant to see, and a display that reloads
-      // mid-service has to come back agreeing with the others.
-      this.link.sendTo(id, { type: "content", html: this.#publishedHtml });
+    for (const msg of this.#catchUpMessages()) {
+      // The file replaces the published script, but nothing else.
+      if (msg.type === "content" && this.#pdfBytes) {
+        this.link.sendFileTo(
+          id,
+          this.#pdfName ?? "document.pdf",
+          this.#pdfBytes,
+        );
+        continue;
+      }
+      this.link.sendTo(id, msg);
     }
-    this.link.sendTo(id, {
-      type: "settings",
-      speed: -this.rngSpeed.value,
-      textScale: this.rngScale.value / 10,
-      message: this.#currentMessage,
-    });
-    // The only route by which a viewer ever learns its theme — a custom one's
-    // CSS exists nowhere but this browser, so a viewer that reloads mid-service
-    // comes back unstyled unless this is here.
-    this.link.sendTo(id, this.themeControls.themeMessage());
-    // The countdown. Without this a display that reloads mid-service comes
-    // back frozen at its markup's zero while the operator's own copy runs on,
-    // which is the whole reason the message carries state rather than a
-    // command.
-    this.link.sendTo(id, { type: "clock", ...this.tpClockControl.state() });
-    // Where everyone currently is. Sent on the *control* channel, not the
-    // scroll one: control queues until the channel opens, and an unreliable
-    // channel that isn't open yet would simply drop this.
-    this.link.sendTo(id, { type: "scroll", r: this.#lastRatio, s: 0 });
     // A newcomer may be the only viewer (making it the pacer) or one more
     // follower; either way the roles need recomputing.
     this.#applyScrollRoles();

@@ -374,10 +374,27 @@ export class Viewer {
   }
 
   #reportDims() {
+    // The *layout* viewport, not innerWidth/innerHeight, and the difference is
+    // load-bearing rather than pedantic. These dimensions exist to shape the
+    // control page's preview iframe, and the scroll ratio everyone shares is
+    // computed against `document.scrollingElement` — the same element
+    // makeScrollSync is bound to above. A ratio maps to
+    // `r * (scrollHeight - clientHeight)`, so if the preview's layout viewport
+    // is a different height from this display's, the same ratio lands on a
+    // different line, by `r * Δheight`.
+    //
+    // innerHeight reads more natural and is what someone will change this back
+    // to, so: on a phone or tablet acting as a display it tracks the *visual*
+    // viewport and shrinks as the URL bar collapses, while
+    // scrollingElement.clientHeight is the layout viewport and stays put. The
+    // two differ by 60-110 CSS px on mobile Chrome and Safari, which is
+    // exactly the "off by about a clock strip" the operator sees. Same story
+    // for a display with classic scrollbars.
+    const el = document.scrollingElement!;
     this.#link?.sendControl({
       type: "dims",
-      width: globalThis.innerWidth,
-      height: globalThis.innerHeight,
+      width: el.clientWidth,
+      height: el.clientHeight,
       local: this.#isLocal,
     });
   }
