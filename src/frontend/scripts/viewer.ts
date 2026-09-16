@@ -548,8 +548,18 @@ export class Viewer {
    * revoking drive can't leave a stale sender fighting the new one.
    */
   setCanDrive(canDrive: boolean) {
+    const changed = this.canDrive !== canDrive;
     this.canDrive = canDrive;
     document.documentElement.classList.toggle("can-drive", canDrive);
+    // Granting drive swaps body's overflow from hidden to auto, which on a
+    // desktop with classic scrollbars *shrinks the layout viewport* — measured
+    // at 15px in both axes in Chromium. That is the quantity `dims` reports and
+    // the quantity the shared scroll ratio is computed against, so it is now
+    // stale: the controller goes on sizing its preview to the pre-scrollbar
+    // figure, and the same ratio then lands the preview and this display
+    // r * 15px apart. No resize event fires for it, because the window has not
+    // changed size — only the space inside it. So re-report.
+    if (changed) this.#reportDims();
   }
 
   setTextScale(scale: number) {

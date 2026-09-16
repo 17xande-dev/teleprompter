@@ -80,13 +80,32 @@ html.can-drive body::-webkit-scrollbar {
    On #main rather than on `body` because body is where the sticky clock strip
    lives, and insetting that would leave a stripe of page showing beside it.
 
+   The clock strip gets the same inset. Its own background still reaches the
+   bezel — padding is inside the element — so the strip reads as full width
+   while the time and the countdown line up with the script below them, which
+   is the point: a clock hard against the edge looks like a mistake even when
+   the text beside it does not.
+
    PDF mode is deliberately exempt, and the exemption is a class rather than a
    selector trick because #pdfWidth() measures `main.clientWidth`, which
    *includes* padding: left on, every page would be rendered a gutter wider
    than the box it has to fit in, and a PDF's page boxes are the one thing in
    this file that must stay untouched (see .pdf-page below). */
-#main {
+#main,
+#header {
   padding-inline: var(--viewer-gutter);
+}
+
+/* A script is read off a screen nobody can scroll sideways, so anything wider
+   than the display is simply lost — and a pasted document brings exactly that:
+   a bare URL is one unbreakable word, and a Google Docs link measured 2326px
+   inside an 1881px viewer, running 500px off the edge with a horizontal
+   scrollbar the audience cannot use. `anywhere` rather than `break-word`
+   because it also lets the long word shrink the paragraph's intrinsic minimum,
+   which is what stops it forcing the whole column wide. Same declaration the
+   operator's message already carries, for the same reason. */
+#main {
+  overflow-wrap: anywhere;
 }
 
 #main.pdf {
