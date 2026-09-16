@@ -372,6 +372,15 @@
       hint="Ease a wheel scroll over the preview over a few frames instead of jumping straight there. Turn this off if you would rather the displays move the instant you scroll.">
       Smooth scrolling from the preview
     </wa-switch>
+    <!-- Defaults on, like live editing and unlike the rest: there is no light
+         mode for a pasted white page to be correct against, so off is not a
+         preference anyone holds. It is destructive in a way a render-time
+         filter would not be, which is why it is a switch at all — undo and
+         Ctrl+Shift+V are the ways back. -->
+    <wa-switch id="swBrightenPaste" checked
+      hint="Recolour pasted text so it reads on a dark screen: black becomes the display's own white, and colours like red and green stay red and green. Turn this off to paste colours exactly as they were copied.">
+      Brighten pasted text
+    </wa-switch>
     <wa-button name="close" slot="footer" variant="primary">Done</wa-button>
   </wa-dialog>
   <!-- The command palette (Ctrl+K), which doubles as the shortcut cheatsheet

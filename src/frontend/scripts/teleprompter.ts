@@ -321,6 +321,11 @@ export class Teleprompter {
       document.querySelector("#editor")!,
       this.saveEditorContent.bind(this),
       this.#textSizeAccess(),
+      // A thunk, not this.settings.brightenPastedText — which does not exist
+      // yet, three lines below. Deferred rather than reordered because the
+      // value has to be read at the moment of a paste anyway: the switch can
+      // be flipped at any time, and a boolean captured here would go stale.
+      this.#brightenPasteAccess(),
     );
     this.docControls = new DocControls();
     // Before the commands are built, which take it on the host — and before
@@ -336,6 +341,7 @@ export class Teleprompter {
           document.querySelector("#editor")!,
           this.saveEditorContent.bind(this),
           this.#textSizeAccess(),
+          this.#brightenPasteAccess(),
         );
         // As the "load" handler below does. Without this a new document left
         // the displays on the previous script until the first keystroke, so
@@ -356,6 +362,7 @@ export class Teleprompter {
           e.detail.content,
           this.saveEditorContent.bind(this),
           this.#textSizeAccess(),
+          this.#brightenPasteAccess(),
         );
         this.updateMain();
       },
@@ -1603,6 +1610,19 @@ export class Teleprompter {
       max: EDITOR_SCALE.max,
       step: EDITOR_SCALE.step,
     };
+  }
+
+  /**
+   * Whether a paste should be recoloured, asked at the moment of the paste.
+   *
+   * A function rather than a value because the editor outlives the answer: it
+   * is built once at page load — before `this.settings` even exists — and the
+   * switch can be flipped from the Settings dialog at any point afterwards.
+   * The same shape `tpClockControl.rollTarget` uses, for the same reason, and
+   * the reason no constructor reordering is needed here.
+   */
+  #brightenPasteAccess(): () => boolean {
+    return () => this.settings.brightenPastedText;
   }
 
   /**

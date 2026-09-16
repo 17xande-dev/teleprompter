@@ -15,6 +15,7 @@ import {
 } from "wordgard/schema";
 import { history } from "wordgard/history";
 import { GardState } from "wordgard/state";
+import { brightenPastedHtml } from "./pasteColors.ts";
 import { sectionSizeMenu } from "./sectionSizeMenu.ts";
 import { type TextSizeAccess, textSizeMenu } from "./textSizeMenu.ts";
 
@@ -116,6 +117,7 @@ function menuTemplate() {
 function buildConfig(
   onUpdate?: (wg: Wordgard) => void,
   textSize?: TextSizeAccess,
+  brightenPaste?: () => boolean,
 ) {
   return [
     fullSchema(),
@@ -138,6 +140,26 @@ function buildConfig(
     // unconditionally (<html class="wa-dark">). Pinned rather than left to the
     // OS, and style.css lines the resulting dark variant's --wg-* colours up
     // with the Web Awesome surface around it.
+    // Wordgard's own clipboard hook: readClipboard runs this facet on the raw
+    // text/html *before* parsing it, so the script simply arrives with the
+    // right colours and nothing downstream — not the document, not
+    // pushContent, not a display — has to know. readClipboard is also what a
+    // drag-and-drop of HTML goes through, so that case comes free, and the
+    // plain-text branch never reaches here, which is what makes Ctrl+Shift+V
+    // the way to paste colours untouched.
+    //
+    // A thunk rather than a boolean because the editor is built at page load
+    // and the switch can be flipped afterwards — the same shape
+    // tpClockControl.rollTarget uses. It is also why the editor being
+    // constructed before SettingsControls is not a problem: nothing calls this
+    // until a paste.
+    ...(brightenPaste
+      ? [
+        Wordgard.clipboardInputHTMLFilter.of((html) =>
+          brightenPaste() ? brightenPastedHtml(html) : html
+        ),
+      ]
+      : []),
     Wordgard.colorScheme.of("dark"),
     // Without this the editor grows to fit its content, the whole control page
     // scrolls instead, and scrollDOM's scrollHeight equals its clientHeight —
@@ -166,12 +188,13 @@ export function newEditor(
   el: Element,
   onUpdate?: (wg: Wordgard) => void,
   textSize?: TextSizeAccess,
+  brightenPaste?: () => boolean,
 ): Wordgard {
   clearMount(el);
   const wg = Wordgard.create({
     parent: el,
     doc: `<p>New Document</p>`,
-    config: buildConfig(onUpdate, textSize),
+    config: buildConfig(onUpdate, textSize, brightenPaste),
   });
   return wg;
 }
@@ -185,13 +208,14 @@ export function restoreEditor(
   json: string,
   onUpdate?: (wg: Wordgard) => void,
   textSize?: TextSizeAccess,
+  brightenPaste?: () => boolean,
 ): Wordgard {
   // A document that has never been edited has empty content (Doc's default),
   // which is not parseable state — start a fresh editor rather than throwing
   // out of the load handler and leaving the page with no document at all.
-  if (!json.trim()) return newEditor(el, onUpdate, textSize);
+  if (!json.trim()) return newEditor(el, onUpdate, textSize, brightenPaste);
 
-  const config = buildConfig(onUpdate, textSize);
+  const config = buildConfig(onUpdate, textSize, brightenPaste);
   let state;
   try {
     state = GardState.fromJSON(JSON.parse(json), config, {
@@ -204,7 +228,7 @@ export function restoreEditor(
     // throwing here leaves the page with no editor rather than a usable one.
     // Nothing is overwritten by this — a save only happens on the next edit.
     console.warn("unreadable document content, starting a fresh editor", err);
-    return newEditor(el, onUpdate, textSize);
+    return newEditor(el, onUpdate, textSize, brightenPaste);
   }
   clearMount(el);
   return Wordgard.create({ parent: el, state });

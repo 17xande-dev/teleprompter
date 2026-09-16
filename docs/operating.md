@@ -70,6 +70,32 @@ viewers' size** in the Sync card sets it to read like the displays do.
 
 The viewers' size is the separate **Text Scale** slider in the Transport card.
 
+### Pasting a script
+
+A script copied out of Word, Google Docs or a web page is black text on white.
+Every display is dark, and so is this page, so pasted exactly as authored it
+would be black on black. **Brighten pasted text** — on by default, in the gear —
+rewrites the colours on the way in:
+
+- Black and near-black text loses its colour entirely, so it picks up the
+  display's own ink and follows whatever a custom theme sets. It is not replaced
+  with white, which is why an amber-on-black theme gets amber text.
+- Red stays red and green stays green. A colour dark enough to be hard to read
+  keeps its hue and is lightened until it clears the usual 4.5:1 contrast
+  against black, so colour-coding survives — a rubric in red still reads as red.
+- A colour that already reads on black is left alone, and so is a deliberate
+  mid-grey.
+- A light highlight is darkened rather than removed, keeping its hue: a yellow
+  highlight becomes a dark yellow box. Removing it would be worse than it
+  sounds, because brightened text inside a yellow box is white on yellow.
+- A white page background, and grey table shading, are dropped.
+
+Two things worth knowing. This happens at paste time, so it changes the document
+rather than only what the displays show — **undo** puts the original colours
+back, and `Ctrl+Shift+V` pastes as plain text, which carries no colours at all.
+And a pasted document's own font _sizes_ are always dropped, whatever this
+setting says, because they are absolute and would ignore Text Scale.
+
 ### Making one part bigger than the rest
 
 Select some text and pick a size from the **100%** dropdown in the toolbar: 75%,
@@ -219,6 +245,8 @@ Per-browser preferences, in the gear:
   pointing device and the OS's "natural scrolling", neither of which the page
   can see, so this is a switch rather than something someone had to guess.
 - **Scroll the show from the preview** — described above.
+- **Brighten pasted text** — on by default. Described under Pasting a script
+  below.
 - **Smooth scrolling from the preview** — on by default. A wheel notch is spent
   over about ten frames instead of all at once, so the displays glide to the new
   position rather than jumping to it. A drag is never eased: it has to keep

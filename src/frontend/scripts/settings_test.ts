@@ -68,6 +68,27 @@ Deno.test("a missing key keeps its default rather than reading as false", () => 
   // And a stringy "false" is the trap this file already documents: read as a
   // value rather than dropped, it would turn the feature off by accident.
   assertEquals(parseSettings('{"smoothScrub":"false"}').smoothScrub, true);
+  // Brightening a paste defaults on too, so a browser carrying settings from
+  // before it existed does not paste black text onto black screens.
+  assertEquals(parseSettings("{}").brightenPastedText, true);
+  assertEquals(
+    parseSettings('{"brightenPastedText":false}').brightenPastedText,
+    false,
+  );
+  assertEquals(
+    parseSettings('{"brightenPastedText":"false"}').brightenPastedText,
+    true,
+  );
+});
+
+Deno.test("brightening a paste persists like the rest", () => {
+  const store = fakeStore();
+  const settings = new SettingsStorage(store);
+  assertEquals(settings.brightenPastedText, true);
+  settings.brightenPastedText = false;
+  assertEquals(new SettingsStorage(store).brightenPastedText, false);
+  assertEquals(new SettingsStorage(store).smoothScrub, true);
+  assertEquals(new SettingsStorage(store).liveEditing, true);
 });
 
 Deno.test("smooth scrubbing persists like the rest", () => {

@@ -24,6 +24,7 @@ export class SettingsControls {
   #swPreviewScrub: WaSwitch;
   #swRollTarget: WaSwitch;
   #swSmoothScrub: WaSwitch;
+  #swBrightenPaste: WaSwitch;
 
   constructor() {
     this.#dialog = document.querySelector("#dlgSettings")!;
@@ -31,6 +32,7 @@ export class SettingsControls {
     this.#swPreviewScrub = document.querySelector("#swPreviewScrub")!;
     this.#swRollTarget = document.querySelector("#swRollTarget")!;
     this.#swSmoothScrub = document.querySelector("#swSmoothScrub")!;
+    this.#swBrightenPaste = document.querySelector("#swBrightenPaste")!;
     (<WaButton> document.querySelector("#btnSettings")).addEventListener(
       "click",
       () => this.open(),
@@ -53,6 +55,10 @@ export class SettingsControls {
       this.storage.smoothScrub = this.#swSmoothScrub.checked;
     });
 
+    this.#swBrightenPaste.addEventListener("change", () => {
+      this.storage.brightenPastedText = this.#swBrightenPaste.checked;
+    });
+
     // Reported rather than written straight to storage, unlike the switch
     // above: the control page has to re-render the preview's armed marker,
     // and it owns what the setting means. Same split as the Live editing
@@ -73,6 +79,7 @@ export class SettingsControls {
     this.#swPreviewScrub.checked = this.storage.previewScrub;
     this.#swRollTarget.checked = this.storage.rollTargetToTomorrow;
     this.#swSmoothScrub.checked = this.storage.smoothScrub;
+    this.#swBrightenPaste.checked = this.storage.brightenPastedText;
     this.#dialog.open = true;
   }
 
@@ -116,6 +123,11 @@ export class SettingsControls {
   /** Asked per gesture, never cached — see invertWheel. */
   get smoothScrub(): boolean {
     return this.storage.smoothScrub;
+  }
+
+  /** Asked at the moment of a paste, never cached — same reason. */
+  get brightenPastedText(): boolean {
+    return this.storage.brightenPastedText;
   }
 
   /** The switch the control page listens to, so it can re-render the marker. */

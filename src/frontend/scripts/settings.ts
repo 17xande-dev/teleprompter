@@ -90,6 +90,27 @@ export type Settings = {
    * have any.
    */
   smoothScrub: boolean;
+  /**
+   * Whether a paste is recoloured to read on a dark screen.
+   *
+   * A script copied out of Word, Docs or a web page is black on white. This
+   * page and every display are dark unconditionally, so pasted as authored it
+   * is black text on black. On, the colours are rewritten on the way in: greys
+   * lose their colour entirely so they follow --viewer-color and any user
+   * theme, and a saturated hue keeps its hue and has its lightness raised
+   * until it clears 4.5:1 against black — so red stays red and green stays
+   * green instead of everything becoming white.
+   *
+   * Default true, unlike every switch here except liveEditing. Off is not a
+   * preference anyone holds: there is no light mode for a pasted white page to
+   * be correct against, so unaltered it is unreadable by construction. It is
+   * worth knowing that this is destructive in a way a render-time filter would
+   * not be — what the paste discards is gone from the document rather than
+   * merely overridden — which is why the switch exists at all. Two escape
+   * hatches already cover it: the editor's own undo, and Ctrl+Shift+V, which
+   * pastes plain text and so carries no colour to correct.
+   */
+  brightenPastedText: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -98,6 +119,7 @@ export const DEFAULT_SETTINGS: Settings = {
   previewScrub: false,
   rollTargetToTomorrow: false,
   smoothScrub: true,
+  brightenPastedText: true,
 };
 
 /**
@@ -209,6 +231,15 @@ export class SettingsStorage {
 
   set smoothScrub(value: boolean) {
     this.#settings.smoothScrub = value;
+    this.#save();
+  }
+
+  get brightenPastedText(): boolean {
+    return this.#settings.brightenPastedText;
+  }
+
+  set brightenPastedText(value: boolean) {
+    this.#settings.brightenPastedText = value;
     this.#save();
   }
 
