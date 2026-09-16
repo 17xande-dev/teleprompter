@@ -50,6 +50,16 @@ export class Viewer {
   isPreviewer = false;
   canDrive = false;
 
+  /**
+   * The box the script is laid out in, and the scroller.
+   *
+   * Sized to the *reference* display rather than to this screen, so every
+   * display lays out identically and one shared scroll ratio lands on the same
+   * line everywhere — see StageMessage. Until one arrives it is this screen's
+   * own size at scale 1, which is how a lone display behaves exactly as it did
+   * before the stage existed.
+   */
+  #stage: HTMLElement;
   #scrollSync: ScrollSync;
   #link: ViewerLink | null = null;
   #isResizing = false;
@@ -58,6 +68,10 @@ export class Viewer {
   // the slower one could otherwise finish last and win.
   #pdfGeneration = 0;
   #textScale = 1;
+  // The reference display's box, in its own pixels. Zero until the controller
+  // says otherwise, which leaves the CSS default of this screen's own size.
+  #stageWidth = 0;
+  #stageHeight = 0;
   #themeSheet = new CSSStyleSheet();
   // Last position received from the controller. Content arrives *after* the
   // catch-up position does (and a PDF renders asynchronously on top of that),
@@ -69,8 +83,14 @@ export class Viewer {
     registerClockComponent();
     this.timer = document.querySelector("#timeTimer")!;
 
+    this.#stage = <HTMLElement> document.querySelector("#stage");
     this.#scrollSync = makeScrollSync({
-      el: document.scrollingElement!,
+      // The stage, not the viewport. The viewport is clipped and never scrolls
+      // (viewerBase.css), because the stage's box is allowed to be larger than
+      // the screen — the scale transform is what makes it fit, and scrollTop
+      // therefore stays in the reference display's pixel space, identical on
+      // every screen.
+      el: this.#stage,
       send: (ratio) => {
         // Track our own position as well as remote ones. The pacer is never
         // sent a scroll message (the controller fans its samples out to
@@ -114,6 +134,7 @@ export class Viewer {
       // viewer's column width. Deliberately not the full #listenResize: a
       // previewer must never report dims or it would show up as a viewer.
       globalThis.addEventListener("resize", () => {
+        this.#fitStage();
         this.#pdf?.setWidth(this.#pdfWidth());
         // Relaying out a PDF changes scrollHeight while scrollTop stays in
         // pixels, so the ratio this is showing drifts every time the operator
@@ -200,6 +221,9 @@ export class Viewer {
         if (msg.textScale !== undefined) this.setTextScale(msg.textScale);
         if (msg.message !== undefined) this.setMessage(msg.message);
         break;
+      case "stage":
+        this.setStage(msg.width, msg.height);
+        break;
       case "theme":
         this.setTheme(msg.layout, msg.css);
         break;
@@ -224,7 +248,7 @@ export class Viewer {
         // scrollBy the auto-scroll loop uses to produce the driver's samples,
         // for the same reason.
         if (!this.isPreviewer) break;
-        globalThis.scrollBy(0, msg.px);
+        this.#stage.scrollBy(0, msg.px);
         break;
       case "dims":
         // Viewer only ever sends this, never receives it.
@@ -262,6 +286,10 @@ export class Viewer {
     this.#isResizing = true;
     globalThis.requestAnimationFrame(() => {
       this.#reportDims();
+      // The screen changed size, so the stage's fit has to be recomputed —
+      // its own box has not changed, only how much room there is to show it
+      // in. Before resizeMessage, which measures against the laid-out result.
+      this.#fitStage();
       this.resizeMessage();
       // A PDF is laid out in pixels, not reflowed by CSS, so it has to be
       // told the window changed or it keeps the old column width.
@@ -492,8 +520,15 @@ export class Viewer {
     const timeElapsed = timestamp - this.lastScrollTime;
     this.lastScrollTime = timestamp;
 
-    const windowHeight = globalThis.innerHeight + globalThis.scrollY;
-    if (this.scrollSpeed > 0 && windowHeight > document.body.offsetHeight) {
+    // Measured on the scroller itself, which is also a fix: this used to
+    // compare `innerHeight + scrollY` against `document.body.offsetHeight`
+    // while the scrollable range came from `scrollHeight`, so a display parked
+    // tens of pixels short of its real end — and never auto-scrolled at all
+    // when the document was shorter than the viewport, because the comparison
+    // was permanently true. Both quantities now come from the same element.
+    const stage = this.#stage;
+    const atEnd = stage.scrollTop + stage.clientHeight >= stage.scrollHeight;
+    if (this.scrollSpeed > 0 && atEnd) {
       // if we're at the bottom of the page, don't continue scrolling.
       requestAnimationFrame(this.smoothScroll.bind(this));
       return;
@@ -518,13 +553,13 @@ export class Viewer {
     // frame whose rounded delta is 0 fires no scroll event at all — it also
     // made this viewer emit position samples in irregular bursts, so
     // everyone mirroring it stuttered rather than gliding.
-    const before = globalThis.scrollY;
+    const before = stage.scrollTop;
     const wanted = this.accumulatedScroll;
-    globalThis.scrollBy(0, wanted);
+    stage.scrollBy(0, wanted);
     // Carry only what the browser rounded away, never what it refused: see
     // carryRemainder, which is where the difference is spelled out and why
     // banking a blocked scroll used to pin a viewer to one end of its script.
-    const moved = globalThis.scrollY - before;
+    const moved = stage.scrollTop - before;
     this.accumulatedScroll = carryRemainder(wanted, moved);
 
     requestAnimationFrame(this.smoothScroll.bind(this));
@@ -560,6 +595,55 @@ export class Viewer {
     // r * 15px apart. No resize event fires for it, because the window has not
     // changed size — only the space inside it. So re-report.
     if (changed) this.#reportDims();
+  }
+
+  /**
+   * Lay this display out in the reference display's box.
+   *
+   * Everything that decides where a line falls — the wrapping width, the
+   * theme's container units, the PDF column — is measured from the stage, so
+   * giving every display the same one is what makes a single scroll ratio mean
+   * the same line on all of them. The transform that fits it to this screen is
+   * visual only and changes none of those.
+   */
+  setStage(width: number, height: number) {
+    if (!(width > 0) || !(height > 0)) return;
+    if (width === this.#stageWidth && height === this.#stageHeight) return;
+    this.#stageWidth = width;
+    this.#stageHeight = height;
+    this.root.style.setProperty("--stage-width", `${width}px`);
+    this.root.style.setProperty("--stage-height", `${height}px`);
+    this.#fitStage();
+    // The column width changed with the stage, and a PDF is laid out in pixels
+    // rather than reflowing.
+    this.#pdf?.setWidth(this.#pdfWidth());
+    // A new box is a new scrollHeight while scrollTop stays in pixels, so the
+    // position this is showing has to be re-anchored — the same reason
+    // setContent and the resize handler do it.
+    this.#restoreScroll();
+  }
+
+  /**
+   * Scale the stage to fit this screen, keeping its shape.
+   *
+   * The smaller factor wins and the rest of the screen is letterboxed, which is
+   * the deliberate trade: a display of a different shape gives up some area in
+   * exchange for showing exactly what every other display shows. Measured
+   * against the layout viewport rather than `innerHeight`, for the reason
+   * #reportDims gives.
+   */
+  #fitStage() {
+    if (!this.#stageWidth || !this.#stageHeight) return;
+    const el = document.documentElement;
+    // Not laid out yet; the resize that follows will do this properly. Zero
+    // would otherwise be written as the scale and the screen would go blank.
+    if (!el.clientWidth || !el.clientHeight) return;
+    const scale = Math.min(
+      el.clientWidth / this.#stageWidth,
+      el.clientHeight / this.#stageHeight,
+    );
+    if (!Number.isFinite(scale) || scale <= 0) return;
+    this.root.style.setProperty("--stage-scale", `${scale}`);
   }
 
   setTextScale(scale: number) {

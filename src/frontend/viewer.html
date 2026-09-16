@@ -13,14 +13,25 @@
 </head>
 
 <body class="theme-default">
-  <header id="header" class="viewer-clocks">
-    <tp-clock class="left" id="timeTimer" type="timer" timer="00:00:00">00:00:00</tp-clock>
-    <span id="message" class="mid"></span>
-    <tp-clock class="right" id="timeClock" type="clock"></tp-clock>
-  </header>
-  <main id="main" class="content">
+  <!-- The stage is the box the script is laid out in, and it is sized to the
+       *reference* display rather than to this screen: every display lays out
+       identically and scales the result to fit, so one shared scroll ratio
+       lands on the same line everywhere. Told no dimensions, it takes this
+       screen's own and the scale is 1, which is how a lone display behaves
+       exactly as it did before the stage existed. See StageMessage.
 
-  </main>
+       It is also the scroller. The viewport is not: viewerBase.css clips both
+       html and body, so nothing can scroll the page out from under the stage. -->
+  <div id="stage">
+    <header id="header" class="viewer-clocks">
+      <tp-clock class="left" id="timeTimer" type="timer" timer="00:00:00">00:00:00</tp-clock>
+      <span id="message" class="mid"></span>
+      <tp-clock class="right" id="timeClock" type="clock"></tp-clock>
+    </header>
+    <main id="main" class="content">
+
+    </main>
+  </div>
 </body>
 
 </html>

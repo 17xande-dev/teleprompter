@@ -22,9 +22,19 @@
   /* The gap between the script and the edges of the screen. A theme may
      override it; it is here rather than in a layout so a display gets one
      whatever layout it is wearing. Both halves of the max() earn their place:
-     the vi term keeps the gutter proportional on a big screen, and the rem
-     floor stops a phone in portrait from getting a gutter of a few pixels. */
-  --viewer-gutter: max(1rem, 2.5vi);
+     the cqi term keeps the gutter proportional on a big screen, and the rem
+     floor stops a phone in portrait from getting a gutter of a few pixels.
+
+     **cqi, not vi**, and this was measured rather than reasoned: `vi` resolves
+     against the real viewport, so a 900-wide display gave itself a 22px gutter
+     where the 1280-wide reference had 32px — a content box 19px wider, text
+     that wrapped differently, and a scrollHeight 352px apart on an 80-line
+     script. Two displays that wrap differently cannot share a scroll position,
+     which is the whole thing the stage exists to guarantee. `cqi` resolves
+     against #stage, so every display gets the reference's gutter. The unit is
+     resolved where the property is *used* — on #main and #header, both inside
+     the stage — not where it is declared. */
+  --viewer-gutter: max(1rem, 2.5cqi);
   /* The gap above and below every block in the script — paragraphs, headings,
      rules. Zero, which is not the browser's answer: its default is 1em, and at
      prompter sizes 1em is a whole blank line. Measured on a real service
@@ -50,17 +60,61 @@ html {
   background-color: var(--viewer-bg);
   color: var(--viewer-color);
   font-optical-sizing: auto;
+  /* Pinned, and it has to be. --textScale is a `rem` length, so the script's
+     size — and with it where every line wraps and how tall the document is —
+     depends on the root font size. Honouring the device's own would make a
+     display with a 20px default wrap differently from one with 16px, and two
+     displays that wrap differently cannot share a scroll position. Nothing is
+     lost by pinning it: nobody browses a prompter, and the size the talent
+     reads is the operator's to set from the Text Scale slider. */
+  font-size: 16px;
+  /* The viewport does not scroll; the stage does. `clip` on both, because a
+     scrollable overflow region propagates from body to the viewport even
+     through an overflow-hidden body — the control page learnt this the hard
+     way (see CLAUDE.md) and an over-sized stage is exactly that case. Without
+     it, anything calling scrollIntoView inside the stage could scroll the
+     whole page out from under it, bars and all. */
+  overflow: clip;
 }
 
-/* A viewer is a display, not a document: the controller owns the position, so
-   a stray wheel or touch must not move it and there is no scrollbar to show.
-   Note this locks the *viewport*, not the body — `html` is `visible`, so the
-   used overflow of the viewport is taken from the body element. Programmatic
-   movement is unaffected, which is why the sync path never noticed: scrollTo
-   works fine on an overflow-hidden viewport, and only user gestures are
-   refused. */
+/* Body is the letterbox: it fills the screen and holds the stage in the middle
+   of it, so a display whose shape differs from the reference shows bars in
+   --viewer-bg rather than a stretched or cropped script. */
 body {
   font-family: var(--sl-font-mono);
+  position: relative;
+  width: 100dvw;
+  height: 100dvh;
+  overflow: clip;
+  margin: 0;
+}
+
+/* The stage: laid out at the reference display's pixel size, then scaled to
+   fit this screen.
+
+   Absolutely positioned and centred by translate rather than by a grid,
+   because its layout box is deliberately allowed to be *larger* than the
+   screen — the transform is what makes it fit visually, and an over-sized grid
+   item's alignment is a subtler question than this needs to be. The transform
+   does not affect layout, which is the whole point: `scrollTop` stays in the
+   reference display's pixel space, identical on every screen.
+
+   A size container, so a theme can size its clock strip against the stage
+   instead of against the viewport. That distinction is invisible on the
+   reference display and wrong on every other one — see viewerThemes.css. */
+#stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--stage-width, 100dvw);
+  height: var(--stage-height, 100dvh);
+  transform: translate(-50%, -50%) scale(var(--stage-scale, 1));
+  container-type: size;
+  /* A display, not a document: the controller owns the position, so a stray
+     wheel or touch must not move it and there is no scrollbar to show.
+     Programmatic movement is unaffected — scrollTo works fine on an
+     overflow-hidden scroller, and only user gestures are refused, which is why
+     the sync path never noticed that the old grant granted nothing. */
   overflow: hidden;
 }
 
@@ -69,12 +123,12 @@ body {
    the script from by hand, and its position feeds back through the controller
    to everyone else. Still no scrollbar — this is a display being driven, not a
    document being read. */
-html.can-drive body {
+html.can-drive #stage {
   overflow: auto;
   scrollbar-width: none;
 }
 
-html.can-drive body::-webkit-scrollbar {
+html.can-drive #stage::-webkit-scrollbar {
   display: none;
 }
 

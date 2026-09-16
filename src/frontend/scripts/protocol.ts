@@ -54,6 +54,30 @@ export type ThemeMessage = {
 // bytes verbatim (postMessage structured-clones an ArrayBuffer), while a real
 // viewer receives them chunked over the "file" data channel and webrtc.ts
 // rebuilds this message on the far side. viewer.ts sees one case either way.
+/**
+ * The pixel box every display lays its script out in.
+ *
+ * Displays are kept in step by making them *match* rather than by making the
+ * sync maths cleverer. The scroll position everyone shares is a fraction of the
+ * scrollable range, which `setRatio` maps to `r * (scrollHeight -
+ * clientHeight)` — so the same fraction lands on a different line on a display
+ * of a different height. Measured on a 30,295px script: a 1080-tall and a
+ * 768-tall display sit 297px apart, about six lines, at ratio 0.95.
+ *
+ * So one display is the reference — the one the preview is attached to — and
+ * every other lays out at *its* dimensions and scales the whole result to fit
+ * its own screen, letterboxing if the shapes differ. Then one ratio is exact by
+ * construction and the sync path needs to know nothing about any of this.
+ *
+ * These are the reference display's dimensions, not the receiver's. A display
+ * that has not been told any yet uses its own, which is why a lone screen
+ * behaves exactly as it did before this existed.
+ *
+ * See docs/roadmap.md for the general fix this defers: a content fraction that
+ * would let every display use its whole screen.
+ */
+export type StageMessage = { type: "stage"; width: number; height: number };
+
 export type PdfMessage = { type: "pdf"; name: string; data: ArrayBuffer };
 
 // Leave PDF mode and go back to following the editor's content stream.
@@ -166,6 +190,7 @@ export function isPreviewScroll(data: unknown): data is PreviewScrollMessage {
 
 export type ControlMessage =
   | ContentMessage
+  | StageMessage
   | PdfMessage
   | PdfClearMessage
   | SettingsMessage
@@ -188,9 +213,10 @@ export type ControlMessage =
  * out of teleprompter.ts is what makes it testable at all; anything in there
  * imports Web Awesome and Wordgard, which `deno test` cannot resolve.
  *
- * Order is deliberate. The two that change the document's *height* — the theme
- * and the text scale — go first, so `setContent`'s own re-anchor lands against
- * the final height rather than against an inherited 16px. The trailing scroll
+ * Order is deliberate. The three that change the document's *height* — the
+ * stage box, the theme and the text scale — go first, so `setContent`'s own
+ * re-anchor lands against the final height rather than against an inherited
+ * 16px. The trailing scroll
  * position re-anchors regardless, which makes the ordering a belt rather than
  * the only thing holding it up.
  *
@@ -199,6 +225,7 @@ export type ControlMessage =
  * allows.
  */
 export function catchUpMessages(show: {
+  stage: Omit<StageMessage, "type">;
   theme: ThemeMessage;
   /** Wire speed, forward positive — i.e. already negated from the slider. */
   speed: number;
@@ -209,6 +236,10 @@ export function catchUpMessages(show: {
   ratio: number;
 }): ControlMessage[] {
   return [
+    // First of all, because it is the box everything else is measured in: a
+    // theme's container units and the content's own wrapping both resolve
+    // against it, so arriving after them would relayout the lot.
+    { type: "stage", ...show.stage },
     show.theme,
     {
       type: "settings",

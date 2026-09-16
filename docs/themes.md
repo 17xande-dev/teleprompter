@@ -53,11 +53,14 @@ over by one that rewrites them.
 `--viewer-gutter` is the odd one out: a length, not a colour, and applied in the
 base layer like the first two. It keeps the script off the bezel — text read at
 arm's length through glass loses its last character first, and that is the one
-the talent is mid-sentence on. It is `max()` of a `rem` floor and a `vi` term so
-a phone in portrait still gets a usable margin while a large screen gets a
-proportional one. PDF mode sets it aside: the page column measures the width it
-is given, and a gutter there would render every page wider than the box it has
-to fit in.
+the talent is mid-sentence on. It is `max()` of a `rem` floor and a `cqi` term
+so a phone in portrait still gets a usable margin while a large screen gets a
+proportional one — a container unit rather than a viewport one, because every
+display lays out in the stage and a `vi` here gave a 900-wide screen a narrower
+gutter than the reference, so the two wrapped differently and stopped agreeing
+on where a line was. PDF mode sets it aside: the page column measures the width
+it is given, and a gutter there would render every page wider than the box it
+has to fit in.
 
 `--viewer-block-gap` is the other length, and it defaults to `0` rather than to
 the browser's `1em`. At prompter font sizes 1em is a whole blank line: measured

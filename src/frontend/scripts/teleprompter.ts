@@ -1014,6 +1014,7 @@ export class Teleprompter {
    */
   #catchUpMessages(): ControlMessage[] {
     return catchUpMessages({
+      stage: this.#stageDims(),
       theme: this.themeControls.themeMessage(),
       speed: -this.rngSpeed.value,
       textScale: this.rngScale.value / 10,
@@ -1053,6 +1054,9 @@ export class Teleprompter {
     this.viewers.delete(id);
     // This may have been the pacer; whoever is left has to take over.
     this.#applyScrollRoles();
+    // And it may have been the reference the others were matching, in which
+    // case they are now matching whoever #previewID() falls back to.
+    this.#pushStage();
     // The preview may have been mirroring this viewer; re-fit to whoever
     // is left (or the fallback size if that was the last one).
     this.#applyPreviewScale();
@@ -1065,6 +1069,9 @@ export class Teleprompter {
     if (!entry) return;
     entry.dims = { width: msg.width, height: msg.height };
     entry.local = msg.local;
+    // This viewer may be the reference every other display is matching, so its
+    // new size is every display's new layout.
+    this.#pushStage();
     this.#applyPreviewScale();
     this.#renderViewers();
   }
@@ -1099,14 +1106,38 @@ export class Teleprompter {
     return this.viewers.keys().next().value ?? null;
   }
 
+  /**
+   * The box every display lays its script out in.
+   *
+   * The previewed viewer's own dimensions, because that display is the
+   * reference: what the operator sees in the preview is what every screen
+   * shows, and the others letterbox to match it. Falling back to the same
+   * default the preview uses keeps the two in step before any viewer has
+   * reported — they are the same number by construction, which is what makes
+   * the preview's own stage scale exactly 1.
+   */
+  #stageDims(): { width: number; height: number } {
+    const source = this.#previewID();
+    return (source && this.viewers.get(source)?.dims) ||
+      Teleprompter.DEFAULT_PREVIEW_DIMS;
+  }
+
+  // Sent whenever the reference changes — a different viewer previewed, or
+  // that viewer resized. Directly rather than through #pushSettings: this
+  // relayouts every display, so it has no business being merged frame-by-frame
+  // with slider values, and it changes about as often as a theme does.
+  #pushStage() {
+    const msg: ControlMessage = { type: "stage", ...this.#stageDims() };
+    this.link.broadcast(msg);
+    this.#postToPreview(msg);
+  }
+
   // Render the iframe at the previewed viewer's real pixel size and scale
-  // it down, so text wraps and vi-based sizing match what that viewer is
-  // actually showing. Sizing it directly to the small on-screen box instead
+  // it down, so text wraps and container-based sizing match what that viewer
+  // is actually showing. Sizing it directly to the small on-screen box instead
   // would reflow the content and make the preview a lie.
   #applyPreviewScale() {
-    const source = this.#previewID();
-    const dims = (source && this.viewers.get(source)?.dims) ||
-      Teleprompter.DEFAULT_PREVIEW_DIMS;
+    const dims = this.#stageDims();
 
     // Fit inside the box CSS gave us rather than a fixed maximum, so the
     // preview is as large as the sidebar can afford. Both axes are honoured
@@ -1205,6 +1236,11 @@ export class Teleprompter {
   #setPreview(id: string) {
     if (!this.viewers.has(id)) return;
     this.#chosenPreviewID = id;
+    // The previewed display *is* the reference every other one matches, so
+    // changing the pick relayouts the whole room — that is the deliberate
+    // consequence of the two being one choice. The preview and the stage are
+    // fed from #stageDims() together for exactly that reason.
+    this.#pushStage();
     this.#applyPreviewScale();
     this.#renderViewers();
   }

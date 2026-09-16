@@ -314,11 +314,15 @@ WebSocket relay, `ice.go` STUN/TURN config.
   `clientHeight` 887). With both, the range is 0 and the same forced overflow
   leaves `scrollY` at 0. `clip` over `hidden` on both, or the trap just moves
   down one element; the top layer is not clipped, so dialogs and dropdowns are
-  unaffected (verified). **The viewer is the deliberate opposite and must not be
-  "fixed" to match**: `viewerBase.css` locks `body` with `overflow: hidden`
-  precisely so the document keeps taking programmatic scrolls — that is how a
-  position off the wire is applied — while withholding the wheel until the
-  display holds drive. There the range is the point; here there should be none.
+  unaffected (verified). **The viewer used to be the deliberate opposite and is
+  not any more.** It locked `body` alone, precisely so the _document_ kept
+  taking programmatic scrolls — that was how a position off the wire was
+  applied. Since displays are matched to a reference by laying out in `#stage`
+  (see the stage section), the stage is the scroller and the viewport has no
+  business scrolling at all: `viewerBase.css` now clips `html` _and_ `body`, for
+  the same reason the control page does and with the added one that a stage's
+  layout box is deliberately allowed to exceed the screen. Neither page has a
+  viewport scroll range now.
 - **A vertical `wa-slider`'s track is a fixed 200px** whatever you size the host
   to — measured at 176px, 300px and 360px, all with a 200px track. So a height
   on the host only adds empty space, and a height _under_ its natural size
@@ -777,15 +781,52 @@ WebSocket relay, `ice.go` STUN/TURN config.
   to show in any box. What is not true is that the displays agree with each
   other, which is why this looked like a preview bug when it is a sync one. See
   `#reportDims`.
+- **Every display lays out in `#stage`, at the _reference_ display's size.**
+  Displays are kept in step by making them match, not by making the sync maths
+  cleverer: the shared scalar is a fraction of the scrollable range, which
+  `setRatio` maps to `r * (scrollHeight - clientHeight)`, so the same fraction
+  lands on a different line on a display of a different height — measured at
+  297px, about six lines, between a 1080-tall and a 768-tall display on a
+  30,295px script. So the previewed viewer is the reference, every other lays
+  out at _its_ pixel dimensions and `transform: scale()`s the result to fit,
+  letterboxing if the shapes differ. The transform is visual only, so
+  `scrollTop` stays in the reference's pixel space and is identical everywhere —
+  verified: a 1280x800 and a 900x1200 display both sat at scrollTop 20287 of
+  scrollHeight 43683, on the same line. `docs/roadmap.md` records the general
+  fix this defers.
+  - **The stage is the scroller, not the viewport**, and its layout box is
+    allowed to be larger than the screen. It is centred with `translate` rather
+    than by a grid because an over-sized grid item's alignment is a subtler
+    question than this needs.
+  - **`#previewID()` is the reference**, so changing which viewer is previewed
+    relayouts the whole room. That is the deliberate consequence of the two
+    being one choice; `#stageDims()` feeds the preview and the stage together so
+    they cannot disagree, which is what makes the preview's own scale exactly 1.
+  - **Nothing in the viewer may size itself in viewport units.** `vi`/`vh`
+    resolve against the real screen, so they differ per display and the
+    documents stop agreeing. The stage is a size container and `cqi`/`cqh`
+    resolve against it. This bit twice: the clock strip's `8vi`, and
+    `--viewer-gutter`'s `2.5vi` — which gave a 900-wide display a 22px gutter
+    against the reference's 32px, a content box 19px wider, and a scrollHeight
+    352px apart. `findThemeCssProblems` warns a theme author about it.
+  - **`html`'s font size is pinned to 16px.** `--textScale` is a `rem` length,
+    so a display with a 20px default font wraps differently and desyncs. Nobody
+    browses a prompter, so nothing is lost by pinning it.
+  - Told no dimensions, the stage takes the screen's own and scales by 1 — so a
+    lone display behaves exactly as it did before any of this existed.
+  - A known cosmetic limit, measured rather than guessed: a scaled stage's edges
+    can land on a fractional pixel, and the row scrolled behind the sticky
+    header then bleeds through at 32/255 brightness on a single row. Gone at
+    `scrollTop` 0, so it is the content behind the header, not a clipping
+    failure.
 - **A viewer can only be scrolled by hand while it holds drive.**
-  `viewerBase.css` locks the viewport and `viewer.ts` lifts it from the
+  `viewerBase.css` locks the scroller and `viewer.ts` lifts it from the
   `set-driver` message via a class on `<html>`. The lock is `overflow: hidden`
-  on `body`, which is subtler than it looks: `html` is `visible`, so the
-  viewport takes its used overflow from the body element, and the whole page
-  stops responding to wheel and touch. Programmatic movement is unaffected —
-  `scrollTo` works fine on an overflow-hidden viewport — which is why nothing in
-  the sync path ever noticed that "allow drive" granted nothing. The preview is
-  not an exception to this and must not become one: it is scrolled by the
+  on `#stage` — it was on `body` while the viewport was the scroller — so the
+  stage stops responding to wheel and touch. Programmatic movement is unaffected
+  — `scrollTo` works fine on an overflow-hidden viewport — which is why nothing
+  in the sync path ever noticed that "allow drive" granted nothing. The preview
+  is not an exception to this and must not become one: it is scrolled by the
   controller on the operator's behalf, never by hand, so it needs no
   `set-driver` and its `pointer-events: none` stays.
 - The preview iframe is resized whenever that pick changes. Text reflows by

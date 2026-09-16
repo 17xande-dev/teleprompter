@@ -1,4 +1,14 @@
-/* --textScale is deliberately *not* registered with @property. viewer.ts sets
+/* Sizes here are in **container units against the stage** (`cqi`, `cqh`), not
+   viewport units, and that is not a style preference. Every display lays its
+   script out at the *reference* display's dimensions and scales the result to
+   fit its own screen, so one scroll ratio lands on the same line everywhere —
+   and a `vi` or `vh` in a layout resolves against the real viewport instead,
+   so the clock strip would be a different height on every screen and the
+   documents would stop agreeing. viewerBase.css makes #stage a size container
+   for exactly this. `cq*` was already the idiom in theme-big-clock; it is now
+   the rule.
+
+   --textScale is deliberately *not* registered with @property. viewer.ts sets
    it as a length ("3rem"), and the registration that used to sit here claimed
    syntax: "number" — which never parsed (a syntax definition needs <number>),
    so the rule was ignored and the length worked by accident. Correcting it to
@@ -11,7 +21,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 8vi;
+    font-size: 8cqi;
     position: sticky;
     top: 0;
     z-index: 10;
@@ -63,7 +73,7 @@
     justify-content: center;
     align-items: center;
     background: var(--clocks-bg);
-    height: 100vh;
+    height: 100cqh;
 
     .left,
     .right {

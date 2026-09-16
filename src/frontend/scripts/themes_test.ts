@@ -178,9 +178,9 @@ Deno.test("styling .pdf-page without touching its box is allowed", () => {
 Deno.test("a height rule on another selector is not blamed on .pdf-page", () => {
   // The scan walks brace depth so a nested or neighbouring rule can't be
   // mistaken for .pdf-page's own block.
-  assertEquals(findThemeCssProblems(`.content { height: 100vh }`), []);
+  assertEquals(findThemeCssProblems(`.content { height: 100cqh }`), []);
   assertEquals(
-    findThemeCssProblems(`.pdf-page{background:#fff} .content{height:50vh}`),
+    findThemeCssProblems(`.pdf-page{background:#fff} .content{height:50cqh}`),
     [],
   );
   assertEquals(
@@ -194,4 +194,45 @@ Deno.test("the seed template is clean by its own rules", () => {
   return import("./themes.ts").then(({ THEME_TEMPLATE }) => {
     assertEquals(findThemeCssProblems(THEME_TEMPLATE), []);
   });
+});
+
+Deno.test("a viewport unit is flagged, because the stage is not the viewport", () => {
+  // A layout is laid out at the reference display's size and scaled to fit, so
+  // a vh is a different number on every screen and the displays stop agreeing
+  // on where a line is. Nothing errors, which is why it is worth warning.
+  assertEquals(
+    findThemeCssProblems(`.viewer-clocks { height: 20vh }`).length,
+    1,
+  );
+  assertEquals(findThemeCssProblems(`.content { font-size: 4vi }`).length, 1);
+  assertEquals(findThemeCssProblems(`.mid { width: 50dvw }`).length, 1);
+});
+
+Deno.test("container units and ordinary lengths are not flagged", () => {
+  assertEquals(findThemeCssProblems(`.viewer-clocks { height: 20cqh }`), []);
+  assertEquals(findThemeCssProblems(`.content { font-size: 4cqi }`), []);
+  assertEquals(findThemeCssProblems(`.mid { width: 50% }`), []);
+  assertEquals(findThemeCssProblems(`.mid { padding: 2rem 1em }`), []);
+  // Not a unit boundary: a custom property or a keyword that merely contains
+  // those letters must not match.
+  assertEquals(findThemeCssProblems(`.x { color: var(--service-vibe) }`), []);
+  assertEquals(findThemeCssProblems(`.x { overflow: visible }`), []);
+});
+
+Deno.test("a comment is not applied CSS, so nothing in one is a problem", () => {
+  // How the viewport-unit check was found to be over-eager: the seed template
+  // documents --viewer-gutter's default of max(1rem, 2.5vi) in its own header.
+  assertEquals(findThemeCssProblems(`/* 8vi was the old default */`), []);
+  assertEquals(findThemeCssProblems(`/* @import "x"; */`), []);
+  assertEquals(
+    findThemeCssProblems(`/* .pdf-page { height: 10px } */`),
+    [],
+  );
+  // An unterminated comment swallows the rest rather than throwing.
+  assertEquals(findThemeCssProblems(`/* unfinished 100vh`), []);
+  // But a real rule after a comment is still seen.
+  assertEquals(
+    findThemeCssProblems(`/* fine */ .content { height: 100vh }`).length,
+    1,
+  );
 });

@@ -118,14 +118,25 @@ export function parseThemes(raw: string | null): Record<string, Theme> {
 const HEIGHT_PROPS =
   /(?:^|[;{\s])(height|min-height|max-height|padding|padding-block|padding-block-start|padding-block-end|padding-top|padding-bottom|margin-block|margin-block-start|margin-block-end|margin-top|margin-bottom|border|border-width|border-block|border-top|border-bottom|box-sizing|aspect-ratio)\s*:/;
 
+/** Strip `/* … *\/` comments, including an unterminated one. */
+function withoutComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " ");
+}
+
 /**
- * Warn about the two ways a theme breaks something no error would surface.
+ * Warn about the three ways a theme breaks something no error would surface.
  * A pure text scan, not a parse — it has to run in the same DOM-free module
  * the tests can reach, and it only needs to be good enough to catch the
  * shapes an author actually writes.
  */
-export function findThemeCssProblems(css: string): string[] {
+export function findThemeCssProblems(source: string): string[] {
   const problems: string[] = [];
+  // Comments are not applied CSS, so nothing inside one is a problem: neither a
+  // rule an author has commented out for later, nor prose that merely mentions
+  // a unit. The seed template's own header documents --viewer-gutter's default
+  // of `max(1rem, 2.5cqi)`, which is how this was found — a brand-new theme
+  // opened with a warning about a viewport unit it did not contain.
+  const css = withoutComments(source);
 
   if (/(?:^|[;}\s])@import\b/.test(css)) {
     problems.push(
@@ -150,6 +161,22 @@ export function findThemeCssProblems(css: string): string[] {
       );
       break;
     }
+  }
+
+  // Viewport units resolve against the real screen, but a layout is laid out in
+  // the stage — the reference display's box, scaled to fit. So a `vh` here is a
+  // different number on every display, which is precisely what the stage
+  // exists to prevent, and nothing errors: the screens simply stop agreeing on
+  // where a line is. Matched on a unit boundary so `--service-vibe` and
+  // `overflow: visible` are not mistaken for one.
+  if (/\b\d*\.?\d+(?:vh|vw|vi|vb|vmin|vmax|dvh|dvw|svh|lvh)\b/.test(css)) {
+    problems.push(
+      "This theme sizes something in viewport units. A layout is laid out in " +
+        "the stage — the reference display's box, scaled to fit each screen — " +
+        "so a viewport unit is a different size on every display and they " +
+        "drift apart on the same scroll position. Use container units instead: " +
+        "cqi, cqw and cqh measure the stage.",
+    );
   }
 
   return problems;
@@ -328,7 +355,7 @@ export const THEME_TEMPLATE = `/* A viewer theme is plain CSS, and while it is
    One more, which is a length rather than a colour:
 
      --viewer-gutter          the script's gap from the screen
-                              edges                  (max(1rem, 2.5vi))
+                              edges                 (max(1rem, 2.5cqi))
      --viewer-block-gap       space above and below every
                               paragraph and heading                 (0)
 
@@ -336,6 +363,14 @@ export const THEME_TEMPLATE = `/* A viewer theme is plain CSS, and while it is
    which sits underneath every theme, so setting those alone is enough to
    recolour a screen. The rest are read by the rules below — they are yours, so a theme
    that rewrites a rule takes over that colour with it.
+
+   Size things in **container units** — cqi, cqw, cqh — and not in vi, vw or
+   vh. Every display lays this layout out at the *reference* display's
+   dimensions and scales the result to fit its own screen, which is what keeps
+   them all on the same line; a viewport unit resolves against the real screen
+   instead, so the clock strip would be a different height on every one of them
+   and they would stop agreeing. The stage is a size container, so cqi is the
+   width of the box this layout actually occupies. Percentages and em are fine.
 
    Three things are not yours to set:
      - #message's font-size, which the viewer recomputes to fit its box
@@ -350,7 +385,7 @@ export const THEME_TEMPLATE = `/* A viewer theme is plain CSS, and while it is
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 8vi;
+  font-size: 8cqi;
   position: sticky;
   top: 0;
   z-index: 10;
