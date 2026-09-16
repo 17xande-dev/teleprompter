@@ -505,6 +505,18 @@ tp-clock-control tp-clock {
   font-size: var(--editor-scale, 2rem);
 }
 
+/* The same block spacing the displays use, for the same reason and kept at the
+   same value: the editor is where the operator judges where a line falls, and
+   at these font sizes the browser's default 1em margin is a blank line between
+   every paragraph. Left to differ, the script would break in one place on
+   screen and another in front of the talent. The value is repeated rather than
+   shared because the two pages are separate documents with separate
+   stylesheets — viewerBase.css's --viewer-block-gap is the other half, and a
+   change here is a change there. */
+#editor :is(p, h1, h2, h3, h4, h5, h6, blockquote, ul, ol, hr, pre) {
+  margin-block: 0;
+}
+
 /* A little air on the left, so the script does not start hard against the
    pane's edge. On the content rather than #editor, which the toolbar is also
    inside — indenting that would push the bar off the pane's own alignment.

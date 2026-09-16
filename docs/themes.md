@@ -29,7 +29,7 @@ zero, which is how the built-in layouts turn it red.
 
 ## The palette
 
-Eight custom properties, declared on `:root` in `viewerBase.css`. The first two
+Nine custom properties, declared on `:root` in `viewerBase.css`. The first two
 are applied _there_, on the layer underneath every theme — so a theme that
 overrides only those two recolours the screen without restating a layout, which
 is the only reason a token is worth having:
@@ -44,6 +44,7 @@ is the only reason a token is worth having:
 | `--timer-negative-color` | the countdown past zero    |
 | `--message-color`        | the message overlay        |
 | `--viewer-gutter`        | the script's side margin   |
+| `--viewer-block-gap`     | space between paragraphs   |
 
 The five accents are read by the built-in layouts and by the template a new
 theme starts from, so they follow a theme that keeps those rules and are taken
@@ -57,6 +58,17 @@ a phone in portrait still gets a usable margin while a large screen gets a
 proportional one. PDF mode sets it aside: the page column measures the width it
 is given, and a gutter there would render every page wider than the box it has
 to fit in.
+
+`--viewer-block-gap` is the other length, and it defaults to `0` rather than to
+the browser's `1em`. At prompter font sizes 1em is a whole blank line: measured
+on a real service script, 449 paragraphs at 48px spent about 21,000px of a
+59,600px document on empty space, so a third of the operator's scrolling bought
+no words. Headings keep their own larger font size, which is what separates them
+now that the margin does not. Set it to something like `0.25em` to get air back
+between every block at once — it is one dial on purpose, so a pasted document
+whose mix of paragraphs and headings you cannot predict still comes out
+consistent. The control page applies the same spacing to its editor, so what the
+operator types breaks where the audience reads it breaking.
 
 A display is white-on-black by default, and that lives in the base layer rather
 than in a layout: a script is read off a screen at arm's length, often in a dark

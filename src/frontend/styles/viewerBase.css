@@ -25,6 +25,18 @@
      the vi term keeps the gutter proportional on a big screen, and the rem
      floor stops a phone in portrait from getting a gutter of a few pixels. */
   --viewer-gutter: max(1rem, 2.5vi);
+  /* The gap above and below every block in the script — paragraphs, headings,
+     rules. Zero, which is not the browser's answer: its default is 1em, and at
+     prompter sizes 1em is a whole blank line. Measured on a real service
+     script, 449 paragraphs at 48px spent about 21,000px of a 59,600px document
+     on nothing, so a third of the operator's scrolling bought no words.
+
+     One token for every block rather than one per element, so it stays a
+     single dial: a theme that wants air back sets this and gets it everywhere
+     at once, and nothing has to guess which elements a pasted document
+     happens to contain. Headings keep their own larger font size, which is
+     what separates them now that the margin does not. */
+  --viewer-block-gap: 0;
 }
 
 /* A display is dark unless a theme says otherwise. The script is read off a
@@ -106,6 +118,15 @@ html.can-drive body::-webkit-scrollbar {
    operator's message already carries, for the same reason. */
 #main {
   overflow-wrap: anywhere;
+}
+
+/* Spelled out rather than left to a bare `* { margin: 0 }`: these are the
+   blocks a script is actually made of, and a blanket reset would also flatten
+   whatever a future theme or extension puts in #main. Deliberately *not*
+   applied to .pdf-page — every dimension of a page box, the gap below it
+   included, is set in pixels by pdfview.ts (see below). */
+#main :is(p, h1, h2, h3, h4, h5, h6, blockquote, ul, ol, hr, pre) {
+  margin-block: var(--viewer-block-gap);
 }
 
 #main.pdf {

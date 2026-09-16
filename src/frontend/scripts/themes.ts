@@ -329,6 +329,8 @@ export const THEME_TEMPLATE = `/* A viewer theme is plain CSS, and while it is
 
      --viewer-gutter          the script's gap from the screen
                               edges                  (max(1rem, 2.5vi))
+     --viewer-block-gap       space above and below every
+                              paragraph and heading                 (0)
 
    The first two, and the gutter, are applied by the viewer's base stylesheet,
    which sits underneath every theme, so setting those alone is enough to
