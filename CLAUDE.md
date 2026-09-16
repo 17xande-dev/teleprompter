@@ -461,6 +461,34 @@ WebSocket relay, `ice.go` STUN/TURN config.
     `#223131`, just below it, so with the tests the other way round a second
     pass dropped what the first had kept. Found by the 4096-colour sweep in
     `contrast_test.ts`, not by reasoning.
+- **The tidy button serializes, cleans and re-parses, rather than editing the
+  document model.** Its rules are about lines and blank space, which are DOM
+  shapes; expressed as positions in the model each fix would have to be mapped
+  past every earlier fix in the same transaction, and one off-by-one there eats
+  a character of somebody's script. The round trip costs a whole-document change
+  and the cursor's place, which a deliberate one-off action can afford. Three
+  things in `tidyMenu.ts` are load-bearing: `toDOM` is handed an inert
+  `createHTMLDocument` so an `<img src>` does not fetch on the way through;
+  `collapseWhiteSpace: false`, because this is Wordgard's own serialization
+  coming back and the default would apply HTML whitespace collapsing on top of
+  the tidy; and returning `false` when nothing changed, so pressing the button
+  on a clean script adds no undo step. It is a round trip through the _same_
+  schema, so nothing is lost — verified on a 465-block script with headings,
+  links, colours, rules and size marks all intact.
+- **A line's edge is not its neighbour in the DOM.** `trimLines` decides "is
+  this text at the start of a line" by scanning past _blank_ text nodes rather
+  than looking at the adjacent one, and that is not defensive coding: a split
+  mark leaves empty text nodes behind and Docs emits `<span></span>` freely, so
+  `<p><span></span>   Indented</p>` has a blank text node in front of the
+  indent. Testing the immediate neighbour, that indent is not at a line start
+  and survives — it left 7 of 106 indented lines untidied on a real script,
+  which is how it was found. A line is also not a subtree: `<em>one</em><br>two`
+  has its break between two parents, so the walk flattens the block first.
+- **`textContent` is not a way to count a document's words.** It inserts nothing
+  at a block or `<br>` boundary, so trimming the trailing space before a break
+  _joins_ the two lines' words into one token. Measuring a tidy that way showed
+  118 words "lost" on a 2217-word script when nothing had been lost at all.
+  Count per line, joining lines with a separator.
 - **`Wordgard.styles` keys are _element_ selectors, not classes.** That is the
   convention its own colour picker follows — `wg-color-picker-color` is a real
   element. A key that reads like a class name never matches and fails silently:

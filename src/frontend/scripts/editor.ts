@@ -19,6 +19,7 @@ import type { Plot } from "wordgard/doc";
 import { GardState } from "wordgard/state";
 import { brightenPastedHtml } from "./pasteColors.ts";
 import { sectionSizeMenu } from "./sectionSizeMenu.ts";
+import { tidyMenu } from "./tidyMenu.ts";
 import { type TextSizeAccess, textSizeMenu } from "./textSizeMenu.ts";
 
 // The editor pane's height, matching #pdfPane so the two modes occupy the same
@@ -169,6 +170,7 @@ function buildConfig(
     // Registered conditionally, opening a saved script with sized sections
     // would silently replace it with "New Document".
     sectionSizeMenu(formatting),
+    tidyMenu(formatting),
     // Buttons only; the keybindings for these levels come from fullSchema().
     ...deepHeadingButtons,
     history(),

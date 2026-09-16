@@ -90,6 +90,28 @@ rewrites the colours on the way in:
   sounds, because brightened text inside a yellow box is white on yellow.
 - A white page background, and grey table shading, are dropped.
 
+### Tidying a pasted script
+
+The broom in the toolbar cleans up the mess a paste brings, in one step you can
+undo:
+
+- **Indentation goes.** A script out of Google Docs is indented with runs of
+  non-breaking spaces, not with any indent setting, so this is simply leading
+  whitespace and it is removed.
+- **Trailing spaces go**, on every line rather than only at the end of a
+  paragraph.
+- **Extra blank lines collapse to one.** A run of three or four line breaks — or
+  of blank paragraphs — becomes a single blank line. A blank line you meant is
+  left alone.
+- **Non-breaking spaces become ordinary spaces.** Left in the middle of a
+  sentence one stops the line wrapping there, which pushes a word to the next
+  line on a display for no reason a reader can see.
+
+It never touches your formatting: sizes, colours, headings, links and rules all
+survive, and code blocks keep their whitespace because indentation is the
+content there. If there is nothing to fix, pressing it does nothing at all — not
+even an undo step.
+
 Two things worth knowing. This happens at paste time, so it changes the document
 rather than only what the displays show — **undo** puts the original colours
 back, and `Ctrl+Shift+V` pastes as plain text, which carries no colours at all.
