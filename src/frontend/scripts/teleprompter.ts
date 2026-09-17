@@ -2035,6 +2035,27 @@ export class Teleprompter {
   }
 
   /**
+   * How far below a display's scroll top its first *readable* line sits.
+   *
+   * The clock strip is sticky and has a background, so it covers the script
+   * rather than scrolling with it: the line the talent reads at the top of the
+   * screen is the one at `scrollTop + this`. The operator's own pane has no
+   * such strip, so without this both Sync buttons were out by the strip's
+   * height in the same direction — measured at 118px, about two lines, which
+   * is exactly the "off by about the clock height" the operator reported. Read
+   * from the preview rather than assumed, because a user theme may make the
+   * strip static or leave it out; the viewer's own #foldOffset does the same.
+   */
+  #previewFold(): number {
+    const doc = this.ifrmPreview.contentDocument;
+    const header = <HTMLElement | null> doc?.querySelector("#header");
+    if (!header || !doc?.defaultView) return 0;
+    const position = doc.defaultView.getComputedStyle(header).position;
+    if (position !== "sticky" && position !== "fixed") return 0;
+    return header.offsetHeight;
+  }
+
+  /**
    * Jump this page to where the viewers are.
    *
    * **By block, not by ratio**, and the difference is not subtle. A ratio is a
@@ -2062,7 +2083,7 @@ export class Teleprompter {
     const pos = blockPosOf(
       preview.offsets,
       preview.heights,
-      previewScroller.scrollTop,
+      previewScroller.scrollTop + this.#previewFold(),
     );
     this.#ownScroller().scrollTop = scrollTopOfBlock(
       own.offsets,
@@ -2107,7 +2128,8 @@ export class Teleprompter {
       return ratioOf(own);
     }
     const pos = blockPosOf(mine.offsets, mine.heights, own.scrollTop);
-    const top = scrollTopOfBlock(preview.offsets, preview.heights, pos);
+    const top = scrollTopOfBlock(preview.offsets, preview.heights, pos) -
+      this.#previewFold();
     const max = Math.max(
       0,
       previewScroller.scrollHeight - previewScroller.clientHeight,
