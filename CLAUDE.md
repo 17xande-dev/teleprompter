@@ -1182,6 +1182,89 @@ position and the pacer carries on from there at the set speed.
   anywhere. Also note the guard is permanently true when the document is shorter
   than the viewport, so such a display never auto-scrolls at all.
 
+### The Sync buttons, and the coordinate space their offsets live in
+
+`goToViewerPosition`/`sendMyPosition` translate **by block index, not by
+ratio**: the editor's document is not a scaled copy of a display's (measured,
+32,252px at 33.6px text against 51,460px at 48px), because a bigger font wraps
+long paragraphs more than short ones, so the same fraction is a different place
+— about 49 lines out on a real script. Both documents come from the same
+published HTML, so the index is a coordinate they share exactly, and the preview
+supplies the displays' half of the geometry.
+
+**`#blockMetrics`'s offsets have to be in the same space as the `scrollTop` they
+are paired with**, and `offsetTop` is not: it is measured from the offset
+parent, which in a display is `#stage` with the sticky `#header` above `#main`.
+It used to subtract the first block's own `offsetTop`, which moves that error
+rather than removing it — that zeroes the first block instead of locating it —
+and the comment defending it claimed to be taking the gutter out, which no
+_horizontal_ padding can do to a _vertical_ offset. Measured through rects
+against the scroller now, and `#previewBlockMetrics` measures from `#stage`
+rather than `#main` for the same reason. See the viewer's `#offsetInStage` for
+why the opposite spelling is right there.
+
+### Resizing from the driving display
+
+A pinch or a Ctrl+wheel on the display that holds drive resizes the script for
+the whole room: the viewer applies it locally, sends a `text-scale`, and the
+controller moves the Text Scale slider and broadcasts the result like any other
+size change.
+
+- **There is no zoom event**, and the three things the platform does offer are
+  not interchangeable. `wheel` with `ctrlKey` is both a trackpad pinch and a
+  mouse's Ctrl+scroll, so one handler covers every non-touch device. A
+  touchscreen pinch produces no `wheel` at all — WebKit has `gesturestart`/
+  `gesturechange`, whose `scale` is already the ratio from the start of the
+  gesture, and everywhere else it is two Pointer Events. Feature-detected, so
+  the two paths can never both fire. The third, `visualViewport` resizing
+  because the _browser_ zoomed, is the one to **withhold**: browser zoom moves
+  the visual viewport while `#reportDims` reports the layout one, so a
+  pinch-zoomed display silently stops matching the stage box every other display
+  lays out in — which is the invariant that makes one ratio exact everywhere.
+  `touch-action: pan-y` on `html.can-drive #stage` and `preventDefault` on a
+  non-passive `wheel` are what withhold it.
+- **The gesture is a ratio, never a pixel delta.** `#stage` carries
+  `transform: scale()`, so pointer coordinates are in screen pixels while the
+  script is laid out in the reference display's — a "pixels apart to tenths"
+  mapping would make the same physical pinch mean different things on a
+  letterboxed display and on the reference one.
+- **The base scale is frozen at gesture start** (`#gestureBase`). The controller
+  echoes each new size back as `settings`, and a cumulative ratio applied to a
+  base that has already moved multiplies with its own echo.
+- **The guard is at both ends, and the viewer's is explicit.** The preview
+  iframe is excluded by `!this.isPreviewer`, not by the fact that nothing posts
+  it a `set-driver` and that `#ifrmPreview` takes no pointer events — those are
+  two coincidences elsewhere, and the preview must never become an exception to
+  the drive rule. The controller checks `#driverID()` as well, and clamps
+  _before_ anything else: the number arrives from another machine and ends as a
+  `font-size` on every display, where a non-finite one computes 0.
+- **No scroll message is sent for a resize, and that is what makes it safe.**
+  Every display re-anchors on the block it was showing, independently, because
+  they all lay out in the same reference box and wrap identically. The
+  alternative — the driver reporting a ratio — has a race that no amount of
+  timing fixes: `settings` travels the reliable ordered channel and a scroll
+  sample the unreliable unordered one, so a follower can apply the ratio against
+  pre-scale geometry, then re-anchor from the wrong block, **permanently**.
+- **The anchor is the block's element, not an index into an array.** A rebuilt
+  offsets array is a walk of every block on a script that runs to hundreds;
+  `offsetTop` after the relayout is one read. `#offsetInStage` walks
+  `offsetParent` rather than using rects, the **opposite** of `#blockMetrics` on
+  the control page, and both are right for their own case: the stage is
+  transform-scaled so rects are in the wrong space here, while over there
+  nothing is scaled and the editor's scroller is not positioned, so it is not in
+  the offsetParent chain at all.
+- **`SCALE_HOLD_MS` drops the driver's in-flight samples**, like `SCRUB_HOLD_MS`
+  and for a related reason: for about a round trip after a resize the driver is
+  reporting positions in a document only it has relaid out. The preview's own
+  re-anchor is accepted during that window to keep `#lastRatio` fresh — it feeds
+  `catchUpMessages` and `goToViewerPosition` — but deliberately **not** fanned
+  out, for the ordering reason above.
+- In PDF mode the gesture stops where the zoom stops. `#pdfWidth` clamps to
+  0.25–4 against a wire range of 0.1–10, so past that the shared number and the
+  operator's slider would go on moving with nothing changing on any screen. The
+  block re-anchor is skipped there too: `PdfView.setWidth` does its own ratio
+  re-anchor and a second one only fights it.
+
 ### Viewer themes
 
 Operators can author extra viewer layouts as plain CSS. A theme is `{name, css}`

@@ -166,6 +166,23 @@ pick it is the first to connect. Only that display can also be scrolled by hand,
 and only it integrates the speed — two displays each running their own clock
 drift apart within a minute with nothing to pull them back.
 
+### Resizing from the display itself
+
+The driving display can resize the script for the whole room: **pinch** it on a
+touchscreen, or hold **Ctrl** and scroll on anything with a wheel or a trackpad.
+The size travels back to your Text Scale slider and out to every other display,
+so the room stays in step and the slider goes on reading what the room is set
+to.
+
+Only the driving display can do this, for the same reason only it can be
+scrolled by hand — two displays resizing at once would fight. On any other
+display the gesture does nothing at all.
+
+Every display, the one being pinched included, keeps the line it was showing at
+the top of the screen. A bigger font wraps long paragraphs more than short ones,
+so the script gets taller by different amounts in different places; each display
+works out where its own top line went rather than being told a position.
+
 ### Closing the gap
 
 Your pane is deliberately **not** scroll-synced. You read ahead of, or behind,
