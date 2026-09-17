@@ -1890,10 +1890,30 @@ export class Teleprompter {
   /**
    * A scroller's blocks, as offsets and heights within it.
    *
-   * The DOM half of `blockPosOf`/`scrollTopOfBlock`. `offsetTop` is relative to
-   * the offset parent rather than the scroller, so the first block's own offset
-   * is subtracted — that also takes the gutter's padding out, which is what
-   * makes the numbers comparable between two documents whose gutters differ.
+   * The DOM half of `blockPosOf`/`scrollTopOfBlock`, and **the offsets have to
+   * be in the same coordinate space as the `scrollTop` every caller pairs them
+   * with** — they feed `blockPosOf(offsets, heights, scroller.scrollTop)` and
+   * come back out as a `scrollTop` to assign. `offsetTop` is not that space: it
+   * is measured from the offset parent, which in a display is `#stage` with the
+   * sticky `#header` above `#main`, so every offset was short by the header's
+   * height. This used to subtract the first block's own `offsetTop` to
+   * compensate, which is the same error moved rather than removed — it zeroes
+   * the first block instead of locating it, and the comment justifying it (that
+   * it took the gutter out) cannot have been right: the gutter is horizontal
+   * and no horizontal padding moves a vertical offset.
+   *
+   * Measured through the rects instead, which is correct whatever the offset
+   * parent turns out to be and survives the blocks being wrapped one level
+   * deeper by a future editor version. Walking the `offsetParent` chain would
+   * be the transform-proof spelling and is *worse* here: a scroller that is not
+   * itself positioned — the editor's `scrollDOM` — is not in that chain at all,
+   * so the walk would sail past it and reintroduce this very bug.
+   *
+   * Rects are in transformed space, which is safe because neither scroller this
+   * is given is scaled: the editor's is not transformed, and the preview's
+   * `#stage` is at scale exactly 1 by construction (`#stageDims` sizes the
+   * preview and the stage together — see StageMessage). A caller measuring a
+   * *scaled* stage would read every offset short by that factor.
    */
   #blockMetrics(scroller: Element): { offsets: number[]; heights: number[] } {
     const blocks = [...scroller.querySelectorAll(":scope > * > *")].length
@@ -1903,9 +1923,9 @@ export class Teleprompter {
       : scroller;
     const children = [...blocks.children] as HTMLElement[];
     if (!children.length) return { offsets: [], heights: [] };
-    const base = children[0].offsetTop;
+    const origin = scroller.getBoundingClientRect().top - scroller.scrollTop;
     return {
-      offsets: children.map((c) => c.offsetTop - base),
+      offsets: children.map((c) => c.getBoundingClientRect().top - origin),
       heights: children.map((c) => c.offsetHeight),
     };
   }
@@ -1929,10 +1949,13 @@ export class Teleprompter {
    * both Sync buttons exact with no protocol change at all.
    */
   #previewBlockMetrics(): { offsets: number[]; heights: number[] } {
-    const doc = this.ifrmPreview.contentDocument;
-    const main = doc?.querySelector("#main");
-    if (!main) return { offsets: [], heights: [] };
-    return this.#blockMetrics(main);
+    // Measured against #stage, not #main: the offsets are paired with the
+    // stage's scrollTop, and since the fix above reports true distances rather
+    // than distances from the first block, they have to start from the element
+    // that scroll position belongs to. #deepestBlockParent finds #main inside.
+    const stage = this.#previewScroller();
+    if (!stage) return { offsets: [], heights: [] };
+    return this.#blockMetrics(stage);
   }
 
   #previewScroller(): Element | null {
