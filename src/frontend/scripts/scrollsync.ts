@@ -284,6 +284,45 @@ export function scrollTopOfBlock(
   return offsets[index] + (heights[index] ?? 0) * fraction;
 }
 
+/**
+ * How far into one block a scroll position has cut, and the way back.
+ *
+ * The same arithmetic as `blockPosOf`/`scrollTopOfBlock` for the case where the
+ * block is already known — a display re-anchoring itself across a text-size
+ * change holds the block's *element*, so its new position after the relayout is
+ * one `offsetTop` read rather than a rebuilt array of every block in a script
+ * that can run to hundreds. Here rather than in `viewer.ts` so the maths is
+ * testable; the measuring stays the caller's.
+ *
+ * Clamped to the block, like `blockPosOf`: a fold above the first block (the
+ * sticky header's space, at scrollTop 0) or a zero-height block would otherwise
+ * carry a fraction outside 0..1 into the restore and land somewhere else
+ * entirely.
+ */
+export function fractionIntoBlock(
+  scrollTop: number,
+  blockTop: number,
+  height: number,
+): number {
+  if (
+    !(height > 0) || !Number.isFinite(scrollTop) || !Number.isFinite(blockTop)
+  ) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, (scrollTop - blockTop) / height));
+}
+
+/** Where to scroll to put that same point of that block back at the fold. */
+export function scrollTopIntoBlock(
+  blockTop: number,
+  height: number,
+  fraction: number,
+): number {
+  if (!Number.isFinite(blockTop)) return 0;
+  const f = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0;
+  return blockTop + (height > 0 ? height : 0) * f;
+}
+
 export function makeScrollSync({ el, send }: ScrollSyncOptions): ScrollSync {
   // Scroll events for the document's scrolling element are dispatched at
   // the window, not at the element itself.

@@ -2,10 +2,15 @@ import { registerClockComponent, TPClock } from "./clock.ts";
 import { connectViewer, type ViewerLink } from "./webrtc.ts";
 import {
   carryRemainder,
+  fractionIntoBlock,
   makeScrollSync,
   pendingScroll,
+  ratioOf,
   type ScrollSync,
+  scrollTopIntoBlock,
+  wheelPixels,
 } from "./scrollsync.ts";
+import { scaleFromPinch, scaleFromWheel } from "./textscale.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
 import { LOCAL_CHANNEL } from "./protocol.ts";
 import type { ControlMessage, PreviewScrollMessage } from "./protocol.ts";
@@ -73,6 +78,15 @@ export class Viewer {
   #stageWidth = 0;
   #stageHeight = 0;
   #themeSheet = new CSSStyleSheet();
+  // The size the pinch started from, frozen for the length of the gesture. The
+  // controller echoes each new size back as it arrives, so compounding a
+  // cumulative ratio onto a base that has already moved runs away
+  // exponentially — the gesture would multiply with its own echo.
+  #gestureBase = 1;
+  // How far apart the two fingers were when the pinch began. Zero means no
+  // pinch is in flight.
+  #gestureSpread = 0;
+  #scaleFrame = 0;
   // Last position received from the controller. Content arrives *after* the
   // catch-up position does (and a PDF renders asynchronously on top of that),
   // so at the moment it lands there is often nothing to scroll yet — the
@@ -168,6 +182,7 @@ export class Viewer {
     });
 
     self.addEventListener("resize", this.#listenResize.bind(this));
+    this.#listenZoomGestures();
     this.#detectLocal();
     // The manual way in and out, for a display reached by link or QR code —
     // and the fallback for a local screen whose browser ignored the
@@ -650,10 +665,210 @@ export class Viewer {
   }
 
   setTextScale(scale: number) {
+    // A bigger font wraps the script differently, so the line being read moves
+    // — and it moves by a different amount on a long paragraph than on a short
+    // one, which is why the position cannot simply be kept as a fraction. Every
+    // display re-anchors on the block it was showing, independently and with no
+    // message from anyone: they all lay out in the same reference box (see
+    // StageMessage), so they land on the same block without a scroll message
+    // having to race the settings message that caused this. In a PDF there is
+    // nothing to re-wrap and PdfView.setWidth does its own ratio re-anchor, so
+    // a second one here would only fight it.
+    const anchor = this.#pdf ? null : this.#topBlockAnchor();
     this.#textScale = scale;
     this.root.style.setProperty("--textScale", `${scale}rem`);
     // A PDF has no font size to scale, so the same control becomes a zoom.
     this.#pdf?.setWidth(this.#pdfWidth());
+    this.#restoreBlockAnchor(anchor);
+  }
+
+  /**
+   * Pinch, or Ctrl+wheel, to resize the script from the display itself.
+   *
+   * The Text Scale slider is on the control page, so the only person who can
+   * resize the script is the operator at the desk — while the person who can
+   * see it is wrong is standing at the screen. This gives that person the
+   * control, on the one display that is allowed to move the room: the driver.
+   *
+   * **Only the driver**, checked here *and* on the controller. Same rule as
+   * hand-scrolling and the same reason — two displays resizing at once would
+   * fight with nothing to settle it — and the preview iframe is excluded by
+   * name rather than by circumstance. It is excluded today only because the
+   * controller never posts it a `set-driver` and the iframe takes no pointer
+   * events, and CLAUDE.md is flat that the preview must never become an
+   * exception to the drive rule; leaving that to two coincidences elsewhere is
+   * a trap for whoever next touches #applyScrollRoles.
+   *
+   * There is no "zoom event" to listen for. What the platform offers is three
+   * things, two of which are used here:
+   *
+   * - `wheel` with `ctrlKey`, which is both a trackpad pinch and Ctrl+scroll on
+   *   an ordinary mouse. One handler, every non-touch device, and it is the
+   *   gesture the browser itself would have zoomed with.
+   * - A two-finger pinch on a touchscreen, which produces no `wheel` event at
+   *   all. WebKit has its own `gesturechange`, whose `scale` is already the
+   *   ratio from the start of the gesture; everywhere else it is two pointers.
+   *   Feature-detected, so the two can never both fire.
+   * - `visualViewport` resize, i.e. the *browser* zooming the page. That one is
+   *   to be prevented rather than consumed: browser zoom moves the visual
+   *   viewport while #reportDims reports the layout viewport, so a
+   *   pinch-zoomed display would quietly stop matching the box every other
+   *   display lays out in. `touch-action: pan-y` on the stage and
+   *   `preventDefault` on the wheel are what withhold it.
+   */
+  #listenZoomGestures() {
+    const stage = this.#stage;
+    stage.addEventListener("wheel", (e: WheelEvent) => {
+      if (!e.ctrlKey || !this.#canZoom()) return;
+      // Non-passive, and this is what stops the browser zooming the page
+      // instead — see above for why that would desync this display.
+      e.preventDefault();
+      const pixels = wheelPixels(e.deltaY, e.deltaMode, stage.clientHeight);
+      this.#requestTextScale(scaleFromWheel(this.#textScale, pixels));
+    }, { passive: false });
+
+    // Safari's own pinch events. `e.scale` is cumulative from gesturestart,
+    // which is exactly the ratio scaleFromPinch wants.
+    if ("ongesturechange" in globalThis) {
+      const start = (e: Event) => {
+        if (!this.#canZoom()) return;
+        e.preventDefault();
+        this.#gestureBase = this.#textScale;
+      };
+      stage.addEventListener("gesturestart", start);
+      stage.addEventListener("gesturechange", (e: Event) => {
+        if (!this.#canZoom()) return;
+        e.preventDefault();
+        const scale = (<{ scale?: number }> <unknown> e).scale ?? 1;
+        this.#requestTextScale(scaleFromPinch(this.#gestureBase, scale));
+      });
+      return;
+    }
+
+    // Two pointers, the distance between them, and the ratio to where they
+    // started. Pointer Events rather than Touch Events: it is what the
+    // control page's scrub drag already uses, and `pointercancel` is the
+    // signal we want — with `touch-action: pan-y` the browser claims a
+    // one-finger vertical drag once it passes its slop threshold, so a second
+    // finger arriving late degrades into a scroll rather than into half a
+    // pinch that never ends.
+    const points = new Map<number, { x: number; y: number }>();
+    const spread = () => {
+      const [a, b] = [...points.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+    const drop = (e: PointerEvent) => {
+      points.delete(e.pointerId);
+      if (points.size < 2) this.#gestureSpread = 0;
+    };
+    stage.addEventListener("pointerdown", (e: PointerEvent) => {
+      if (e.pointerType === "mouse" || !this.#canZoom()) return;
+      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (points.size === 2) {
+        this.#gestureSpread = spread();
+        this.#gestureBase = this.#textScale;
+      }
+    });
+    stage.addEventListener("pointermove", (e: PointerEvent) => {
+      if (!points.has(e.pointerId)) return;
+      points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (points.size !== 2 || !this.#gestureSpread || !this.#canZoom()) return;
+      this.#requestTextScale(
+        scaleFromPinch(this.#gestureBase, spread() / this.#gestureSpread),
+      );
+    });
+    stage.addEventListener("pointerup", drop);
+    stage.addEventListener("pointercancel", drop);
+  }
+
+  /** Whether this display may resize the room. */
+  #canZoom(): boolean {
+    return !this.isPreviewer && this.canDrive;
+  }
+
+  /**
+   * Apply a gesture's size here, and ask the controller for it everywhere.
+   *
+   * Applied locally first so the gesture tracks the fingers rather than a round
+   * trip, and the controller's answer arrives as an ordinary `settings` — the
+   * same message every other display gets, which is what stops this display
+   * ending up a step out from the rest.
+   *
+   * Coalesced to one request per frame. A pinch fires as fast as the touch
+   * hardware reports, and each request costs every *other* display a full
+   * relayout of the script; the rounding to tenths already drops most of them.
+   */
+  #requestTextScale(scale: number) {
+    if (scale === this.#textScale) return;
+    // In a PDF the "text scale" is a zoom that #pdfWidth clamps to 0.25..4, so
+    // past that the gesture would go on moving the room's shared number — and
+    // the operator's slider with it — while nothing on any screen changed.
+    if (this.#pdf && (scale > 4 || scale < 0.25)) return;
+    this.setTextScale(scale);
+    if (this.#scaleFrame) return;
+    this.#scaleFrame = requestAnimationFrame(() => {
+      this.#scaleFrame = 0;
+      this.#link?.sendControl({ type: "text-scale", scale: this.#textScale });
+    });
+  }
+
+  /**
+   * The block at the top of the visible area, and how far into it we are.
+   *
+   * Held as the *element* rather than as an index into an offsets array: after
+   * a relayout its new position is one `offsetTop` read away, where rebuilding
+   * the array would walk every block on a script that can run to hundreds.
+   *
+   * Measured by walking `offsetParent`, not by `getBoundingClientRect`. On a
+   * display the stage carries `transform: scale()`, and rects are in the
+   * transformed space while `scrollTop` is not — mixing them would scale every
+   * offset by the letterboxing factor. (The control page's own `#blockMetrics`
+   * reaches the opposite conclusion, for the opposite reason: nothing there is
+   * scaled, and the editor's scroller is not positioned, so it is not in the
+   * offsetParent chain at all. Both are the correct answer to their own case.)
+   */
+  #topBlockAnchor(): { el: HTMLElement; fraction: number } | null {
+    const main = document.querySelector("#main");
+    if (!main) return null;
+    const top = this.#stage.scrollTop;
+    for (const child of main.children) {
+      const el = <HTMLElement> child;
+      const elTop = this.#offsetInStage(el);
+      const height = el.offsetHeight;
+      if (elTop + height <= top) continue;
+      return { el, fraction: fractionIntoBlock(top, elTop, height) };
+    }
+    return null;
+  }
+
+  /** Put the anchored block back under the top edge, after the relayout. */
+  #restoreBlockAnchor(anchor: { el: HTMLElement; fraction: number } | null) {
+    // A theme or a fresh document can replace the element out from under an
+    // anchor taken moments earlier; there is nothing to restore to then, and
+    // #restoreScroll's ratio is the fallback it has always been.
+    if (!anchor || !anchor.el.isConnected) return;
+    this.#stage.scrollTop = scrollTopIntoBlock(
+      this.#offsetInStage(anchor.el),
+      anchor.el.offsetHeight,
+      anchor.fraction,
+    );
+    // The ratio moved, and it is what #restoreScroll would otherwise yank this
+    // back to on the next edit — and what this display reports as its position.
+    this.#lastRatio = ratioOf(this.#stage);
+  }
+
+  /** How far an element sits down the stage's scroll, in stage pixels. */
+  #offsetInStage(el: HTMLElement): number {
+    let top = 0;
+    let node: HTMLElement | null = el;
+    // #stage is positioned, so it is an offsetParent and the walk stops there
+    // rather than sailing past it. The loop also covers a block nested one
+    // level deeper than #main, which a theme is free to do.
+    while (node && node !== this.#stage) {
+      top += node.offsetTop;
+      node = <HTMLElement | null> node.offsetParent;
+    }
+    return top;
   }
 
   // The rendered column width. textScale of 1 (the Text Scale slider at 10)

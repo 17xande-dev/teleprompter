@@ -10,6 +10,8 @@ import {
   matchedViewerTextScale,
   pxToTenths,
   REM_PX,
+  scaleFromPinch,
+  scaleFromWheel,
   tenthsToRem,
   viewerFontPx,
 } from "./textscale.ts";
@@ -127,4 +129,40 @@ Deno.test("an empty stored value is zero, not NaN, and clamps to the minimum", (
   // neither reaches the custom property as an invalid length.
   assertEquals(Number(""), 0);
   assertEquals(clampEditorScale(Number("")), EDITOR_SCALE.min);
+});
+
+Deno.test("a pinch scales by ratio and holds the slider's range", () => {
+  // Identity: a gesture that has not moved must not nudge the room's size.
+  assertEquals(scaleFromPinch(3, 1), 3);
+  assertEquals(scaleFromPinch(3, 2), 6);
+  assertEquals(scaleFromPinch(3, 0.5), 1.5);
+  // Rounded to the tenth the operator's readout prints, so the number on the
+  // desk is the number in the room.
+  assertEquals(scaleFromPinch(3, 1.01), 3);
+  assertEquals(scaleFromPinch(3, 1.05), 3.2);
+  // Clamped at both ends: this becomes a font-size on every display.
+  assertEquals(scaleFromPinch(8, 4), 10);
+  assertEquals(scaleFromPinch(0.2, 0.01), 0.1);
+  // A gesture that produced nothing usable — two pointers at one point, a lost
+  // touch — leaves the size alone rather than sending NaN into a font-size.
+  assertEquals(scaleFromPinch(3, 0), 3);
+  assertEquals(scaleFromPinch(3, -1), 3);
+  assertEquals(scaleFromPinch(3, NaN), 3);
+  assertEquals(scaleFromPinch(3, Infinity), 3);
+  // And a base that was never usable still yields a usable size.
+  assert(Number.isFinite(scaleFromPinch(NaN, 1.5)));
+});
+
+Deno.test("Ctrl+wheel moves the size at the control page's own rate", () => {
+  // listenScaleWheel divides by 30 to get tenths; 30px is one tenth, and up
+  // is bigger, as every browser's own Ctrl+wheel zoom behaves.
+  assertEquals(scaleFromWheel(3, -30), 3.1);
+  assertEquals(scaleFromWheel(3, 30), 2.9);
+  // A Chrome notch is ~120px: four tenths.
+  assertEquals(scaleFromWheel(3, -120), 3.4);
+  assertEquals(scaleFromWheel(3, 0), 3);
+  assertEquals(scaleFromWheel(9.9, -3000), 10);
+  assertEquals(scaleFromWheel(0.2, 3000), 0.1);
+  assertEquals(scaleFromWheel(3, NaN), 3);
+  assert(Number.isFinite(scaleFromWheel(NaN, -120)));
 });

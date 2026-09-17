@@ -3,15 +3,17 @@
 // behaviors the echo-suppression logic depends on: a native "scroll" event
 // fires (asynchronously) both for a user scroll and for a programmatic
 // scrollTo(), and requestAnimationFrame runs after that.
-import { assertAlmostEquals, assertEquals } from "@std/assert";
+import { assert, assertAlmostEquals, assertEquals } from "@std/assert";
 import {
   blockPosOf,
   carryRemainder,
+  fractionIntoBlock,
   makeScrollSync,
   pendingScroll,
   ratioOf,
   scrollQuantum,
   type ScrollSync,
+  scrollTopIntoBlock,
   scrollTopOfBlock,
   SCRUB_EASE,
   SCRUB_MAX_STEP,
@@ -580,4 +582,38 @@ Deno.test("an empty document asks for nothing rather than dividing by zero", () 
     index: 0,
     fraction: 0,
   });
+});
+
+Deno.test("a display re-anchors on its own block across a text-size change", () => {
+  // The same block before and after: a bigger font makes it taller and pushes
+  // it further down, and neither number is a scaling of the other because a
+  // long paragraph wraps more than a short one. The fraction is what survives.
+  const before = { top: 1200, height: 120 };
+  const after = { top: 1850, height: 300 };
+  const fraction = fractionIntoBlock(1260, before.top, before.height);
+  assertEquals(fraction, 0.5);
+  assertEquals(
+    scrollTopIntoBlock(after.top, after.height, fraction),
+    2000,
+  );
+  // Which is the claim the feature rests on: the reader is half way through
+  // the same paragraph, not at the same fraction of a document that grew.
+  const naive = 1260 * (after.top / before.top);
+  assert(Math.abs(naive - 2000) > 50);
+});
+
+Deno.test("an anchor is clamped to its own block, both ways", () => {
+  // scrollTop 0 with a sticky header above the first block: the fold is
+  // *above* the block, and an unclamped negative fraction would restore to
+  // somewhere above the document.
+  assertEquals(fractionIntoBlock(0, 96, 120), 0);
+  assertEquals(fractionIntoBlock(9999, 96, 120), 1);
+  // A zero-height block — an empty paragraph — divides by zero.
+  assertEquals(fractionIntoBlock(100, 96, 0), 0);
+  assertEquals(fractionIntoBlock(NaN, 96, 120), 0);
+  assertEquals(scrollTopIntoBlock(500, 100, 1.5), 600);
+  assertEquals(scrollTopIntoBlock(500, 100, -1), 500);
+  assertEquals(scrollTopIntoBlock(500, 100, NaN), 500);
+  assertEquals(scrollTopIntoBlock(500, 0, 0.5), 500);
+  assertEquals(scrollTopIntoBlock(NaN, 100, 0.5), 0);
 });

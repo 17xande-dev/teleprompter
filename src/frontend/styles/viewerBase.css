@@ -126,6 +126,14 @@ body {
 html.can-drive #stage {
   overflow: auto;
   scrollbar-width: none;
+  /* One finger scrolls; two fingers are the app's, not the browser's. A pinch
+     here resizes the script for the whole room (see #listenZoomGestures), and
+     the browser's own pinch-zoom would instead move the *visual* viewport —
+     which #reportDims does not report and the shared stage box does not
+     follow, so this display would quietly stop landing on the same line as the
+     others. pan-y rather than none so hand-scrolling, the other half of what
+     drive means, still works. */
+  touch-action: pan-y;
 }
 
 html.can-drive #stage::-webkit-scrollbar {

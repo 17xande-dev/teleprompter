@@ -122,3 +122,71 @@ export function clampEditorScale(tenths: number): number {
   const stepped = Math.round(tenths / EDITOR_SCALE.step) * EDITOR_SCALE.step;
   return Math.min(EDITOR_SCALE.max, Math.max(EDITOR_SCALE.min, stepped));
 }
+
+/**
+ * The pixels of Ctrl+wheel that move the size by one tenth of a rem.
+ *
+ * The same 30 `listenScaleWheel` divides by on the control page, so a display's
+ * Ctrl+wheel and the operator's wheel over the Text Scale slider move the size
+ * at the same rate — which matters because the two can be happening in the same
+ * room, and a gesture that ran four times faster at one end would read as a
+ * fault rather than as a different control.
+ */
+const WHEEL_PIXELS_PER_TENTH = 30;
+
+/**
+ * Round a scale to the tenth the slider counts in.
+ *
+ * Not because the slider demands it — `wa-slider` clamps but does not quantise
+ * to its `step`, so 3.07 survives being assigned — but because the operator's
+ * readout prints one decimal. Without this a pinch leaves the slider showing
+ * "3.1" for a room set to 3.07, and the number on the desk stops being the
+ * number in the room.
+ */
+function toTenth(scale: number): number {
+  return Math.round(scale * 10) / 10;
+}
+
+/**
+ * The size a pinch asks for, from the size it started at.
+ *
+ * **A ratio, never a pixel delta.** A display's `#stage` is `transform:
+ * scale()`d to fit its screen, so the distance between two fingers is in screen
+ * pixels while the script is laid out in the reference display's — a
+ * "pixels apart to tenths" mapping would make the same physical pinch mean
+ * different things on a letterboxed display and on the reference one. A ratio
+ * carries no units and is the same gesture everywhere.
+ *
+ * `startScale` is the size the gesture *began* at, not the current one. The
+ * controller echoes the new size back as it arrives, and compounding the
+ * gesture onto a value it has already moved runs away exponentially.
+ *
+ * A ratio of zero or less, or a non-finite one, means the gesture produced
+ * nothing usable — two pointers at the same point, or a lost touch — and leaves
+ * the size where it was rather than propagating into a font-size.
+ */
+export function scaleFromPinch(startScale: number, ratio: number): number {
+  if (!Number.isFinite(startScale)) return clampTextScale(1);
+  if (!Number.isFinite(ratio) || ratio <= 0) return clampTextScale(startScale);
+  return clampTextScale(toTenth(startScale * ratio));
+}
+
+/**
+ * The size a Ctrl+wheel notch asks for.
+ *
+ * `pixels` is already normalised for `deltaMode` by `wheelPixels` — Firefox on
+ * Windows reports a notch as three *lines* where Chrome reports it as ~120
+ * pixels, and read raw that notch would resize by a hundredth of what it should.
+ *
+ * Scrolling *up* (a negative delta) makes the text bigger, which is what every
+ * browser's own Ctrl+wheel zoom does. Deliberately not routed through
+ * `wheelStep`: the "reverse slider scrolling" setting is the operator's own
+ * preference about which way a wheel drags a *thumb*, it lives on the control
+ * page rather than on a display, and this is a zoom rather than a slider.
+ */
+export function scaleFromWheel(startScale: number, pixels: number): number {
+  if (!Number.isFinite(startScale)) return clampTextScale(1);
+  if (!Number.isFinite(pixels)) return clampTextScale(startScale);
+  const tenths = -pixels / WHEEL_PIXELS_PER_TENTH;
+  return clampTextScale(toTenth(startScale + tenths / 10));
+}
