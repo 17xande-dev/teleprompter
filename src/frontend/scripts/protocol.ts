@@ -127,6 +127,27 @@ export type DimsMessage = {
   local: boolean;
 };
 
+// A viewer asking for a new text size, the second message that travels from a
+// display back to the controller.
+//
+// Only the *driving* display may originate one — the same rule that governs
+// hand-scrolling, and for the same reason: two displays resizing at once would
+// fight with nothing to settle it. Both ends enforce it, the viewer by not
+// listening for the gesture unless it holds drive and the controller by
+// ignoring a scale from anyone but the driver, because a check at one end only
+// is a check that vanishes the moment the other end is rewritten.
+//
+// The scale is a rem number, the unit SettingsMessage.textScale already uses,
+// and the controller clamps it before it reaches anything: it ends up in a
+// font-size on every display in the room, and textscale.ts records what a
+// non-finite one does there — the script vanishes with nothing in any console.
+//
+// Nothing structurally stops the controller sending this back to a viewer; it
+// simply never does, which is the same shape DimsMessage has. The reply is a
+// SettingsMessage, so every display including the sender learns the new size
+// the same way.
+export type TextScaleMessage = { type: "text-scale"; scale: number };
+
 // Scroll position, sent as a 0..1 ratio (not raw pixels) so it lands in the
 // same place regardless of the receiving window's size — a popped-out window,
 // a remote phone, and the control page's differently-sized preview iframe show
@@ -188,6 +209,24 @@ export function isPreviewScroll(data: unknown): data is PreviewScrollMessage {
     Number.isFinite(msg.r);
 }
 
+/**
+ * Whether a control-channel message is a viewer's request for a text size.
+ *
+ * The controller decodes the channel to a `ControlMessage`, so the discriminant
+ * alone would satisfy the type system — but this arrives over WebRTC from
+ * another machine, and the number goes on to become a font size. Finiteness is
+ * checked here rather than trusted from the sender for the same reason
+ * `isPreviewScroll` exists: a `null` or a string `"2"` narrows to the variant
+ * on `type` alone and only stops looking like a number later, in CSS, where
+ * being wrong costs the whole script rather than an error.
+ */
+export function isTextScale(data: unknown): data is TextScaleMessage {
+  if (!data || typeof data !== "object") return false;
+  const msg = data as Partial<TextScaleMessage>;
+  return msg.type === "text-scale" && typeof msg.scale === "number" &&
+    Number.isFinite(msg.scale);
+}
+
 export type ControlMessage =
   | ContentMessage
   | StageMessage
@@ -199,6 +238,7 @@ export type ControlMessage =
   | ScrollByMessage
   | SetDriverMessage
   | DimsMessage
+  | TextScaleMessage
   | ScrollControlMessage;
 
 /**

@@ -251,7 +251,10 @@ export class Viewer {
         this.#stage.scrollBy(0, msg.px);
         break;
       case "dims":
-        // Viewer only ever sends this, never receives it.
+      case "text-scale":
+        // Viewer only ever sends these, never receives them. The controller's
+        // answer to a text-scale is a settings message, so the size arrives
+        // back through the same path it does for every other display.
         break;
       default: {
         // Exhaustiveness, checked by the compiler: `msg` is only assignable to

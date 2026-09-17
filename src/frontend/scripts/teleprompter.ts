@@ -190,6 +190,19 @@ export class Teleprompter {
   // When the operator's authority over the position lapses. Also the gate that
   // decides whether a ratio the preview offers is a gesture or layout noise.
   #scrubUntil = 0;
+  // How long the driver's samples are ignored after it has resized the room.
+  //
+  // The same shape as SCRUB_HOLD_MS and for a related reason, but a different
+  // one: a display that has just pinched keeps emitting ~60 samples a second,
+  // and for about a round trip those describe a position in a document only it
+  // has rescaled. Relayed, they move every other display to a place computed
+  // from geometry none of them has. Longer than a scrub's hold because a scale
+  // change costs the receiving display a full relayout of the script, not just
+  // a scroll. The hold belongs here rather than on the viewer: the controller
+  // is the single arbiter, and a viewer could not suppress *another* viewer's
+  // samples.
+  static readonly SCALE_HOLD_MS = 500;
+  #scaleUntil = 0;
   // The factor #applyPreviewScale last rendered the preview at. A drag has to
   // divide by it: the picture must track the finger, and the iframe's document
   // pixels are 1/k of an on-screen pixel.
@@ -882,9 +895,22 @@ export class Teleprompter {
     if (e.source !== this.ifrmPreview.contentWindow) return;
     if (!isPreviewScroll(e.data)) return;
     const msg = e.data;
-    if (Date.now() > this.#scrubUntil) return;
-    this.#lastRatio = msg.r;
-    this.link.sendScroll(msg.r);
+    const now = Date.now();
+    // A scale change is the other thing that legitimately moves the preview
+    // without a gesture: it re-anchors itself on the block it was showing, like
+    // every display does. That position is worth *recording* — #lastRatio feeds
+    // catchUpMessages and goToViewerPosition, and while the driver's samples
+    // are held it is the only fresh answer there is — but it must not be fanned
+    // out. Displays re-anchor locally and identically, and a ratio racing the
+    // settings message down the unreliable channel could be applied against
+    // pre-scale geometry and then re-anchored from the wrong block, which is
+    // permanent rather than transient. See #onViewerTextScale.
+    if (now <= this.#scrubUntil) {
+      this.#lastRatio = msg.r;
+      this.link.sendScroll(msg.r);
+      return;
+    }
+    if (now < this.#scaleUntil) this.#lastRatio = msg.r;
   }
 
   /** Whether a wheel over the preview moves the audience. Also a command. */
@@ -1083,16 +1109,59 @@ export class Teleprompter {
   }
 
   #onViewerControl(id: string, msg: ControlMessage) {
-    if (msg.type !== "dims") return;
     const entry = this.viewers.get(id);
     if (!entry) return;
-    entry.dims = { width: msg.width, height: msg.height };
-    entry.local = msg.local;
-    // This viewer may be the reference every other display is matching, so its
-    // new size is every display's new layout.
-    this.#pushStage();
-    this.#applyPreviewScale();
-    this.#renderViewers();
+    switch (msg.type) {
+      case "dims":
+        entry.dims = { width: msg.width, height: msg.height };
+        entry.local = msg.local;
+        // This viewer may be the reference every other display is matching, so
+        // its new size is every display's new layout.
+        this.#pushStage();
+        this.#applyPreviewScale();
+        this.#renderViewers();
+        break;
+      case "text-scale":
+        this.#onViewerTextScale(id, msg.scale);
+        break;
+        // Everything else is controller→viewer and arriving here means a display
+        // is talking out of turn. Ignored rather than trusted; a display is
+        // another machine on the network, not part of this page.
+    }
+  }
+
+  /**
+   * A display asking, by pinch or Ctrl+wheel, for a different text size.
+   *
+   * Three things in order, and the order is the point.
+   *
+   * Finiteness and range **first**. This number arrives from another machine
+   * and its destination is a `font-size` on every display in the room: a
+   * non-finite one computes to 0 and the script disappears with nothing in any
+   * console (see textscale.ts). The guard is here rather than only at the
+   * sender because the sender is the part we do not control.
+   *
+   * Then the driver check, the same one `#onViewerScroll` applies. The viewer
+   * will not listen for the gesture unless it holds drive, so in practice this
+   * never fires — which is exactly why it is here. A check that only exists at
+   * the end that also has the feature is a check that disappears the first time
+   * someone rewrites that end.
+   *
+   * Then the slider, dispatching a synthetic `input` like every other route to
+   * a new size. That is what puts a display's gesture, a drag, the palette's
+   * nudges and "Send my size" on one code path, leaves the slider reading what
+   * the room is actually set to, and gets the change to every display *and* the
+   * preview through `#pushSettings` — including back to the display that asked,
+   * which is how a late joiner and the gesturing display end up agreeing.
+   */
+  #onViewerTextScale(id: string, scale: number) {
+    if (!Number.isFinite(scale)) return;
+    if (id !== this.#driverID()) return;
+    // The driver has just rescaled its own script and is still emitting scroll
+    // samples against geometry only it has; see #scaleUntil.
+    this.#scaleUntil = Date.now() + Teleprompter.SCALE_HOLD_MS;
+    this.rngScale.value = clampTextScale(scale) * 10;
+    this.rngScale.dispatchEvent(new Event("input"));
   }
 
   // Which viewer drives the scroll: the operator's pick, else whoever
@@ -1215,6 +1284,9 @@ export class Teleprompter {
     // scrub reached it, so relaying them would fight the gesture on every
     // other display. See SCRUB_HOLD_MS.
     if (Date.now() < this.#scrubUntil) return;
+    // The driver has just rescaled the room and is still reporting positions in
+    // a document only it has relaid out. See SCALE_HOLD_MS.
+    if (Date.now() < this.#scaleUntil) return;
     // Only the driver's samples are authoritative. Every viewer reports its
     // own position unconditionally; the rest are echoes of this one.
     if (id !== this.#driverID()) return;

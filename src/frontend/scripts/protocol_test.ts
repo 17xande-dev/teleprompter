@@ -1,6 +1,6 @@
 import { assertEquals, assertNotEquals } from "@std/assert";
 
-import { catchUpMessages, isPreviewScroll } from "./protocol.ts";
+import { catchUpMessages, isPreviewScroll, isTextScale } from "./protocol.ts";
 
 /** A plausible mid-service show, so each assertion can name what it expects. */
 function show(over: Partial<Parameters<typeof catchUpMessages>[0]> = {}) {
@@ -118,4 +118,21 @@ Deno.test("isPreviewScroll accepts a real report and refuses everything else", (
   assertEquals(isPreviewScroll(undefined), false);
   assertEquals(isPreviewScroll("preview-scroll"), false);
   assertEquals(isPreviewScroll(0.5), false);
+});
+
+Deno.test("isTextScale accepts a driver's request and refuses everything else", () => {
+  assertEquals(isTextScale({ type: "text-scale", scale: 3.2 }), true);
+  // Out of range is still well-formed; clamping is the controller's job and
+  // this guard must not quietly become a second, disagreeing range check.
+  assertEquals(isTextScale({ type: "text-scale", scale: 1e9 }), true);
+  assertEquals(isTextScale({ type: "text-scale", scale: -1 }), true);
+  // These are the ones that reach a font-size and make the script vanish.
+  assertEquals(isTextScale({ type: "text-scale", scale: NaN }), false);
+  assertEquals(isTextScale({ type: "text-scale", scale: Infinity }), false);
+  assertEquals(isTextScale({ type: "text-scale", scale: "3.2" }), false);
+  assertEquals(isTextScale({ type: "text-scale" }), false);
+  assertEquals(isTextScale({ type: "dims", scale: 3.2 }), false);
+  assertEquals(isTextScale(null), false);
+  assertEquals(isTextScale(undefined), false);
+  assertEquals(isTextScale(3.2), false);
 });
