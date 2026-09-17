@@ -830,28 +830,61 @@ export class Viewer {
   #topBlockAnchor(): { el: HTMLElement; fraction: number } | null {
     const main = document.querySelector("#main");
     if (!main) return null;
-    const top = this.#stage.scrollTop;
+    const fold = this.#stage.scrollTop + this.#foldOffset();
     for (const child of main.children) {
       const el = <HTMLElement> child;
       const elTop = this.#offsetInStage(el);
       const height = el.offsetHeight;
-      if (elTop + height <= top) continue;
-      return { el, fraction: fractionIntoBlock(top, elTop, height) };
+      if (elTop + height <= fold) continue;
+      return { el, fraction: fractionIntoBlock(fold, elTop, height) };
     }
     return null;
   }
 
-  /** Put the anchored block back under the top edge, after the relayout. */
+  /**
+   * How far below the top of the scroller the first *readable* line sits.
+   *
+   * The clock strip is sticky with a background of its own, so it covers the
+   * script rather than scrolling away with it: the line the talent is reading
+   * at the top of the screen is the one at `scrollTop + this`, not at
+   * `scrollTop`. Anchoring without it put every re-anchored block underneath
+   * the strip — measured at 118px, about two lines, and at the very top of the
+   * script it turned a scrollTop of 0 into 118, so a resize nudged a display
+   * off the first line it was showing.
+   *
+   * Read rather than assumed, because a user theme may not make the strip
+   * sticky, or may not have one at all.
+   */
+  #foldOffset(): number {
+    const header = <HTMLElement | null> document.querySelector("#header");
+    if (!header) return 0;
+    const position = getComputedStyle(header).position;
+    if (position !== "sticky" && position !== "fixed") return 0;
+    return header.offsetHeight;
+  }
+
+  /** Put the anchored block back at the first readable line, after the relayout. */
   #restoreBlockAnchor(anchor: { el: HTMLElement; fraction: number } | null) {
     // A theme or a fresh document can replace the element out from under an
     // anchor taken moments earlier; there is nothing to restore to then, and
     // #restoreScroll's ratio is the fallback it has always been.
     if (!anchor || !anchor.el.isConnected) return;
-    this.#stage.scrollTop = scrollTopIntoBlock(
-      this.#offsetInStage(anchor.el),
-      anchor.el.offsetHeight,
-      anchor.fraction,
-    );
+    const move = () => {
+      this.#stage.scrollTop = scrollTopIntoBlock(
+        this.#offsetInStage(anchor.el),
+        anchor.el.offsetHeight,
+        anchor.fraction,
+      ) - this.#foldOffset();
+    };
+    // Silent on a real display, and deliberately *not* silent in the preview.
+    // A display's re-anchor is its own answer to a size change and every other
+    // display is working the same one out — sending it is how the driver's new
+    // geometry ends up being applied to a document that has not been rescaled
+    // yet. The preview's report is the control page's only way to learn where
+    // the room has ended up (#lastRatio, which feeds catchUpMessages), and it
+    // is accepted there without being fanned out.
+    if (this.isPreviewer) move();
+    else this.#scrollSync.applySilently(move);
     // The ratio moved, and it is what #restoreScroll would otherwise yank this
     // back to on the next edit — and what this display reports as its position.
     this.#lastRatio = ratioOf(this.#stage);

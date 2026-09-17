@@ -17,6 +17,18 @@
 
 export interface ScrollSync {
   applyRemote(ratio: number): void;
+  /**
+   * Move the element without reporting where it ended up.
+   *
+   * For a position this display worked out for *itself* — re-anchoring on the
+   * block it was showing after a text-size change. Reporting one of those is
+   * actively harmful when it comes from the driver: the sample describes the
+   * new geometry, it travels the unreliable channel while the size travels the
+   * reliable one, and a display that gets it first applies it to a document it
+   * has not yet rescaled. Measured, that put a follower two blocks (about
+   * 600px) away from the line the driver was on, and it stayed there.
+   */
+  applySilently(move: () => void): void;
   // Stops the per-frame pump. Only needed by tests and teardown; a page
   // that syncs for its whole lifetime never calls it.
   stop(): void;
@@ -354,6 +366,15 @@ export function makeScrollSync({ el, send }: ScrollSyncOptions): ScrollSync {
       applyingRemote = true;
       setRatio(el, ratio);
       // Release after the resulting scroll event has been dispatched.
+      requestAnimationFrame(() => {
+        applyingRemote = false;
+      });
+    },
+    applySilently(move: () => void) {
+      applyingRemote = true;
+      move();
+      // Released after the resulting scroll event has been dispatched, the same
+      // way applyRemote does it.
       requestAnimationFrame(() => {
         applyingRemote = false;
       });
