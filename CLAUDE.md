@@ -1203,6 +1203,15 @@ against the scroller now, and `#previewBlockMetrics` measures from `#stage`
 rather than `#main` for the same reason. See the viewer's `#offsetInStage` for
 why the opposite spelling is right there.
 
+**The clock strip is sticky and opaque, so the readable top is
+`scrollTop + strip height`, not `scrollTop`.** Both Sync buttons translate
+through `#previewFold`, and a display's own re-anchor through `#foldOffset`,
+because the operator's pane has no such strip: without it every translation
+landed the block _behind_ the strip, 118px or about two lines out in the same
+direction — which is the "off by about the clock height" first reported against
+the position sync. Both read the header's computed `position` rather than
+assuming, since a user theme may make it static or leave it out.
+
 ### Resizing from the driving display
 
 A pinch or a Ctrl+wheel on the display that holds drive resizes the script for
@@ -1253,6 +1262,14 @@ size change.
   transform-scaled so rects are in the wrong space here, while over there
   nothing is scaled and the editor's scroller is not positioned, so it is not in
   the offsetParent chain at all.
+- **A display's re-anchor is never reported.** `ScrollSync.applySilently` puts
+  it through the same echo guard `applyRemote` uses, and it is not a nicety: the
+  driver's re-anchored position describes its _new_ geometry and travels the
+  unreliable channel while the size travels the reliable one, so a follower that
+  got it first applied it to a document it had not rescaled — measured two
+  blocks, about 600px, and it stayed there because the follower then re-anchored
+  from the wrong block. The preview is the deliberate exception; its report is
+  how the control page learns where the room ended up.
 - **`SCALE_HOLD_MS` drops the driver's in-flight samples**, like `SCRUB_HOLD_MS`
   and for a related reason: for about a round trip after a resize the driver is
   reporting positions in a document only it has relaid out. The preview's own
