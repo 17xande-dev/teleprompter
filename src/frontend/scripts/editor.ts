@@ -229,6 +229,64 @@ function clearMount(el: Element) {
   el.replaceChildren();
 }
 
+/**
+ * The shadow root style-mod will inject this editor's CSS into, if any.
+ *
+ * A copy of Wordgard's own `getRoot` walk (`node.assignedSlot || node.parentNode`
+ * up to a root), because the answer has to be known *before* the editor is
+ * built and Wordgard does not expose it.
+ */
+function enclosingShadowRoot(node: Node | null): ShadowRoot | null {
+  let cur: Node | null = node;
+  while (cur) {
+    if (cur instanceof ShadowRoot) return cur;
+    const slot = (cur as Element).assignedSlot;
+    cur = slot ?? cur.parentNode;
+  }
+  return null;
+}
+
+/**
+ * Build an editor and rescue its stylesheet if it lands in a shadow root.
+ *
+ * **This is the trap CLAUDE.md predicted, and it is no longer hypothetical.**
+ * Wordgard injects its CSS at runtime through style-mod, which picks a target
+ * by walking `assignedSlot || parentNode` — and `#editor` sits inside
+ * `wa-split-panel`, so once that component has upgraded and attached its
+ * shadow root the walk stops *there*. style-mod then takes its
+ * `adoptedStyleSheets` branch and the whole theme lands somewhere it can
+ * never apply, because slotted content is styled by the document, not by the
+ * shadow tree it is projected into.
+ *
+ * The editor built in the control page's constructor escapes this by accident
+ * of timing — it is created before the component upgrades. Every *rebuilt*
+ * editor does not, which is every document switch and every New. Measured:
+ * after a switch, `scrollDOM` computed `height: 32211px` instead of
+ * `var(--pane-height)`, so `Wordgard.scrolling()` was not in force, the pane
+ * grew to the length of the script and **stopped scrolling altogether** —
+ * with nothing in any console. A reload appeared to fix it, because a reload
+ * goes back through the lucky path.
+ *
+ * The rescue is CLAUDE.md's own prescription: copy the sheets the shadow root
+ * adopted onto the document. Diffed against what that root held *before* the
+ * editor was built rather than pattern-matched, so it takes exactly the
+ * editor's own sheets and none of the component's. Idempotent across
+ * switches: style-mod caches per root, so a second editor in the same place
+ * adds nothing new, and the document already holds what the first one added.
+ */
+function createWithStyles(el: Element, make: () => Wordgard): Wordgard {
+  const root = enclosingShadowRoot(el);
+  const before = root ? [...root.adoptedStyleSheets] : [];
+  const editor = make();
+  if (!root) return editor;
+  const added = root.adoptedStyleSheets.filter((s) => !before.includes(s));
+  const missing = added.filter((s) => !document.adoptedStyleSheets.includes(s));
+  if (missing.length) {
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, ...missing];
+  }
+  return editor;
+}
+
 export function newEditor(
   el: Element,
   onUpdate?: (wg: Wordgard) => void,
@@ -236,12 +294,12 @@ export function newEditor(
   brightenPaste?: () => boolean,
 ): Wordgard {
   clearMount(el);
-  const wg = Wordgard.create({
-    parent: el,
-    doc: `<p>New Document</p>`,
-    config: buildConfig(onUpdate, textSize, brightenPaste),
-  });
-  return wg;
+  return createWithStyles(el, () =>
+    Wordgard.create({
+      parent: el,
+      doc: `<p>New Document</p>`,
+      config: buildConfig(onUpdate, textSize, brightenPaste),
+    }));
 }
 
 export function saveEditor(wg: Wordgard): unknown {
@@ -276,5 +334,5 @@ export function restoreEditor(
     return newEditor(el, onUpdate, textSize, brightenPaste);
   }
   clearMount(el);
-  return Wordgard.create({ parent: el, state });
+  return createWithStyles(el, () => Wordgard.create({ parent: el, state }));
 }
