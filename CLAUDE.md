@@ -143,6 +143,10 @@ WebSocket relay, `ice.go` STUN/TURN config.
 - `filetransfer.ts` — the framing for `file`: a JSON string header, raw
   ArrayBuffer chunks, a JSON string trailer, told apart by `typeof`. Kept
   separate from `webrtc.ts` so the boundary cases are unit-testable.
+- `controlframes.ts` — the framing for an oversized `control` message: JSON
+  parts with a `k: "part"` envelope, reassembled in order. Split out of
+  `webrtc.ts` for the same reason `filetransfer.ts` is, and see the trap below
+  for why it exists at all.
 - `pdfview.ts` — renders a PDF as a plain column of page divs, which is all the
   sync layer needs; `pdfjs.ts` / `pdfworker.ts` are bundle entries, not modules
   anyone imports directly.

@@ -77,9 +77,10 @@ refresh reconnect rather than orphaning every display.
 shapes are used over WebRTC and over `postMessage` to the preview iframe — so
 the viewer code has one switch regardless of transport.
 
-Messages run controller → viewer, with two exceptions: a viewer reports its own
-`dims` (size, and whether it is local), and the preview iframe reports its
-scroll ratio upward so the operator can scrub from it.
+Messages run controller → viewer, with three exceptions: a viewer reports its
+own `dims` (size, and whether it is local), the _driving_ display reports a
+`text-scale` when someone pinches it, and the preview iframe reports its scroll
+ratio upward so the operator can scrub from it.
 
 Two things are worth knowing about the shapes rather than the list:
 
@@ -88,6 +89,11 @@ Two things are worth knowing about the shapes rather than the list:
   that joins late and restored after a refresh. A remaining duration rather than
   an absolute deadline, because an epoch stamped by the control page would be
   read against the receiving device's clock.
+- **A message too big for one send is split.** A data channel refuses anything
+  past the SCTP association's limit — 256KB in Chrome — and a pasted service
+  script goes well past it, so `controlframes.ts` sends an oversized message as
+  parts and the receiver reassembles them. Anything that fits still travels as
+  one plain message, which is everything but the script and a large theme.
 - **A theme carries its own CSS.** A custom layout exists only in the operator's
   browser, so viewers are sent the text; the class name rides in the same
   message so it cannot be applied before the stylesheet it needs.
