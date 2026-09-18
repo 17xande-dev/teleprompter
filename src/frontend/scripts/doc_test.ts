@@ -389,3 +389,112 @@ Deno.test("formatDateTime pads every field from its injected clock", () => {
   );
   assert(newDocName(new Date(2026, 0, 2, 3, 4, 5)).endsWith("20260102-030405"));
 });
+
+Deno.test("a document remembers where it was left, and reads back", async () => {
+  const { store, storage } = throttled();
+  const id = storage.getCurrentID();
+  storage.setScrollFor(id, { index: 42, fraction: 0.25 });
+  // In memory at once, like every other mutator here.
+  assertEquals(storage.get(id)!.scroll, { index: 42, fraction: 0.25 });
+  storage.flush();
+
+  // And survives the round trip through storage, which is the whole point:
+  // this is read back by a *fresh page*, not by this object.
+  const reopened = new DocStorage(store, TICK);
+  assertEquals(reopened.get(id)!.scroll, { index: 42, fraction: 0.25 });
+  await settle();
+});
+
+Deno.test("a position is written against the document it was measured in", async () => {
+  const { storage } = throttled();
+  const first = storage.getCurrentID();
+  const second = storage.create("Second");
+  storage.setScrollFor(first, { index: 10, fraction: 0 });
+  storage.setCurrent(second);
+  // The case this exists for: the editor is rebuilt *after* the current
+  // document has already moved, so the outgoing pane's position is written
+  // by id. Taking "the current one" would land it in the script just opened
+  // and drop the operator somewhere they have never been.
+  storage.setScrollFor(first, { index: 99, fraction: 0.5 });
+
+  assertEquals(storage.get(first)!.scroll, { index: 99, fraction: 0.5 });
+  assertEquals(storage.get(second)!.scroll, undefined);
+  storage.flush();
+  await settle();
+});
+
+Deno.test("a position for a document that is gone is dropped, not created", async () => {
+  const { storage } = throttled();
+  const id = storage.getCurrentID();
+  const other = storage.create("Other");
+  storage.remove(other);
+  storage.setScrollFor(other, { index: 3, fraction: 0 });
+  assertEquals(storage.get(other), undefined);
+  assertEquals(storage.list().length, 1);
+  assertEquals(storage.getCurrentID(), id);
+  await settle();
+});
+
+Deno.test("scrolling is throttled and flushed like an edit", async () => {
+  const { store, storage, counter } = throttled();
+  const id = storage.getCurrentID();
+  const before = counter.writes;
+  // A wheel produces these far faster than a keystroke does, and each write
+  // serialises the whole collection.
+  for (let i = 0; i < 20; i++) {
+    storage.setScrollFor(id, { index: i, fraction: 0 });
+  }
+  assertEquals(counter.writes, before, "a scroll burst wrote immediately");
+  storage.flush();
+  assertEquals(counter.writes, before + 1);
+  assertEquals(
+    (JSON.parse(store.data.get(DOCS_KEY)!) as Record<string, Doc>)[id].scroll,
+    { index: 19, fraction: 0 },
+    "the last position is the one that lands",
+  );
+  await settle();
+});
+
+Deno.test("a stored position that is nonsense costs the position, not the script", () => {
+  const docs = parseDocs(JSON.stringify({
+    a: {
+      name: "NaN",
+      content: "<p>a</p>",
+      scroll: { index: NaN, fraction: 0 },
+    },
+    b: {
+      name: "string",
+      content: "<p>b</p>",
+      scroll: { index: "3", fraction: 0 },
+    },
+    c: { name: "missing", content: "<p>c</p>", scroll: { index: 3 } },
+    d: { name: "not an object", content: "<p>d</p>", scroll: 12 },
+    e: {
+      name: "negative",
+      content: "<p>e</p>",
+      scroll: { index: -1, fraction: 0 },
+    },
+    f: {
+      name: "good",
+      content: "<p>f</p>",
+      scroll: { index: 7, fraction: 0.5 },
+    },
+  }));
+  // Every script is still here — a bad position must never cost a document.
+  assertEquals(Object.keys(docs).length, 6);
+  for (const id of ["a", "b", "c", "d", "e"]) {
+    assertEquals(docs[id].scroll, undefined, `${id} kept a bad position`);
+    assert(docs[id].content.length > 0);
+  }
+  assertEquals(docs.f.scroll, { index: 7, fraction: 0.5 });
+});
+
+Deno.test("a position just outside its block is clamped rather than refused", () => {
+  const docs = parseDocs(JSON.stringify({
+    a: { name: "a", content: "", scroll: { index: 4.7, fraction: 1.0000001 } },
+    b: { name: "b", content: "", scroll: { index: 2, fraction: -0.0001 } },
+  }));
+  // Rounding artefacts of a measurement, not a reason to lose the place.
+  assertEquals(docs.a.scroll, { index: 4, fraction: 1 });
+  assertEquals(docs.b.scroll, { index: 2, fraction: 0 });
+});

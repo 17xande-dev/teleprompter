@@ -56,6 +56,7 @@ import { GamepadControls } from "./gamepadControls.ts";
 import { connectController, type ControllerLink } from "./webrtc.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
 import {
+  type BlockPos,
   blockPosOf,
   ratioOf,
   scrollTopOfBlock,
@@ -172,6 +173,17 @@ export class Teleprompter {
   // Closing a popup fires nothing in the opener, so the only way to notice is
   // to ask. Cleared with the window it was watching.
   #popWatch: ReturnType<typeof setInterval> | undefined;
+  // Which document the editor is currently showing, so a remembered position
+  // is written against the document it was measured in. Deliberately not
+  // "whatever is current": setCurrent moves before the editor is rebuilt, and
+  // a position written then would land in the document being opened.
+  #loadedDocID = "";
+  // The throttle behind "remember where I am". Scroll events arrive as fast
+  // as the wheel turns and each measurement walks every block in the script,
+  // so this coalesces them the way DocStorage coalesces its writes — and with
+  // the same window, since one feeds the other.
+  #scrollSaveTimer: ReturnType<typeof setTimeout> | undefined;
+  static readonly SCROLL_SAVE_MS = 500;
   // The pacer's most recent position. Viewers only learn where everyone is
   // from the pacer's next sample, and while the scroll is paused (or the
   // speed is 0) there isn't one — so a viewer that joins or reconnects would
@@ -361,12 +373,18 @@ export class Teleprompter {
     this.docControls.drpDocuments.addEventListener(
       "new",
       () => {
+        // Before the editor is replaced: #ownScroller still answers for the
+        // document being left, and #rememberScroll writes against the id it
+        // was loaded under rather than the one now current.
+        this.#rememberScroll();
         this.editor = newEditor(
           document.querySelector("#editor")!,
           this.saveEditorContent.bind(this),
           this.#textSizeAccess(),
           this.#brightenPasteAccess(),
         );
+        this.#loadedDocID = this.docControls.storage.getCurrentID();
+        this.#watchOwnScroll();
         // As the "load" handler below does. Without this a new document left
         // the displays on the previous script until the first keystroke, so
         // "New document" mid-service showed the talent the wrong page and
@@ -381,6 +399,7 @@ export class Teleprompter {
         if (!e.detail) {
           throw new Error("expecting Doc but got undefined?");
         }
+        this.#rememberScroll();
         this.editor = restoreEditor(
           this.editor.dom.parentElement!,
           e.detail.content,
@@ -388,7 +407,10 @@ export class Teleprompter {
           this.#textSizeAccess(),
           this.#brightenPasteAccess(),
         );
+        this.#loadedDocID = this.docControls.storage.getCurrentID();
+        this.#watchOwnScroll();
         this.updateMain();
+        this.#restoreOwnScroll(e.detail.scroll);
       },
     );
 
@@ -398,6 +420,23 @@ export class Teleprompter {
     this.themeControls = new ThemeControls();
     this.themeControls.drpLayouts.addEventListener("theme", (e) => {
       this.#pushTheme((<CustomEvent<ThemeMessage>> e).detail);
+    });
+
+    // The last half-second of scrolling is still on the throttle when a page
+    // goes away, and losing it means coming back a screen or two from where
+    // the operator actually was. Measured *and* flushed here rather than
+    // relying on DocControls' own pagehide handler: that one only writes what
+    // is already in memory, and its listener was registered first, so it
+    // would run before this measurement. Same pair of events as DocControls
+    // uses, and for the same reasons (pagehide over beforeunload; hidden
+    // covers being backgrounded on mobile).
+    const keepPlace = () => {
+      this.#rememberScroll();
+      this.docControls.storage.flush();
+    };
+    addEventListener("pagehide", keepPlace);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") keepPlace();
     });
 
     this.docControls.loadCurrent();
@@ -1957,6 +1996,67 @@ export class Teleprompter {
     const before = el.scrollTop;
     el.scrollTop = before + px;
     return el.scrollTop - before;
+  }
+
+  /**
+   * Keep the operator's place in the script across a reload.
+   *
+   * Their own pane is the one thing on this page with no other memory: the
+   * document, the sliders, the theme, the countdown and the live-editing
+   * switch all survive a refresh, and the script came back at the top — so a
+   * mid-service reload (or a crash) cost the operator their place in a
+   * document that can run to hundreds of blocks. Nothing audience-visible
+   * moves: this pane is deliberately not scroll-synced, which is the whole
+   * reason it can be read ahead of the displays.
+   *
+   * Only the editor. A PDF is held in memory for the session and is gone on
+   * reload, so there would be nothing to come back to.
+   */
+  #watchOwnScroll() {
+    // Re-attached after every document switch, because each one builds a
+    // fresh editor and so a fresh scrollDOM. The old element is discarded
+    // with its listener, so nothing accumulates.
+    this.editor.scrollDOM.addEventListener("scroll", () => {
+      if (this.#scrollSaveTimer !== undefined) return;
+      this.#scrollSaveTimer = setTimeout(() => {
+        this.#scrollSaveTimer = undefined;
+        this.#rememberScroll();
+      }, Teleprompter.SCROLL_SAVE_MS);
+    }, { passive: true });
+  }
+
+  /** Write where this pane is into the document it belongs to. */
+  #rememberScroll() {
+    // A PDF replaces the editor for the session; there is nothing to restore
+    // to next time, and #ownScroller would measure the PDF column's blocks
+    // into the script's document.
+    if (this.#pdfBytes || !this.#loadedDocID) return;
+    const scroller = this.editor.scrollDOM;
+    const { offsets, heights } = this.#blockMetrics(scroller);
+    if (!offsets.length) return;
+    this.docControls.storage.setScrollFor(
+      this.#loadedDocID,
+      blockPosOf(offsets, heights, scroller.scrollTop),
+    );
+  }
+
+  /**
+   * Put this pane back where the document was left.
+   *
+   * After a frame, not immediately: the editor is built synchronously but its
+   * blocks have no geometry until the browser has laid them out, and
+   * `#blockMetrics` measured before that returns a column of zero-height
+   * blocks — which resolves to the top of the document, silently losing the
+   * place this exists to keep.
+   */
+  #restoreOwnScroll(pos: BlockPos | undefined) {
+    if (!pos || this.#pdfBytes) return;
+    requestAnimationFrame(() => {
+      const scroller = this.editor.scrollDOM;
+      const { offsets, heights } = this.#blockMetrics(scroller);
+      if (!offsets.length) return;
+      scroller.scrollTop = scrollTopOfBlock(offsets, heights, pos);
+    });
   }
 
   /**

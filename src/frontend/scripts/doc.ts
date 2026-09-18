@@ -6,6 +6,7 @@
 // as themes.ts / themeControls.ts.
 
 import { randomID } from "./ids.ts";
+import type { BlockPos } from "./scrollsync.ts";
 
 export type Doc = {
   // Display name, editable. Identity is the id, not this.
@@ -13,6 +14,20 @@ export type Doc = {
   // A Wordgard state JSON blob, or "" for a document never edited — which
   // restoreEditor reads as "no content yet" and starts a fresh editor from.
   content: string;
+  /**
+   * Where the operator's own pane was left, as a block and a fraction of it.
+   *
+   * **Not a pixel offset and not a ratio**, for the reason the Sync buttons
+   * already document: the same script is a different number of pixels tall
+   * whenever the reading size or the pane's width changes, and a bigger font
+   * wraps long paragraphs more than short ones — so neither pixels nor a
+   * fraction of the height survives an editor-scale change or a dragged
+   * divider between one session and the next. The block index does, because
+   * it is the same document either way.
+   *
+   * Absent on a document never scrolled, which reads as "start at the top".
+   */
+  scroll?: BlockPos;
 };
 
 // The slice of localStorage this needs, injected so tests can hand it a plain
@@ -66,6 +81,24 @@ export function newDocName(d?: Date): string {
  * after the Wordgard migration threw out of the load handler on every
  * first-ever page load.
  */
+/** A stored scroll position, or undefined if it is not one. */
+function parseBlockPos(value: unknown): BlockPos | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const { index, fraction } = value as Partial<BlockPos>;
+  if (typeof index !== "number" || !Number.isFinite(index) || index < 0) {
+    return undefined;
+  }
+  if (typeof fraction !== "number" || !Number.isFinite(fraction)) {
+    return undefined;
+  }
+  // Clamped rather than refused: a fraction a hair outside the block is a
+  // rounding artefact of the measurement, not a reason to lose the place.
+  return {
+    index: Math.floor(index),
+    fraction: Math.min(1, Math.max(0, fraction)),
+  };
+}
+
 export function parseDocs(raw: string | null): Record<string, Doc> {
   if (!raw) return {};
   let parsed: unknown;
@@ -84,9 +117,16 @@ export function parseDocs(raw: string | null): Record<string, Doc> {
     // Drop entries one at a time: one unreadable document shouldn't cost the
     // operator the rest of their scripts.
     if (typeof value !== "object" || value === null) continue;
-    const { name, content } = value as Partial<Doc>;
+    const { name, content, scroll } = value as Partial<Doc>;
     if (typeof name !== "string") continue;
     docs[id] = { name, content: typeof content === "string" ? content : "" };
+    // A bad position costs the *position*, never the script: it is the one
+    // field here that is written from measured geometry rather than typed by
+    // anyone, so it is the one most likely to arrive as a NaN from a browser
+    // that was mid-relayout. Dropped silently, which reads as "start at the
+    // top" — the same thing a document nobody has scrolled does.
+    const pos = parseBlockPos(scroll);
+    if (pos) docs[id].scroll = pos;
   }
   return docs;
 }
@@ -100,7 +140,7 @@ export class DocStorage {
   // and a rename could silently redirect edits into the wrong document.
   #currentID: string;
   #saveDelayMs: number;
-  #contentTimer: ReturnType<typeof setTimeout> | undefined;
+  #saveTimer: ReturnType<typeof setTimeout> | undefined;
 
   // saveDelayMs is injected for the same reason the store is: so tests can
   // drive the throttle without sleeping half a second per case.
@@ -147,26 +187,26 @@ export class DocStorage {
     }
   }
 
-  // Writes the whole collection, so it also satisfies whatever content edit
-  // was waiting on the throttle — drop the pending timer rather than letting
-  // it fire a second, identical write.
+  // Writes the whole collection, so it also satisfies whatever edit was
+  // waiting on the throttle — drop the pending timer rather than letting it
+  // fire a second, identical write.
   #save() {
-    if (this.#contentTimer !== undefined) {
-      clearTimeout(this.#contentTimer);
-      this.#contentTimer = undefined;
+    if (this.#saveTimer !== undefined) {
+      clearTimeout(this.#saveTimer);
+      this.#saveTimer = undefined;
     }
     this.#write(DOCS_KEY, JSON.stringify(this.#docs));
     this.#write(CURRENT_KEY, this.#currentID);
   }
 
   /**
-   * Persist a throttled content edit now. Callers with a DOM must call this
-   * when the page is going away — a write still sitting on the timer is lost
-   * work — and it is also how tests avoid leaving a timer pending.
-   * A no-op when nothing is waiting.
+   * Persist a throttled edit now. Callers with a DOM must call this when the
+   * page is going away — a write still sitting on the timer is lost work —
+   * and it is also how tests avoid leaving a timer pending. A no-op when
+   * nothing is waiting.
    */
   flush() {
-    if (this.#contentTimer === undefined) return;
+    if (this.#saveTimer === undefined) return;
     this.#save();
   }
 
@@ -194,8 +234,8 @@ export class DocStorage {
       return;
     }
     // Settle the outgoing document's edits before moving on. Only CURRENT_KEY
-    // is written below, so a pending content write left behind here would be
-    // lost if the tab closed before its timer fired.
+    // is written below, so a pending write left behind here would be lost if
+    // the tab closed before its timer fired.
     this.flush();
     this.#currentID = id;
     this.#write(CURRENT_KEY, id);
@@ -208,9 +248,35 @@ export class DocStorage {
    */
   setContent(content: string) {
     this.#docs[this.#currentID].content = content;
-    if (this.#contentTimer !== undefined) return;
-    this.#contentTimer = setTimeout(() => {
-      this.#contentTimer = undefined;
+    this.#scheduleSave();
+  }
+
+  /**
+   * Remember where a document was left, so a reload lands there.
+   *
+   * Takes the id explicitly rather than assuming the open one, because the
+   * two moments that matter most are the ones where "the open document" has
+   * already moved on: switching documents (`setCurrent` runs before the
+   * editor is rebuilt) and the page going away. Writing the outgoing pane's
+   * position into the incoming document would be worse than not remembering
+   * it at all — the operator would open a script and land somewhere they have
+   * never been.
+   *
+   * Throttled with the content writes and through the same timer: both are
+   * one synchronous serialisation of the whole collection, and scrolling
+   * produces events as fast as content editing does.
+   */
+  setScrollFor(id: string, scroll: BlockPos) {
+    const doc = this.#docs[id];
+    if (!doc) return;
+    doc.scroll = scroll;
+    this.#scheduleSave();
+  }
+
+  #scheduleSave() {
+    if (this.#saveTimer !== undefined) return;
+    this.#saveTimer = setTimeout(() => {
+      this.#saveTimer = undefined;
       this.#save();
     }, this.#saveDelayMs);
   }
