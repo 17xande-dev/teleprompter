@@ -314,6 +314,18 @@
        names the form by id because it is slotted into the footer and so is
        not a descendant of the form — which is exactly what wa-button's
        `form` attribute is for. -->
+  <!-- Same shape as the rename dialog below, and deliberately so: creating a
+       document and renaming one ask the same question. Prefilled with the
+       generated name and selected, so Enter keeps it and typing replaces it —
+       naming a document must not become a step the operator has to complete
+       before a service. -->
+  <wa-dialog id="dlgNew" label="New Document" class="dialog-focus">
+    <form id="frmNew">
+      <wa-input autofocus label="Name"></wa-input>
+    </form>
+    <wa-button name="create" type="submit" form="frmNew" slot="footer" variant="primary">Create</wa-button>
+    <wa-button name="cancel" slot="footer">Cancel</wa-button>
+  </wa-dialog>
   <wa-dialog id="dlgRename" label="Rename Document" class="dialog-focus">
     <form id="frmRename">
       <wa-input autofocus></wa-input>

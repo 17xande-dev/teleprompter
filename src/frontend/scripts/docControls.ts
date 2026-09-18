@@ -10,7 +10,7 @@ import WaDropdownItem from "@awesome.me/webawesome/dist/components/dropdown-item
 import type WaIcon from "@awesome.me/webawesome/dist/components/icon/icon.js";
 import type WaInput from "@awesome.me/webawesome/dist/components/input/input.js";
 
-import { type Doc, DocStorage } from "./doc.ts";
+import { type Doc, DocStorage, newDocName } from "./doc.ts";
 import { escapeHtml } from "./dom.ts";
 
 type WaSelectEvent = CustomEvent<{ item: WaDropdownItem }>;
@@ -19,6 +19,7 @@ export class DocControls {
   drpDocuments: WaDropdown;
 
   #btnNew: WaButton;
+  #dlgNew: WaDialog;
   #dlgRename: WaDialog;
   #dlgDelete: WaDialog;
   storage = new DocStorage();
@@ -26,14 +27,28 @@ export class DocControls {
   constructor() {
     this.#btnNew = document.querySelector("#btnNew")!;
     this.drpDocuments = document.querySelector("#drpDocuments")!;
+    this.#dlgNew = document.querySelector("#dlgNew")!;
     this.#dlgRename = document.querySelector("#dlgRename")!;
     this.#dlgDelete = document.querySelector("#dlgDelete")!;
 
-    this.#btnNew.addEventListener("click", () => this.create());
+    this.#btnNew.addEventListener("click", () => this.promptNew());
     this.drpDocuments.addEventListener(
       "wa-select",
       this.#listenSelect.bind(this) as EventListener,
     );
+
+    this.#dlgNew.querySelector("wa-button[name=cancel]")!
+      .addEventListener("click", () => {
+        this.#dlgNew.open = false;
+      });
+    // The same one-handler-for-both-ways-in as the rename form below: Create
+    // is the form's submitter, so a click and an Enter in the field arrive
+    // here identically, and nothing listens to the button itself or a click
+    // would create two documents.
+    this.#dlgNew.querySelector("form")!.addEventListener("submit", (e) => {
+      e.preventDefault();
+      this.#confirmNew();
+    });
 
     this.#dlgRename.querySelector("wa-button[name=cancel]")!
       .addEventListener("click", () => {
@@ -107,8 +122,44 @@ export class DocControls {
     );
   }
 
-  create() {
-    const id = this.storage.create();
+  /**
+   * Ask what to call the new document, prefilled with the generated name.
+   *
+   * Prefilled *and selected*, which is the whole design: Enter alone keeps the
+   * name the old button would have given silently, and typing replaces it
+   * without a keystroke spent clearing the field. Naming a document is worth
+   * offering — "document_20260918-101500" tells an operator nothing when they
+   * come back to a dropdown of six of them — but it must not become a step
+   * that has to be completed with a service about to start.
+   *
+   * Nothing is created until the dialog is confirmed. Creating first and
+   * renaming afterwards would leave an empty document behind on Cancel, and
+   * would switch the editor away from the open script before the operator had
+   * agreed to anything.
+   */
+  promptNew() {
+    const input = <WaInput> this.#dlgNew.querySelector("wa-input");
+    input.value = newDocName();
+    this.#dlgNew.open = true;
+    // After the dialog opens: wa-dialog moves focus to its autofocus element
+    // as it shows, and a selection made before that is thrown away by the
+    // focus that follows.
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+  }
+
+  #confirmNew() {
+    const input = <WaInput> this.#dlgNew.querySelector("wa-input");
+    this.#dlgNew.open = false;
+    // Storage trims and falls back for a blank name, the same as rename —
+    // one answer to "what is a usable name" rather than two.
+    this.create(input.value ?? "");
+  }
+
+  create(name?: string) {
+    const id = this.storage.create(name?.trim() || undefined);
     this.storage.setCurrent(id);
     this.#renderItems();
     // "new" means "give me a blank editor", as distinct from "load", which

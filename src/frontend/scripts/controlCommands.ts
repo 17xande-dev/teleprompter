@@ -52,7 +52,7 @@ export interface CommandHost {
     btnStop: Clickable;
     btnReset: Clickable;
   };
-  docControls: { create(): void };
+  docControls: { promptNew(): void };
   lnkViewerLink: { href: string };
   palette: { open(mode: PaletteMode): void };
   settings: { open(): void };
@@ -416,7 +416,7 @@ export function buildCommands(host: CommandHost): Command[] {
     "preview.scrub": () => host.togglePreviewScrub(),
     "content.live": () => host.toggleLiveEditing(),
     "content.push": () => host.btnPushContent.click(),
-    "document.new": () => host.docControls.create(),
+    "document.new": () => host.docControls.promptNew(),
     "pdf.close": () => host.closePdf(),
     "viewer.pop": () => host.btnPop.click(),
     // `navigator.clipboard` is secure-context gated like crypto.randomUUID

@@ -389,7 +389,7 @@ function fakeCommandHost() {
       btnStop: click("clockStop"),
       btnReset: click("clockReset"),
     },
-    docControls: { create: () => clicked.push("newDoc") },
+    docControls: { promptNew: () => clicked.push("newDoc") },
     lnkViewerLink: { href: "" },
     palette: { open: () => clicked.push("palette") },
     settings: { open: () => clicked.push("settings") },
