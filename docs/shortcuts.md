@@ -39,6 +39,12 @@ throttles and stick do, and [why some chords are unavailable](#unavailable).
 | Send my text size to viewers |              |     |
 | Bigger editor text           | `Ctrl+Alt+]` |     |
 | Smaller editor text          | `Ctrl+Alt+[` |     |
+| Text colour…                 | `Ctrl+Alt+C` |     |
+| Repeat last colour           | `Ctrl+Alt+H` |     |
+| Colour: yellow               | `Ctrl+Alt+Y` |     |
+| Colour: red                  | `Ctrl+Alt+R` |     |
+| Colour: blue                 | `Ctrl+Alt+B` |     |
+| Colour: default              | `Ctrl+Alt+N` |     |
 
 ## Message
 

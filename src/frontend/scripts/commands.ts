@@ -69,14 +69,24 @@ export interface CommandSpec {
 /** A spec bound to behaviour: what the palette lists and a key binding runs. */
 export interface Command extends CommandSpec {
   run(): void | Promise<void>;
+  /**
+   * A CSS colour drawn as a chip before the label.
+   *
+   * Only the colour palette sets it. A name is not enough there: "Amber" and
+   * "Yellow" are a guess until you see them, and the operator is picking the
+   * thing they are about to put in front of the talent.
+   */
+  swatch?: string;
 }
 
 /**
  * What the palette is showing. "shortcuts" is the cheatsheet: the same dialog,
  * renderer and list, filtered to the commands that have a binding — so the
- * cheatsheet cannot fall out of step with what actually fires.
+ * cheatsheet cannot fall out of step with what actually fires. "colours" is
+ * the text-colour picker, which is the same dialog again over a different
+ * pool: one fuzzy matcher, one set of arrow keys, one Enter.
  */
-export type PaletteMode = "all" | "shortcuts";
+export type PaletteMode = "all" | "shortcuts" | "colours";
 
 /**
  * A source of commands, called every time the palette opens.

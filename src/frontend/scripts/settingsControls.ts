@@ -130,6 +130,22 @@ export class SettingsControls {
     return this.storage.brightenPastedText;
   }
 
+  /**
+   * The colour "repeat last colour" applies.
+   *
+   * Not in the Settings dialog and never will be: it is the operator's last
+   * action rather than a preference, the same way liveEditing's switch lives
+   * where the operator is working. It is here because this is the page's one
+   * door to stored preferences.
+   */
+  get lastColourID(): string {
+    return this.storage.lastColourID;
+  }
+
+  set lastColourID(value: string) {
+    this.storage.lastColourID = value;
+  }
+
   /** The switch the control page listens to, so it can re-render the marker. */
   get swPreviewScrub(): WaSwitch {
     return this.#swPreviewScrub;

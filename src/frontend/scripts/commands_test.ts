@@ -15,10 +15,12 @@ import {
 } from "./commands.ts";
 import {
   buildCommands,
+  colourCommands,
   COMMAND_SPECS,
   documentCommands,
   layoutCommands,
 } from "./controlCommands.ts";
+import { SCRIPT_COLOURS } from "./colours.ts";
 import { PAD_BINDINGS, PAD_LABELS, type PadButton } from "./gamepad.ts";
 
 function cmd(spec: Partial<Command> & { label: string }): Command {
@@ -390,8 +392,10 @@ function fakeCommandHost() {
       btnReset: click("clockReset"),
     },
     docControls: { promptNew: () => clicked.push("newDoc") },
+    applyColour: (id: string) => clicked.push(`colour:${id}`),
+    repeatColour: () => clicked.push("colour:repeat"),
     lnkViewerLink: { href: "" },
-    palette: { open: () => clicked.push("palette") },
+    palette: { open: (mode: string) => clicked.push(`palette:${mode}`) },
     settings: { open: () => clicked.push("settings") },
     closePdf: () => clicked.push("closePdf"),
     toggleAutoScroll: () => clicked.push("toggleAutoScroll"),
@@ -612,4 +616,71 @@ Deno.test("a dynamic command cannot collide with a static one", () => {
     );
   }
   assertEquals(validateCommands([...COMMAND_SPECS, ...dynamic]), []);
+});
+
+Deno.test("each colour chord applies the colour its label promises", () => {
+  // Every one of these is a plausible-looking mistake: the ids, the labels
+  // and the chords all carry a colour name, and nothing about wiring
+  // "colour.red" to yellow would look wrong in review or fail to compile.
+  const host = fakeCommandHost();
+  const commands = buildCommands(host);
+  const run = (id: string) => commands.find((c) => c.id === id)!.run();
+
+  run("colour.yellow");
+  run("colour.red");
+  run("colour.blue");
+  run("colour.none");
+  run("colour.repeat");
+  assertEquals(host.clicked, [
+    "colour:yellow",
+    "colour:red",
+    "colour:blue",
+    // The clearing entry, which colours.ts calls "default" rather than
+    // "white": a cleared run inherits the theme's colour.
+    "colour:default",
+    "colour:repeat",
+  ]);
+});
+
+Deno.test("the colour picker is a palette mode, not a command that colours", () => {
+  // colour.pick opens the list; it must not apply anything itself, or the
+  // chord would silently recolour the selection on the way to the dialog.
+  const host = fakeCommandHost();
+  const commands = buildCommands(host);
+  commands.find((c) => c.id === "colour.pick")!.run();
+  assertEquals(host.clicked, ["palette:colours"]);
+});
+
+Deno.test("every colour is reachable from the picker, and only from it", () => {
+  // The four with chords are in the table; all nine rows come from the
+  // colour pool. A colour added to colours.ts and forgotten here would be
+  // unreachable, which is the drift the one-list rule exists to stop.
+  const host = fakeCommandHost();
+  const rows = colourCommands(host);
+  assertEquals(rows.length, SCRIPT_COLOURS.length);
+  assertEquals(rows.map((r) => r.label), SCRIPT_COLOURS.map((c) => c.name));
+  // Each row carries its own chip, and the clearing row's is empty rather
+  // than absent — paletteControls draws that as transparent.
+  assertEquals(rows.map((r) => r.swatch), SCRIPT_COLOURS.map((c) => c.hex));
+  // No row advertises a binding: the palette strips shortcuts from provided
+  // commands, and a row claiming Ctrl+Alt+Y would be advertising a chord
+  // that is bound on the spec, not here.
+  assert(rows.every((r) => !r.shortcut));
+
+  rows.find((r) => r.label === "Magenta")!.run();
+  assertEquals(host.clicked, ["colour:magenta"]);
+});
+
+Deno.test("the colour chords all survive being pressed while typing", () => {
+  // They are reached with the cursor in the script. Suppressed while typing —
+  // the default — they would be shortcuts that never fire when wanted.
+  const colourSpecs = COMMAND_SPECS.filter((s) => s.id.startsWith("colour."));
+  assert(colourSpecs.length >= 6, "expected the colour commands to be here");
+  for (const spec of colourSpecs) {
+    assert(
+      spec.allowWhileTyping,
+      `${spec.id} would be suppressed exactly when it is wanted`,
+    );
+    assert(spec.shortcut, `${spec.id} has no binding`);
+  }
 });

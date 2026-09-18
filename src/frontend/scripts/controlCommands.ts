@@ -20,6 +20,11 @@ import {
   type PaletteMode,
 } from "./commands.ts";
 import { PAD_BINDINGS, PAD_LABELS } from "./gamepad.ts";
+import {
+  colourSearchText,
+  DEFAULT_COLOUR_ID,
+  SCRIPT_COLOURS,
+} from "./colours.ts";
 
 /** A slider the commands nudge. Web Awesome's wa-slider satisfies this. */
 interface Slider {
@@ -53,6 +58,10 @@ export interface CommandHost {
     btnReset: Clickable;
   };
   docControls: { promptNew(): void };
+  /** Colour the selection, by id from colours.ts. See textColour.ts. */
+  applyColour(id: string): void;
+  /** Apply whatever colour was used last. */
+  repeatColour(): void;
   lnkViewerLink: { href: string };
   palette: { open(mode: PaletteMode): void };
   settings: { open(): void };
@@ -226,6 +235,68 @@ export const COMMAND_SPECS: CommandSpec[] = [
   { id: "clock.start", label: "Start countdown", group: "Clocks" },
   { id: "clock.stop", label: "Stop countdown", group: "Clocks" },
   { id: "clock.reset", label: "Reset countdown", group: "Clocks" },
+  {
+    // Ctrl+Alt+C rather than a bare Alt+C: bare Alt+letter opens the browser's
+    // own menus on Windows and Linux and inserts a character on macOS, where
+    // Option+Y is ¥ — and these are pressed *with the cursor in the script*,
+    // so a chord that fights the editor is worse than no chord. Ctrl+Alt is
+    // also the family the rest of this table uses, and what Google Docs picked
+    // for its own colour shortcut.
+    id: "colour.pick",
+    label: "Text colour…",
+    group: "Text",
+    shortcut: "Mod+Alt+KeyC",
+    keywords: ["color", "palette", "highlight", "red", "yellow", "swatch"],
+    // Every colour command is reached mid-sentence from the editor. Suppressed
+    // while typing — the default — they would be shortcuts that never fire
+    // when they are wanted, the same reasoning the live-editing pair carries.
+    allowWhileTyping: true,
+  },
+  {
+    // The one colour shortcut that *is* standard: Notion applies the last used
+    // colour with Ctrl+Shift+H, Google Docs highlights with Ctrl+Alt+H. H for
+    // the same reason both of them chose it.
+    id: "colour.repeat",
+    label: "Repeat last colour",
+    group: "Text",
+    shortcut: "Mod+Alt+KeyH",
+    keywords: ["color", "again", "same", "last"],
+    allowWhileTyping: true,
+  },
+  {
+    id: "colour.yellow",
+    label: "Colour: yellow",
+    group: "Text",
+    shortcut: "Mod+Alt+KeyY",
+    keywords: ["color", "cue", "emphasis"],
+    allowWhileTyping: true,
+  },
+  {
+    id: "colour.red",
+    label: "Colour: red",
+    group: "Text",
+    shortcut: "Mod+Alt+KeyR",
+    keywords: ["color", "warning"],
+    allowWhileTyping: true,
+  },
+  {
+    id: "colour.blue",
+    label: "Colour: blue",
+    group: "Text",
+    shortcut: "Mod+Alt+KeyB",
+    keywords: ["color", "speaker"],
+    allowWhileTyping: true,
+  },
+  {
+    // Not "white": clearing the mark lets the run inherit --viewer-color, so
+    // it follows a user theme. See colours.ts.
+    id: "colour.none",
+    label: "Colour: default",
+    group: "Text",
+    shortcut: "Mod+Alt+KeyN",
+    keywords: ["color", "clear", "none", "remove", "plain"],
+    allowWhileTyping: true,
+  },
   { id: "document.new", label: "New document", group: "Document" },
   { id: "pdf.close", label: "Close PDF", group: "Document" },
   {
@@ -435,6 +506,12 @@ export function buildCommands(host: CommandHost): Command[] {
     },
     // Read through the host when the key fires, not now: the palette is
     // constructed *from* this list, so it does not exist yet.
+    "colour.pick": () => host.palette.open("colours"),
+    "colour.repeat": () => host.repeatColour(),
+    "colour.yellow": () => host.applyColour("yellow"),
+    "colour.red": () => host.applyColour("red"),
+    "colour.blue": () => host.applyColour("blue"),
+    "colour.none": () => host.applyColour(DEFAULT_COLOUR_ID),
     "settings.open": () => host.settings.open(),
     "palette.open": () => host.palette.open("all"),
     "help.shortcuts": () => host.palette.open("shortcuts"),
@@ -454,4 +531,29 @@ export function buildCommands(host: CommandHost): Command[] {
       return { ...spec, run };
     },
   );
+}
+
+/**
+ * The colour palette as commands, for the picker the `colour.pick` chord opens.
+ *
+ * Commands rather than a list of its own, so the dialog's fuzzy search, arrow
+ * keys, hover and Enter are the ones the command palette already has — the
+ * same "one list feeds both" rule the keyboard and the palette follow. The
+ * keywords are what make "warn" find red and "clear" find the default.
+ *
+ * No `shortcut` on these rows even for the four colours that have one: the
+ * palette strips shortcuts from provided commands, and a row advertising a
+ * chord bound elsewhere in the table would be advertising it twice. The chord
+ * is on the `colour.*` spec above, which is where the cheatsheet reads it.
+ */
+export function colourCommands(host: CommandHost): Command[] {
+  return SCRIPT_COLOURS.map((colour) => ({
+    id: `colour.pick.${colour.id}`,
+    label: colour.name,
+    group: "Text" as const,
+    keywords: colourSearchText(colour).split(" "),
+    // The chip is the point of a colour row; see Command.swatch.
+    swatch: colour.hex,
+    run: () => host.applyColour(colour.id),
+  }));
 }

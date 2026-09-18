@@ -47,6 +47,7 @@ import { newEditor, restoreEditor, saveEditor } from "./editor.ts";
 import type { TextSizeAccess } from "./textSizeMenu.ts";
 import {
   buildCommands,
+  colourCommands,
   documentCommands,
   layoutCommands,
 } from "./controlCommands.ts";
@@ -54,6 +55,8 @@ import { PaletteControls } from "./paletteControls.ts";
 import { SettingsControls } from "./settingsControls.ts";
 import { GamepadControls } from "./gamepadControls.ts";
 import { connectController, type ControllerLink } from "./webrtc.ts";
+import { colourByID, DEFAULT_COLOUR_ID } from "./colours.ts";
+import { applyTextColour } from "./textColour.ts";
 import { type PdfView, renderPdf } from "./pdfview.ts";
 import {
   type BlockPos,
@@ -529,6 +532,11 @@ export class Teleprompter {
         () => documentCommands(this.docControls),
         () => layoutCommands(this.themeControls),
       ],
+      // A pool of its own rather than a provider: providers feed the command
+      // list, and a colour has no business appearing there — it would put
+      // eight rows in front of the operator every time they opened Ctrl+K.
+      colours: () => colourCommands(this),
+      restoreFocus: () => this.#restoreEditorCaret(),
     });
 
     // Handed the *same* bound list the palette got, so a controller button and
@@ -2279,6 +2287,66 @@ export class Teleprompter {
     // collapsing it.
     if (px <= 0) return;
     this.#setEditorScale(pxToTenths(px));
+  }
+
+  /**
+   * Put the caret back in the script after a dialog has been and gone.
+   *
+   * Focus alone is not enough and the difference is invisible until someone
+   * types: `wa-dialog` hands focus back to the editor, but the browser's
+   * caret is left in the dialog's own DOM, so the next keystroke goes
+   * somewhere else entirely — measured, a colour picked from the palette was
+   * followed by text appearing at the top of a 200-block script. Re-asserting
+   * the selection the editor already holds is what writes the caret back.
+   */
+  #restoreEditorCaret() {
+    if (this.#pdfBytes) return;
+    const wg = this.editor;
+    wg.focus();
+    // state.selection, not state.sel: the latter is the *resolved* selection
+    // (positions with their document context) and dispatch wants the plain
+    // one back.
+    wg.dispatch({ selection: wg.state.selection });
+  }
+
+  /**
+   * Colour the selection, and remember the choice for "repeat".
+   *
+   * The id rather than the hex, so the command table, the palette and the
+   * stored "last colour" all name the same thing and a colour's value can be
+   * retuned in one place. An unknown id does nothing: it can only come from
+   * hand-edited storage or a build that has dropped a colour, and quietly
+   * applying some other colour to the operator's script is worse than the
+   * shortcut appearing not to work.
+   *
+   * Nothing is sent from here. The mark goes into the document, so the
+   * editor's update listener carries it to storage and — with live editing on
+   * — to the displays, exactly as a typed character does.
+   */
+  applyColour(id: string) {
+    // A PDF has no editor to mark up, and #ownScroller would be the PDF pane.
+    if (this.#pdfBytes) return;
+    const colour = colourByID(id);
+    if (!colour) {
+      console.warn(`no colour ${id} to apply`);
+      return;
+    }
+    applyTextColour(this.editor, colour.hex);
+    // The clearing entry is deliberately not remembered: "repeat last colour"
+    // meaning "clear it again" is a shortcut nobody reaches for, and it would
+    // cost the operator the colour they had been using all service.
+    if (colour.hex) this.settings.lastColourID = colour.id;
+  }
+
+  /** Apply the colour used last, the one shortcut other editors all share. */
+  repeatColour() {
+    const stored = colourByID(this.settings.lastColourID);
+    // Validated here rather than in settings.ts, which has no business
+    // knowing the palette. A stored id this build no longer ships falls back
+    // to a usable colour instead of doing nothing with no explanation.
+    this.applyColour(
+      stored && stored.id !== DEFAULT_COLOUR_ID ? stored.id : "yellow",
+    );
   }
 
   /**

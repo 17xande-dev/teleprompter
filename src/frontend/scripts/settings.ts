@@ -116,6 +116,17 @@ export type Settings = {
    * pastes plain text and so carries no colour to correct.
    */
   brightenPastedText: boolean;
+  /**
+   * The colour "repeat last colour" applies, by id from colours.ts.
+   *
+   * The one setting here that is not a switch, and the one that is not really
+   * a preference either — it is the operator's *last action*, kept so the
+   * shortcut survives a reload the way Notion's own repeat-colour does.
+   * Validated where it is used rather than here: settings.ts has no business
+   * knowing the palette, and an id this build no longer ships should fall back
+   * to a usable colour rather than silently applying nothing.
+   */
+  lastColourID: string;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -125,6 +136,7 @@ export const DEFAULT_SETTINGS: Settings = {
   rollTargetToTomorrow: false,
   smoothScrub: true,
   brightenPastedText: true,
+  lastColourID: "yellow",
 };
 
 /**
@@ -147,8 +159,10 @@ export function parseSettings(raw: string | null): Settings {
   if (!parsed || typeof parsed !== "object") return settings;
   const source = <Record<string, unknown>> parsed;
   for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[]) {
+    // Still one typeof test per key, so a mistyped entry is dropped on its
+    // own — it just no longer assumes every setting is a boolean.
     if (typeof source[key] === typeof DEFAULT_SETTINGS[key]) {
-      settings[key] = <boolean> source[key];
+      (<Record<string, unknown>> settings)[key] = source[key];
     }
   }
   return settings;
@@ -236,6 +250,15 @@ export class SettingsStorage {
 
   set smoothScrub(value: boolean) {
     this.#settings.smoothScrub = value;
+    this.#save();
+  }
+
+  get lastColourID(): string {
+    return this.#settings.lastColourID;
+  }
+
+  set lastColourID(value: string) {
+    this.#settings.lastColourID = value;
     this.#save();
   }
 

@@ -875,6 +875,32 @@ tp-clock-control {
   background-color: var(--wa-color-neutral-fill-normal);
 }
 
+/* The colour chip in the colour picker.
+
+   Bordered rather than bare: the palette's surface is dark and so is the
+   script's default, so the "Default" row — which carries no colour at all and
+   is drawn transparent — would otherwise be an invisible chip that looks like
+   a rendering fault. The border gives it an outline to sit in, and doubles as
+   the separation white needs from a light dialog surface.
+
+   margin-right rather than a gap on the row: .palette-item is space-between,
+   so a gap would push the chip and the label apart instead of keeping them
+   together at the start. */
+.palette-swatch {
+  flex: 0 0 auto;
+  width: 0.9rem;
+  height: 0.9rem;
+  margin-right: 0.5rem;
+  border: 1px solid var(--wa-color-neutral-border-normal);
+  border-radius: var(--wa-border-radius-s);
+}
+
+/* The label takes the room the chip leaves, so the rows line up whether or
+   not the mode has swatches. */
+.palette-item .palette-label {
+  flex: 1 1 auto;
+}
+
 /* Holds the shortcut and the controller button together, so .palette-item's
    space-between puts the pair opposite the label rather than one at each end. */
 .palette-binds {

@@ -34,6 +34,29 @@ interface PaletteOptions {
    * offer a document that has since been deleted.
    */
   providers?: CommandProvider[];
+  /**
+   * The rows the "colours" mode shows.
+   *
+   * Separate from `providers` because those feed the *command* list, and a
+   * colour has no business there — eight extra rows in front of the operator
+   * every time they open Ctrl+K. Read on open for the same reason a provider
+   * is: it costs nothing and cannot go stale.
+   */
+  colours?: CommandProvider;
+  /**
+   * Put the caret back where the operator left it, once the dialog has gone.
+   *
+   * `wa-dialog` returns *focus* to the element that had it, but not the
+   * selection: measured, the editor reported `hasFocus` while the browser's
+   * caret was still inside the closed dialog's own markup, so the next thing
+   * typed landed at the top of the script instead of where the cursor had
+   * been. Harmless for every command that drives the page; wrong for one that
+   * colours the selection and hands the operator straight back to typing.
+   *
+   * Called on `wa-after-hide` rather than at close, because the dialog
+   * restores focus as part of hiding — anything done before that is undone.
+   */
+  restoreFocus?: () => void;
 }
 
 /**
@@ -96,6 +119,9 @@ export class PaletteControls {
   #apple = detectApple();
 
   #mode: PaletteMode = "all";
+  /** The colour rows, read on open like the providers are. */
+  #colours: CommandProvider | undefined;
+  #restoreFocus: (() => void) | undefined;
   /** What the list is currently showing — the array Enter indexes into. */
   #shown: Command[] = [];
   #selected = 0;
@@ -103,6 +129,8 @@ export class PaletteControls {
   constructor(commands: Command[], options: PaletteOptions) {
     this.#commands = commands;
     this.#providers = options.providers ?? [];
+    this.#colours = options.colours;
+    this.#restoreFocus = options.restoreFocus;
     this.#isEditorFocused = options.isEditorFocused;
 
     this.#dlg = document.querySelector("#dlgPalette")!;
@@ -129,6 +157,7 @@ export class PaletteControls {
       // Dropped rather than kept: holding document names open would mean the
       // next open briefly rendered a stale list before the providers ran.
       this.#dynamic = [];
+      this.#restoreFocus?.();
     });
 
     this.#bindShortcuts();
@@ -147,7 +176,11 @@ export class PaletteControls {
       .map((command) => ({ ...command, shortcut: undefined }));
     this.#input.value = "";
     this.#input.hidden = mode === "shortcuts";
-    this.#dlg.label = mode === "shortcuts" ? "Keyboard Shortcuts" : "Commands";
+    this.#dlg.label = mode === "shortcuts"
+      ? "Keyboard Shortcuts"
+      : mode === "colours"
+      ? "Text Colour"
+      : "Commands";
     this.#selected = 0;
     this.#renderList();
     this.#dlg.open = true;
@@ -297,6 +330,10 @@ export class PaletteControls {
     // would otherwise have nowhere to look up.
     const pool = this.#mode === "shortcuts"
       ? this.#commands.filter((c) => c.shortcut || c.pad)
+      : this.#mode === "colours"
+      // Only the colours: the picker is the same dialog over a different
+      // pool, not the command list with colours added to it.
+      ? this.#colours?.() ?? []
       : [...this.#commands, ...this.#dynamic];
     this.#shown = filterCommands(pool, this.#input.value ?? "");
     if (this.#selected >= this.#shown.length) {
@@ -319,6 +356,13 @@ export class PaletteControls {
       // Labels are escaped because the dynamic commands carry operator-typed
       // document and theme names, and the control page holds the room key —
       // the same reasoning as dom.ts's own comment.
+      // Before the label, because in a colour list the chip *is* the answer
+      // and the name only confirms it.
+      const swatch = command.swatch !== undefined
+        ? `<span class="palette-swatch" style="background:${
+          escapeHtml(command.swatch || "transparent")
+        }"></span>`
+        : "";
       const shortcut = command.shortcut
         ? `<kbd class="palette-keys">${
           escapeHtml(formatShortcut(command.shortcut, { apple: this.#apple }))
@@ -342,7 +386,7 @@ export class PaletteControls {
       html +=
         `<div class="palette-item" role="option" data-palette-index="${index}" aria-selected="${
           index === this.#selected
-        }"><span class="palette-label">${
+        }">${swatch}<span class="palette-label">${
           escapeHtml(command.label)
         }</span>${keys}</div>`;
     });
