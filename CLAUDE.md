@@ -166,6 +166,10 @@ WebSocket relay, `ice.go` STUN/TURN config.
   scroll by it every frame _after the speed was back at zero_, undoing any
   position sent to it on the next frame. "Send my position" silently did nothing
   and the viewer sat pinned to one end.
+- `colours.ts` / `textColour.ts` — the script's colour palette, split the usual
+  way: the list, its search words and the ids are DOM-free and tested (including
+  against the viewer's background — see the trap below), while the half that
+  dispatches a mark imports Wordgard and so can only be checked in a browser.
 - `textscale.ts` — the arithmetic behind matching the editor's font size to a
   viewer's, kept DOM-free and tested; `teleprompter.ts` does the measuring. What
   is matched is font size over content width, i.e. characters per line, because
@@ -1227,6 +1231,55 @@ position and the pacer carries on from there at the set speed.
   its real maximum. Pre-existing, and visible now that a scrub can put a display
   anywhere. Also note the guard is permanently true when the document is shorter
   than the viewport, so such a display never auto-scrolls at all.
+
+### Colouring the script
+
+Ctrl+Alt+C opens a searchable colour list, Ctrl+Alt+H repeats the last colour,
+and Ctrl+Alt+Y/R/B/N are the direct ones. `colours.ts` holds the palette,
+`textColour.ts` applies it, and the picker is the command palette in a third
+mode.
+
+- **Ctrl+Alt, not bare Alt.** Bare Alt+letter opens the browser's menus on
+  Windows and Linux and _inserts a character_ on macOS (Option+Y is ¥), and
+  these are pressed with the cursor in the script — a chord that fights the
+  editor is worse than no chord. It is also the family the rest of the table
+  uses. All six are `allowWhileTyping`, or they would be suppressed exactly when
+  they are wanted.
+- **There is no standard to follow for per-colour chords** — no major editor
+  ships them, checked before choosing. What _is_ conventional is repeat-last
+  (Notion `Ctrl+Shift+H`, Docs `Ctrl+Alt+H`, hence `H`) and a searchable list
+  (Notion's `/red`). Worth knowing before someone "corrects" these to match
+  another app.
+- **Clearing a colour is not `remove: Color.of("")`.** An attribute mark is
+  matched by its _value_, so removing an empty-valued Color leaves a `#ffd400`
+  run exactly as it was — verified in the browser, where the span survived the
+  shortcut with nothing reported anywhere. The document has to be walked over
+  the selection and the instance actually present removed, which is what
+  Wordgard's own `setColor` does, and a range can hold several colours at once.
+- **A bare cursor needs the stored-marks branch.** Colouring with no selection
+  means "what I type next", which is a mark on the selection rather than a
+  change to the document; without it, pressing a colour chord before typing a
+  cue does nothing at all.
+- **`wa-dialog` returns focus but not the caret.** After picking from the
+  palette the editor reported `hasFocus` while the browser's selection was still
+  inside the closed dialog's markup, so the next keystroke landed at the _top_
+  of a 200-block script. `PaletteControls` takes a `restoreFocus` callback and
+  calls it on `wa-after-hide` — after the hide, because the dialog restores
+  focus as part of hiding and anything done before is undone — and the control
+  page re-asserts `state.selection`, which is what writes the caret back.
+  `state.selection`, not `state.sel`: the latter is the resolved selection and
+  `dispatch` wants the plain one.
+- **The palette is contrast-checked, not chosen by taste.** `colours_test.ts`
+  runs every entry through `contrastOnBlack` and `MIN_TEXT_LUMINANCE` — the same
+  bar `brightenTextColor` applies to a _pasted_ colour. Shipping a list is only
+  worth anything if the list passes it: plain blue is 2.44:1 on black, which is
+  why the blue here is a pale cornflower. The operator can still reach any
+  colour through the editor's own picker.
+- **"Default" clears the mark rather than setting white**, so the run inherits
+  `--viewer-color` and follows a user theme — the same reasoning as
+  `contrast.ts` dropping a grey instead of replacing it. It is also the one
+  choice not remembered by "repeat last colour", which would otherwise come to
+  mean "clear it again".
 
 ### Remembering where the operator was
 

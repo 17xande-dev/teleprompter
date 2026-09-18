@@ -55,6 +55,27 @@ dragged the divider since. Nothing the audience sees moves.
 field and selected: press Enter to keep it, or just start typing to replace it.
 Nothing is created until you confirm, so Escape leaves the open script alone.
 
+### Colouring the script
+
+Colour is how a script says "this is a cue" or "do not read this aloud". Four
+colours have a key of their own — **Ctrl+Alt+Y** yellow, **Ctrl+Alt+R** red,
+**Ctrl+Alt+B** blue, **Ctrl+Alt+N** back to default — and **Ctrl+Alt+C** opens a
+searchable list of all of them, where typing "warn" finds red and "clear" finds
+the default. **Ctrl+Alt+H** applies whatever colour you used last, which is the
+quick way to mark several lines the same.
+
+They work with text selected, and also with the cursor sitting in a line: then
+the colour applies to what you type next, so you can set a colour and write the
+cue straight out.
+
+Every colour in the list has been checked for readability on a display's black
+background, which is why the blue is pale rather than a true blue — a true blue
+is unreadable at a distance. The editor's own colour picker in the toolbar still
+reaches any colour at all if you need one.
+
+"Default" is not white: it removes the colour, so the line follows whatever your
+viewer theme sets. That is what you want if you ever change theme.
+
 ### Holding an edit back
 
 **Live editing** in the **Sync** card is on by default: what you type goes
