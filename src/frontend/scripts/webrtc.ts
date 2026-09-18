@@ -12,6 +12,11 @@
 
 import type { ControlMessage } from "./protocol.ts";
 import { chunkFile, type Frame, makeReassembler } from "./filetransfer.ts";
+import {
+  chunkControl,
+  CONTROL_CHUNK_SIZE,
+  makeControlReassembler,
+} from "./controlframes.ts";
 
 type ConnState = "waiting" | "connecting" | "connected" | "disconnected";
 
@@ -131,6 +136,11 @@ function makeLink(opts: LinkOptions): Link {
   // Cancels an in-flight pump when the file it is sending is superseded or the
   // link closes, so two pumps can't interleave chunks on the same channel.
   let fileGeneration = 0;
+  // The same, for a control message too large to send in one piece — the
+  // script, once a service's worth of text has been pasted into it. It doubles
+  // as the id the parts carry, so the receiver can tell a superseded message's
+  // stragglers from the one now arriving.
+  let controlGeneration = 0;
 
   function ensurePeerConnection() {
     if (pc) return;
@@ -159,8 +169,11 @@ function makeLink(opts: LinkOptions): Link {
     fileCh.binaryType = "arraybuffer";
 
     controlCh.onopen = () => {
+      // Through sendControlJSON rather than a bare send: a queued message is
+      // usually the newcomer's catch-up, which carries the whole script and is
+      // the most likely message in the app to be over the size limit.
       for (const msg of pendingControl.splice(0)) {
-        controlCh!.send(JSON.stringify(msg));
+        sendControlJSON(JSON.stringify(msg));
       }
     };
 
@@ -181,8 +194,11 @@ function makeLink(opts: LinkOptions): Link {
       lastScrollSeq = s;
       opts.onScroll(r, s);
     };
+    const reassembleControl = makeControlReassembler((json) => {
+      opts.onControl(JSON.parse(json) as ControlMessage);
+    });
     controlCh.onmessage = (e: MessageEvent) => {
-      opts.onControl(JSON.parse(e.data) as ControlMessage);
+      reassembleControl(e.data as string);
     };
 
     pc.onicecandidate = (e) => {
@@ -272,6 +288,64 @@ function makeLink(opts: LinkOptions): Link {
   // buffer is full and resuming on "bufferedamountlow". Async rather than a
   // callback chain so the generator's position is just a local — nothing to
   // reset between transfers, and abandoning one is a generation bump.
+  /**
+   * Send one control message, in as many pieces as it takes.
+   *
+   * Anything inside the limit goes out synchronously, exactly as it always
+   * has: that is every message but the script, and putting them behind a
+   * promise would reorder them against a message sent a moment later.
+   *
+   * A message over the limit is pumped like a file — with backpressure, so a
+   * megabyte of script does not park the scroll samples behind it, and with a
+   * generation, so a keystroke's fresh copy abandons the one still going out
+   * rather than interleaving two scripts on the same stream. The receiver
+   * drops the abandoned one's stragglers by id.
+   */
+  function sendControlJSON(json: string) {
+    const ch = controlCh;
+    if (!ch || ch.readyState !== "open") return;
+    const id = ++controlGeneration;
+    if (json.length <= CONTROL_CHUNK_SIZE) {
+      // Still guarded: a channel can close between the readyState check and
+      // the send, and this runs inside the editor's update listener, where an
+      // escaping throw takes the rest of the handler with it — which is how a
+      // script too big to send stopped the preview updating as well.
+      try {
+        ch.send(json);
+      } catch (err) {
+        console.error("control send failed", err);
+      }
+      return;
+    }
+    pumpControl(json, id);
+  }
+
+  async function pumpControl(json: string, generation: number) {
+    const ch = controlCh;
+    if (!ch) return;
+    ch.bufferedAmountLowThreshold = FILE_BUFFER_LOW;
+    for (const frame of chunkControl(json, generation)) {
+      if (generation !== controlGeneration || ch.readyState !== "open") return;
+      if (ch.bufferedAmount > FILE_BUFFER_HIGH) {
+        await new Promise<void>((resolve) => {
+          ch.addEventListener("bufferedamountlow", () => resolve(), {
+            once: true,
+          });
+        });
+        if (generation !== controlGeneration || ch.readyState !== "open") {
+          return;
+        }
+      }
+      try {
+        ch.send(frame);
+      } catch {
+        // The viewer closed its tab mid-message. Nothing to recover: it will
+        // be caught up from scratch if it comes back.
+        return;
+      }
+    }
+  }
+
   async function pumpFile(name: string, bytes: ArrayBuffer) {
     const ch = fileCh;
     if (!ch) return;
@@ -338,7 +412,7 @@ function makeLink(opts: LinkOptions): Link {
         throw new Error("send a pdf with sendFile, not sendControl");
       }
       if (controlCh?.readyState === "open") {
-        controlCh.send(JSON.stringify(msg));
+        sendControlJSON(JSON.stringify(msg));
       } else {
         pendingControl.push(msg);
       }
@@ -354,6 +428,7 @@ function makeLink(opts: LinkOptions): Link {
       // Abandon any pump in flight before tearing the connection down, so it
       // doesn't wake from its bufferedamountlow wait onto a dead channel.
       fileGeneration++;
+      controlGeneration++;
       pendingFile = null;
       // And stop trying to recover a link nobody wants any more — otherwise a
       // viewer that really has left keeps a restart queued against a closed
