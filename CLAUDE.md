@@ -682,13 +682,21 @@ WebSocket relay, `ice.go` STUN/TURN config.
   plain box with numbers in it".
   - CodeMirror accepts `root`, so `cssEditor.ts` passes `root: document`.
   - **Wordgard has no such option** (`this.root = getRoot(this.dom.parentNode)`
-    in `setConnected`). The main editor gets away with it only by accident:
-    `teleprompter.ts` builds it in its constructor, _before_ `wa-split-panel`
-    upgrades and attaches its shadow root, so `assignedSlot` is still null and
-    the walk reaches the document. Verified — its rules really are in
-    `document.head`. If anything ever defers editor construction, or the mount
-    moves, it will break with no error. The fix then is to copy the sheets the
-    shadow root adopted onto `document.adoptedStyleSheets`.
+    in `setConnected`). The editor built in `teleprompter.ts`'s constructor gets
+    away with it by accident of timing — it is created _before_ `wa-split-panel`
+    upgrades and attaches its shadow root, so the walk reaches the document.
+    **Every _rebuilt_ editor does not, and that is every document switch and
+    every New.** This was predicted here as hypothetical and then found in the
+    running app: after a switch, `scrollDOM` computed `height: 32211px` instead
+    of `var(--pane-height)`, so `Wordgard.scrolling()` was not in force, the
+    script pane grew to the length of the document and **stopped scrolling at
+    all** — with nothing in any console, and a reload appearing to fix it
+    because a reload goes back through the lucky path. `createWithStyles` in
+    `editor.ts` is the fix this file already prescribed: copy the sheets the
+    shadow root adopted onto `document.adoptedStyleSheets`, **diffed** against
+    what that root held before the editor was built, so it takes the editor's
+    own sheets and none of the component's. Anything that builds an editor goes
+    through it.
   - This is invisible to type-checking _and_ to DOM-structure assertions —
     `.cm-editor`, `.cm-gutters` and 16 `.cm-line`s were all present and correct
     while the thing was completely unstyled. Assert **computed styles**, and
@@ -1202,6 +1210,32 @@ position and the pacer carries on from there at the set speed.
   its real maximum. Pre-existing, and visible now that a scrub can put a display
   anywhere. Also note the guard is permanently true when the document is shorter
   than the viewport, so such a display never auto-scrolls at all.
+
+### Remembering where the operator was
+
+The control page's own pane is stored per document as a `BlockPos` on `Doc`, and
+restored a frame after the editor is built.
+
+- **A block and a fraction, never pixels or a ratio**, for the reason the Sync
+  buttons already carry: the reading size and the pane's width both change
+  between sessions, and a bigger font wraps long paragraphs more than short
+  ones, so neither survives. The block index is the same document either way.
+- **`setScrollFor` takes the id explicitly.** `setCurrent` moves before the
+  editor is rebuilt, so writing against "the current document" files the
+  outgoing pane's position under the script just opened — the operator then
+  opens a script and lands somewhere they have never been. `#loadedDocID` is
+  what the control page measures against.
+- **Restored after a frame, not immediately.** The editor is built synchronously
+  but has no geometry until layout, and `#blockMetrics` measured before that
+  returns zero-height blocks, which resolves to the top — silently losing the
+  place this exists to keep.
+- Shares `DocStorage`'s throttle and its timer: a wheel produces events as fast
+  as typing does, and each write serialises the whole collection. The control
+  page measures _and_ flushes on `pagehide`/hidden rather than leaving it to
+  `DocControls`' own handler, which was registered first and so would write
+  before the measurement.
+- PDFs are excluded: held in memory for the session, so there is nothing to come
+  back to.
 
 ### The Sync buttons, and the coordinate space their offsets live in
 

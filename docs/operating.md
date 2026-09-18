@@ -45,6 +45,12 @@ control page's browser storage — the **Documents** dropdown switches, renames
 and deletes them, and whatever you were typing survives a refresh (writes are
 coalesced to one every 500ms, and flushed when the page is hidden).
 
+Your place in the script is remembered per document, so a refresh — or a crash,
+or coming back to a document you were working on earlier — puts you back on the
+line you were reading rather than at the top. It follows the text rather than
+the pixels, so it still lands correctly if you have changed the reading size or
+dragged the divider since. Nothing the audience sees moves.
+
 **New** asks what to call the document, with a generated name already in the
 field and selected: press Enter to keep it, or just start typing to replace it.
 Nothing is created until you confirm, so Escape leaves the open script alone.
