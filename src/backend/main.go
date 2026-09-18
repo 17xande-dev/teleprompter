@@ -67,17 +67,32 @@ func pageHandler(fsys fs.FS, name string) http.Handler {
 	})
 }
 
-// securityHeaders sets a CSP appropriate for a same-origin app: no
-// third-party *script* is ever loaded, and WebRTC's SDP/ICE signaling flows
-// over the same-origin WebSocket ('self' already covers ws/wss to the
-// page's own origin), while the data channels themselves are peer-to-peer
-// and outside the CSP's remit.
+// securityHeaders sets a CSP appropriate for a same-origin app: the only
+// third-party *script* admitted is Cloudflare's analytics beacon, and
+// WebRTC's SDP/ICE signaling flows over the same-origin WebSocket ('self'
+// already covers ws/wss to the page's own origin), while the data channels
+// themselves are peer-to-peer and outside the CSP's remit.
 //
 // style-src needs 'unsafe-inline' and connect-src/img-src need the
 // fontawesome CDN because the Web Awesome component library (predates this
 // change) applies inline styles and fetches its icon SVGs remotely at
 // runtime — neither is under this app's control without replacing that
 // library. Recorded as a deliberate trade-off, not an oversight.
+//
+// The two cloudflareinsights hosts are Cloudflare Web Analytics, which the
+// proxy *injects* into the HTML in front of this server — so the page asks for
+// a script this code never wrote, and refusing it put a violation in the
+// console on every single load while the analytics silently collected nothing.
+// Two hosts because they are two different things: the beacon is fetched from
+// static.cloudflareinsights.com (script-src) and reports to
+// cloudflareinsights.com/cdn-cgi/rum (connect-src). Admitted deliberately and
+// with the trade-off stated, because this policy is tight for a reason: the
+// editor renders HTML pasted from Word and Google Docs, and the viewer renders
+// whatever the control page pushes with innerHTML. Neither can introduce a
+// *script* — that is what script-src is for — and widening it by one host
+// whose content Cloudflare serves is the price of knowing whether anyone uses
+// this. Turning the injection off in the Cloudflare dashboard is the way back
+// out; nothing in the app depends on the beacon loading.
 //
 // script-src needs 'wasm-unsafe-eval' for pdf.js, whose image decoders and
 // colour management are WebAssembly; Chromium refuses WebAssembly.instantiate
@@ -87,9 +102,11 @@ func pageHandler(fsys fs.FS, name string) http.Handler {
 // why the worker gets its own un-hashed bundle output (see deno.jsonc).
 func securityHeaders(next http.Handler) http.Handler {
 	const csp = "default-src 'self'; " +
-		"script-src 'self' 'wasm-unsafe-eval'; " +
+		"script-src 'self' 'wasm-unsafe-eval' " +
+		"https://static.cloudflareinsights.com; " +
 		"style-src 'self' 'unsafe-inline'; " +
-		"connect-src 'self' https://ka-f.fontawesome.com data:; " +
+		"connect-src 'self' https://ka-f.fontawesome.com " +
+		"https://cloudflareinsights.com data:; " +
 		"img-src 'self' data:; " +
 		"object-src 'none'; " +
 		"base-uri 'none'; " +

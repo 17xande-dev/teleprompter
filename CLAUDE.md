@@ -763,6 +763,19 @@ WebSocket relay, `ice.go` STUN/TURN config.
   - Each attempt re-arms the next from inside its own callback rather than
     waiting for another state change, because a restart that fails to connect
     may never transition again — and then nothing would be left trying.
+- **Cloudflare injects a script the repo never wrote, and the CSP has to admit
+  it.** Web Analytics is set up by the proxy, so the deployed HTML asks for
+  `static.cloudflareinsights.com/beacon.min.js` even though nothing here
+  references it — and under `script-src 'self'` it was refused on every load,
+  logging a violation and collecting nothing. Two hosts, because they are two
+  different things: the beacon is _fetched_ from `static.cloudflareinsights.com`
+  and _reports_ to `cloudflareinsights.com/cdn-cgi/rum`, so allowing only the
+  script leaves it loading and then failing to report — which looks like working
+  analytics until the dashboard stays empty. `main_test.go` guards both hosts
+  and, in the same file, the properties that make the relaxation affordable (no
+  `'unsafe-inline'`, no `'unsafe-eval'`, no `blob:`), because nothing in this
+  repo references those hosts and a later tightening would drop them with no
+  other test noticing.
 - **A data channel refuses a message past `max-message-size`, and the script
   goes past it.** 256KB in Chrome. `sendControl` used to hand the whole script
   to `send` as one JSON string, and over that size it throws
