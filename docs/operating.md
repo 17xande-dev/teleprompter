@@ -45,6 +45,10 @@ control page's browser storage — the **Documents** dropdown switches, renames
 and deletes them, and whatever you were typing survives a refresh (writes are
 coalesced to one every 500ms, and flushed when the page is hidden).
 
+**New** asks what to call the document, with a generated name already in the
+field and selected: press Enter to keep it, or just start typing to replace it.
+Nothing is created until you confirm, so Escape leaves the open script alone.
+
 ### Holding an edit back
 
 **Live editing** in the **Sync** card is on by default: what you type goes

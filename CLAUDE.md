@@ -751,6 +751,27 @@ WebSocket relay, `ice.go` STUN/TURN config.
   - Each attempt re-arms the next from inside its own callback rather than
     waiting for another state change, because a restart that fails to connect
     may never transition again — and then nothing would be left trying.
+- **A data channel refuses a message past `max-message-size`, and the script
+  goes past it.** 256KB in Chrome. `sendControl` used to hand the whole script
+  to `send` as one JSON string, and over that size it throws
+  `TypeError: Trying to send message larger than max-message-size` — measured on
+  the running app at 143KB of pasted HTML going through and 333KB throwing. Two
+  things made it expensive to diagnose. The throw lands _inside the editor's
+  update listener_, so it takes the rest of that handler with it and the preview
+  stops updating too; and it repeats on every later edit, so the display sits on
+  the last script small enough to fit with nothing on screen saying why.
+  `controlframes.ts` frames an oversized message as parts — `{k: "part"}`, never
+  `type`, so a part can never be read as a `ControlMessage` — and `pumpControl`
+  sends them with the same backpressure and generation `pumpFile` uses. **A
+  message that fits is still sent unwrapped**, which is every message but the
+  script and is what keeps them synchronous and in order. Two things not to
+  simplify: a cut must not split a surrogate pair (a lone surrogate is not
+  encodable as UTF-8, so the channel puts U+FFFD at both ends of the join and
+  the script arrives mangled), and the part count is produced by walking the
+  cuts rather than by dividing the length — a cut moved back off a pair makes a
+  part shorter, so the arithmetic answer can be one short and the receiver then
+  waits forever for a part that never comes. A theme's CSS travels the same
+  channel and is the other message that can grow without limit.
 - **A data channel isn't open when it's created.** Anything sent between
   `createDataChannel` and negotiation completing is dropped unless queued —
   `makeLink` queues control sends, and `connectViewer` queues again for the
