@@ -227,7 +227,16 @@ WebSocket relay, `ice.go` STUN/TURN config.
   command _ids_**, resolved out of the same `Command[]` the palette gets, so the
   third input device joins the same "one list feeds both" rule — and
   `applyPadBindings` stamps the `pad` label onto the specs from that same map,
-  so the palette can't advertise a button that isn't wired.
+  so the palette can't advertise a button that isn't wired. **Each stick drives
+  its own scroller and carries its own remainder** — the left the script, the
+  right the sidebar's `#controls` — because a debt owed by one has no business
+  being spent on the other, and the sidebar's rate is lower (900 against
+  2500px/s) since that column is about 1300px rather than tens of thousands. **A
+  held button repeats only where the command says `repeatable`**, which is the
+  same flag the keyboard reads: the Text Scale slider is twenty steps wide and
+  wants holding, while holding "send my position" must still send one position.
+  The delay before the first repeat is what keeps a deliberate press from
+  becoming two.
 - `teleprompter.ts` — the control page. `viewer.ts` — the display, running
   either standalone (own WebRTC link) or embedded in the control page's preview
   iframe (postMessage), detected via `window.parent !== window`.

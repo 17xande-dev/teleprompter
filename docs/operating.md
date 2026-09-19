@@ -290,20 +290,29 @@ in, not to wherever the countdown had got to.
 Plug in a controller and a pad icon appears in the app bar. Chrome only admits a
 pad exists once a button is pressed, so give it one.
 
-| Control          | Does                                                     |
-| ---------------- | -------------------------------------------------------- |
-| **R2**           | scroll forward, 0 → full speed, proportional to pressure |
-| **L2**           | the same, in reverse                                     |
-| **Left stick ↕** | scroll your own pane — find a place in the script        |
-| **Cross**        | pause / resume, speed remembered                         |
-| **R1**           | send my position to the displays                         |
-| **L1**           | go to the displays' position                             |
+| Control           | Does                                                     |
+| ----------------- | -------------------------------------------------------- |
+| **R2**            | scroll forward, 0 → full speed, proportional to pressure |
+| **L2**            | the same, in reverse                                     |
+| **Left stick ↕**  | scroll your own pane — find a place in the script        |
+| **Right stick ↕** | scroll the controls under the preview                    |
+| **D-pad ↑ / ↓**   | the viewers' text size, bigger and smaller               |
+| **Cross**         | pause / resume, speed remembered                         |
+| **R1**            | send my position to the displays                         |
+| **L1**            | go to the displays' position                             |
 
 The throttles are absolute, not incremental: the slider follows your finger and
 letting go stops. Squeeze both and they cancel. Pausing with Cross leaves the
 speed where it was, so resuming picks up where you left off — and a pad you are
 not touching never writes the slider, so the wheel and the arrow keys keep
 working with one plugged in.
+
+The two sticks drive different things and neither touches the other's: the left
+one moves the script, the right one the column of cards — transport, clocks,
+message, sync, viewers — which on a short window is taller than its pane. The
+D-pad holds to repeat, so you can run the text size up without tapping; the
+buttons that do something once, like sending your position, fire once however
+long you hold them.
 
 Buttons are read as commands, so a pad press, a palette row and a shortcut are
 the same action. Button numbering comes from the Gamepad API's `"standard"`
