@@ -521,13 +521,40 @@ tp-clock-control tp-clock {
    pane's edge. On the content rather than #editor, which the toolbar is also
    inside — indenting that would push the bar off the pane's own alignment.
 
-   `wg-content` is an element, not a class, and Wordgard's own theme sets
-   `margin: 0` on it; `#editor wg-content` outweighs that bare type selector,
-   and a longhand beats the shorthand for the one side it names. Declared in
-   rem rather than em: an em here would scale with --editor-scale, so the
-   margin would grow as the operator turned their reading size up. */
+   **Padding, never margin, and this is not a style preference.** Wordgard
+   draws its own caret (`caret-color` is transparent and a `wg-cursor` element
+   is positioned inside `wg-cursor-layer`), and that layer is placed from the
+   scroller, accounting for the content's *padding* but not for a margin added
+   underneath it. Measured: with `margin-inline-start: 0.75rem` every caret was
+   drawn 12.9px left of the text at every position along the line — constant,
+   so an origin shift rather than a measurement error — which at prompter sizes
+   puts the caret on top of the last letter instead of after it. The same
+   0.75rem as padding measures 0.9px, which is the caret's own border.
+
+   The value absorbs Wordgard's own 0.75rem on this element — the longhand
+   replaces it — so the script still starts 1.5rem in, exactly where it did
+   when this was a margin. Declared in rem rather than em: an em here would
+   scale with --editor-scale, so the gutter would grow as the operator turned
+   their reading size up. */
 #editor wg-content {
-  margin-inline-start: 0.75rem;
+  padding-inline-start: 1.5rem;
+}
+
+/* The selection, stated rather than left to the browser.
+
+   Chrome picks its own colours for a selection, and it picks *different* ones
+   when the document does not have focus — a grey that is nearly invisible
+   against this near-black editor, which is a fair description of "I selected
+   something and cannot see what". An operator's window loses focus constantly:
+   the popped-out display takes it, so does anything else on the desk.
+
+   Named colours rather than the theme's accents, because this has to stay
+   readable over a script that carries its own colours: pasted red text, a
+   yellow cue, a highlighted run. A solid blue behind white text is the one
+   pairing that survives all of them. */
+#editor ::selection {
+  background-color: #2b5fd9;
+  color: #ffffff;
 }
 
 /* The space the preview is allowed to occupy. #applyPreviewScale measures
