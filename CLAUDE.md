@@ -709,6 +709,27 @@ WebSocket relay, `ice.go` STUN/TURN config.
     `.cm-editor`, `.cm-gutters` and 16 `.cm-line`s were all present and correct
     while the thing was completely unstyled. Assert **computed styles**, and
     look at a screenshot.
+- **Wordgard draws its own caret, so the script's gutter has to be padding.**
+  `caret-color` is transparent and a `wg-cursor` element is positioned inside
+  `wg-cursor-layer`, which is placed from the scroller and accounts for
+  `wg-content`'s _padding_ but not for a margin added underneath it. This file
+  used to recommend the opposite: `#editor wg-content` carried
+  `margin-inline-start`, and every caret was drawn **12.9px left of the text** —
+  at every position along the line, so an origin shift rather than a measurement
+  error — which at prompter sizes sits on the last letter instead of after it.
+  As padding the error is 0.9px, the caret's own border. The declared value
+  absorbs Wordgard's own 0.75rem on that element, since a longhand replaces it,
+  so the gutter stays where it was. `editorstyle_test.ts` guards it against the
+  stylesheet on disk: nothing else can see this — no unit test renders CSS,
+  type-checking cannot, and on screen it reads as a browser quirk rather than as
+  something this repo did.
+- **The editor states its own `::selection`.** Left to the browser, Chrome picks
+  different colours when the document does not have focus — a grey that is
+  nearly invisible against this near-black editor — and an operator's window
+  loses focus constantly, not least to the display they popped out. The colours
+  are named rather than taken from the theme, because the selection has to stay
+  readable over a script carrying its own: pasted red, a yellow cue, a
+  highlighted run.
 - **Custom elements here are autonomous (`<tp-clock>`), never customized
   built-ins (`<time is="tp-clock">`)**, because WebKit accepts the definition
   and then ignores it. Measured on iOS 18.7 / Safari 26.6 through the device's
