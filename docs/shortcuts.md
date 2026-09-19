@@ -31,20 +31,20 @@ throttles and stick do, and [why some chords are unavailable](#unavailable).
 
 ## Text
 
-| Command                      | Keys         | Pad |
-| ---------------------------- | ------------ | --- |
-| Bigger text                  | `Ctrl+Alt+=` |     |
-| Smaller text                 | `Ctrl+Alt+-` |     |
-| Match viewers' text size     |              |     |
-| Send my text size to viewers |              |     |
-| Bigger editor text           | `Ctrl+Alt+]` |     |
-| Smaller editor text          | `Ctrl+Alt+[` |     |
-| Text colour…                 | `Ctrl+Alt+C` |     |
-| Repeat last colour           | `Ctrl+Alt+H` |     |
-| Colour: yellow               | `Ctrl+Alt+Y` |     |
-| Colour: red                  | `Ctrl+Alt+R` |     |
-| Colour: blue                 | `Ctrl+Alt+B` |     |
-| Colour: default              | `Ctrl+Alt+N` |     |
+| Command                      | Keys         | Pad        |
+| ---------------------------- | ------------ | ---------- |
+| Bigger text                  | `Ctrl+Alt+=` | D-pad up   |
+| Smaller text                 | `Ctrl+Alt+-` | D-pad down |
+| Match viewers' text size     |              |            |
+| Send my text size to viewers |              |            |
+| Bigger editor text           | `Ctrl+Alt+]` |            |
+| Smaller editor text          | `Ctrl+Alt+[` |            |
+| Text colour…                 | `Ctrl+Alt+C` |            |
+| Repeat last colour           | `Ctrl+Alt+H` |            |
+| Colour: yellow               | `Ctrl+Alt+Y` |            |
+| Colour: red                  | `Ctrl+Alt+R` |            |
+| Colour: blue                 | `Ctrl+Alt+B` |            |
+| Colour: default              | `Ctrl+Alt+N` |            |
 
 ## Message
 

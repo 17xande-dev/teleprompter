@@ -2007,6 +2007,30 @@ export class Teleprompter {
   }
 
   /**
+   * Scroll the sidebar's controls, returning the pixels it actually moved.
+   *
+   * The right stick's, and a different scroller from the script's: this is
+   * the column of cards under the preview — transport, clocks, message, sync,
+   * viewers — which is taller than its pane on any window short enough to
+   * matter (measured at 1337px of cards in a 501px pane). Reaching the viewer
+   * list or the clocks otherwise means putting the pad down, which is the
+   * thing a pad is there to avoid.
+   *
+   * `#controls` is the scroller rather than the pane around it: the sidebar's
+   * split gives each half a box, and only this one carries `overflow: auto`.
+   * Returning what it *actually* moved is what lets the stick carry a
+   * sub-pixel remainder instead of having slow drift rounded away, the same
+   * contract scrollOwnPane has.
+   */
+  scrollControls(px: number): number {
+    const el = document.querySelector("#controls");
+    if (!el) return 0;
+    const before = el.scrollTop;
+    el.scrollTop = before + px;
+    return el.scrollTop - before;
+  }
+
+  /**
    * Keep the operator's place in the script across a reload.
    *
    * Their own pane is the one thing on this page with no other memory: the

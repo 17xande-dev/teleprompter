@@ -32,10 +32,19 @@ function fakePad() {
  * bound list the palette gets, and that lookup is part of what is under test.
  */
 function fakeCommands(ran: string[]): Command[] {
-  return ["scroll.toggle", "position.send", "position.get"].map((id) => ({
+  return [
+    { id: "scroll.toggle", repeatable: false },
+    { id: "position.send", repeatable: false },
+    { id: "position.get", repeatable: false },
+    // The two the D-pad drives. Repeatable, like the real table's, which is
+    // what lets a held button keep nudging the slider.
+    { id: "scale.up", repeatable: true },
+    { id: "scale.down", repeatable: true },
+  ].map(({ id, repeatable }) => ({
     id,
     label: id,
     group: "Scroll" as const,
+    repeatable,
     run: () => {
       ran.push(id);
     },
@@ -52,6 +61,11 @@ function harness({ scrollLimit = Infinity }: { scrollLimit?: number } = {}) {
   const ran: string[] = [];
   const slider = { value: 0, inputs: 0 };
   const scrolled: number[] = [];
+  const scrolledControls: number[] = [];
+  // What each scroller was *asked* for, as against what it moved. The carry
+  // only shows up here: a scroller that refuses to move reports 0 every
+  // frame while the request it is handed keeps growing.
+  const askedControls: number[] = [];
   const indicator = { hidden: true as boolean | string };
   const pads: unknown[] = [];
   const target = new EventTarget();
@@ -74,6 +88,12 @@ function harness({ scrollLimit = Infinity }: { scrollLimit?: number } = {}) {
         scrolled.push(moved);
         return moved;
       },
+      scrollControls: (px: number) => {
+        askedControls.push(px);
+        const moved = Math.min(Math.abs(px), scrollLimit) * Math.sign(px);
+        scrolledControls.push(moved);
+        return moved;
+      },
     },
     {
       indicator,
@@ -93,6 +113,8 @@ function harness({ scrollLimit = Infinity }: { scrollLimit?: number } = {}) {
     ran,
     slider,
     scrolled,
+    scrolledControls,
+    askedControls,
     indicator,
     pads,
     connect: () => target.dispatchEvent(new Event("gamepadconnected")),
@@ -283,6 +305,7 @@ Deno.test("a binding naming a command that isn't there fails loudly", () => {
   let threw = false;
   try {
     new GamepadControls([], {
+      scrollControls: () => 0,
       rngSpeed: { value: 0, dispatchEvent: () => true },
       scrollOwnPane: () => 0,
     });
@@ -290,4 +313,115 @@ Deno.test("a binding naming a command that isn't there fails loudly", () => {
     threw = true;
   }
   assert(threw);
+});
+
+Deno.test("the right stick scrolls the sidebar, and the left the script", () => {
+  // Two scrollers, two sticks. Crossing them would be invisible in review and
+  // obvious the first time an operator nudged the panel and the script moved
+  // in front of the talent.
+  const h = harness();
+  const pad = fakePad();
+  h.pads.push(pad);
+  h.connect();
+  h.step(0);
+
+  pad.axes[3] = 1; // Right stick down.
+  h.step(1000);
+  assertEquals(h.scrolled.length, 0, "the script must not move");
+  assertEquals(h.scrolledControls.length, 1);
+  assert(h.scrolledControls[0] > 0, "down on the stick scrolls down");
+
+  pad.axes[3] = 0;
+  pad.axes[1] = -1; // Left stick up.
+  h.step(2000);
+  assertEquals(h.scrolledControls.length, 1, "the sidebar must not move");
+  assertEquals(h.scrolled.length, 1);
+  assert(h.scrolled[0] < 0);
+});
+
+Deno.test("each stick carries its own sub-pixel remainder", () => {
+  // A debt owed by one scroller must not be spent on the other: with a shared
+  // carry, a flick of the script would make the sidebar jump on the next
+  // frame the right stick moved at all.
+  const h = harness({ scrollLimit: 0 });
+  const pad = fakePad();
+  h.pads.push(pad);
+  h.connect();
+  h.step(0);
+
+  pad.axes[3] = 0.4;
+  h.step(100);
+  h.step(200);
+  assert(
+    h.askedControls[1] > h.askedControls[0],
+    `the sidebar's unspent pixels should accumulate: ${h.askedControls}`,
+  );
+  assertEquals(h.scrolled.length, 0, "and none of it reached the script");
+});
+
+Deno.test("a held D-pad keeps nudging the slider, after a pause", () => {
+  const h = harness();
+  const pad = fakePad();
+  h.pads.push(pad);
+  h.connect();
+  h.step(0);
+
+  pad.press(12); // D-pad up.
+  h.step(100);
+  assertEquals(h.ran, ["scale.up"], "the press itself fires once");
+
+  // Nothing during the delay, however many frames go by.
+  h.step(200);
+  h.step(400);
+  assertEquals(h.ran.length, 1, "a deliberate press must not become two");
+
+  // Then it repeats on its own clock.
+  h.step(520);
+  h.step(620);
+  assert(h.ran.length >= 3, `expected repeats, got ${h.ran.length}`);
+  assert(h.ran.every((id) => id === "scale.up"));
+
+  // And stops the moment it is released.
+  pad.release(12);
+  h.step(720);
+  const afterRelease = h.ran.length;
+  h.step(820);
+  assertEquals(h.ran.length, afterRelease);
+});
+
+Deno.test("a one-shot button held down still fires exactly once", () => {
+  // The repeat is driven by the command's own `repeatable` flag, so holding
+  // "send my position" sends one position rather than seven — the same rule
+  // the keyboard follows.
+  const h = harness();
+  const pad = fakePad();
+  h.pads.push(pad);
+  h.connect();
+  h.step(0);
+
+  pad.press(5); // R1.
+  h.step(100);
+  h.step(600);
+  h.step(1200);
+  assertEquals(h.ran, ["position.send"]);
+});
+
+Deno.test("releasing and pressing again starts the delay over", () => {
+  // Otherwise the second press would look like a button held since the first
+  // and repeat immediately, which reads as a double press.
+  const h = harness();
+  const pad = fakePad();
+  h.pads.push(pad);
+  h.connect();
+  h.step(0);
+
+  pad.press(13); // D-pad down.
+  h.step(100);
+  pad.release(13);
+  h.step(200);
+  pad.press(13);
+  h.step(300);
+  assertEquals(h.ran, ["scale.down", "scale.down"]);
+  h.step(360);
+  assertEquals(h.ran.length, 2, "the delay restarted with the new press");
 });

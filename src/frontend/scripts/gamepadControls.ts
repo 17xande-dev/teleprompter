@@ -15,6 +15,7 @@ import {
   PAD_BINDINGS,
   type PadButton,
   readPad,
+  repeatDue,
   speedFromTriggers,
   stickScroll,
 } from "./gamepad.ts";
@@ -36,6 +37,16 @@ interface Slider {
 export interface GamepadHost {
   rngSpeed: Slider;
   scrollOwnPane(px: number): number;
+  /**
+   * Scroll the sidebar's controls, returning the pixels it actually moved.
+   *
+   * The right stick's job, and a different scroller from `scrollOwnPane`'s:
+   * that one is the script, this one is the column of cards under the preview
+   * — transport, clocks, message, sync, viewers — which on a short window is
+   * taller than its pane. Same shape as the other so both can carry a
+   * sub-pixel remainder honestly.
+   */
+  scrollControls(px: number): number;
 }
 
 /**
@@ -81,6 +92,15 @@ const SPEED_MAX = 500;
  */
 const STICK_MAX_PX_PER_SEC = 2500;
 
+/**
+ * The same for the right stick, over the sidebar.
+ *
+ * Slower than the script's, and deliberately: that column is around 1300px
+ * against the script's tens of thousands, so the same rate would cross the
+ * whole panel in half a flick and make picking out a card impossible.
+ */
+const CONTROLS_MAX_PX_PER_SEC = 900;
+
 export class GamepadControls {
   #host: GamepadHost;
   #actions = new Map<PadButton, () => void | Promise<void>>();
@@ -101,6 +121,18 @@ export class GamepadControls {
   #lastTime = -1;
   #held: ReadonlySet<PadButton> = new Set();
   #carry = 0;
+  /**
+   * The right stick's own sub-pixel remainder.
+   *
+   * Separate from the left stick's, because they drive different scrollers: a
+   * debt owed by the script has no business being spent on the sidebar.
+   */
+  #carryControls = 0;
+  /** Which commands may repeat while held, by button. */
+  #repeatable = new Set<PadButton>();
+  /** When each held button went down, and when it last fired. */
+  #pressedAt = new Map<PadButton, number>();
+  #firedAt = new Map<PadButton, number>();
   /**
    * Whether the last frame's throttle was off rest.
    *
@@ -135,6 +167,9 @@ export class GamepadControls {
         throw new Error(`pad button ${button} is bound to unknown ${id}`);
       }
       this.#actions.set(button as PadButton, () => command.run());
+      // Taken from the command rather than listed here, so "may this repeat"
+      // is answered once, in the table, for the keyboard and the pad alike.
+      if (command.repeatable) this.#repeatable.add(button as PadButton);
     }
 
     const target = options.target ?? globalThis;
@@ -190,12 +225,16 @@ export class GamepadControls {
 
     this.#applyThrottle(sample.forward, sample.reverse);
     this.#applyStick(sample.stickY, dt);
+    this.#applyRightStick(sample.rightStickY, dt);
 
     for (const button of newlyPressed(this.#held, sample.pressed)) {
       // No typing or dialog guard, unlike the keyboard: a pad cannot be typed
       // into, so there is no focus for it to steal or interfere with.
       this.#actions.get(button)?.();
+      this.#pressedAt.set(button, timestamp);
+      this.#firedAt.set(button, timestamp);
     }
+    this.#applyRepeats(sample.pressed, timestamp);
     this.#held = sample.pressed;
 
     this.#frame = this.#requestFrame((t) => this.#poll(t));
@@ -212,6 +251,46 @@ export class GamepadControls {
     // control the operator is looking at showing a speed nobody is running.
     this.#host.rngSpeed.value = speedFromTriggers(forward, reverse, SPEED_MAX);
     this.#host.rngSpeed.dispatchEvent(new Event("input"));
+  }
+
+  /**
+   * Fire a held button again, for the commands that say they may.
+   *
+   * A keyboard gets its repeat from the operating system; a polled pad has to
+   * keep the clock itself. Only `repeatable` commands qualify — holding "send
+   * my position" for half a second must send one position, not seven — which
+   * is the same flag the palette's key bindings read, so the two cannot
+   * disagree about which buttons are safe to hold.
+   */
+  #applyRepeats(pressed: ReadonlySet<PadButton>, timestamp: number) {
+    for (const button of pressed) {
+      if (!this.#repeatable.has(button)) continue;
+      const since = this.#pressedAt.get(button);
+      const last = this.#firedAt.get(button);
+      if (since === undefined || last === undefined) continue;
+      if (!repeatDue(timestamp - since, timestamp - last)) continue;
+      this.#actions.get(button)?.();
+      this.#firedAt.set(button, timestamp);
+    }
+    // Forget a button once it is up, or the next press would look like it had
+    // been held since the last one and repeat immediately.
+    for (const button of this.#pressedAt.keys()) {
+      if (!pressed.has(button)) {
+        this.#pressedAt.delete(button);
+        this.#firedAt.delete(button);
+      }
+    }
+  }
+
+  #applyRightStick(stickY: number, dtMs: number) {
+    if (stickY === 0) {
+      this.#carryControls = 0;
+      return;
+    }
+    const wanted = stickScroll(stickY, dtMs, CONTROLS_MAX_PX_PER_SEC) +
+      this.#carryControls;
+    const moved = this.#host.scrollControls(wanted);
+    this.#carryControls = carryRemainder(wanted, moved);
   }
 
   #applyStick(stickY: number, dtMs: number) {

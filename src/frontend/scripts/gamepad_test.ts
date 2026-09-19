@@ -9,6 +9,9 @@ import {
   PAD_LABELS,
   type PadButton,
   readPad,
+  REPEAT_DELAY_MS,
+  REPEAT_EVERY_MS,
+  repeatDue,
   speedFromTriggers,
   stickScroll,
   triggerValue,
@@ -20,6 +23,7 @@ function pad(
     r2 = 0,
     l2 = 0,
     stickY = 0,
+    rightStickY = 0,
     down = [] as PadButton[],
     mapping = "standard",
   },
@@ -30,9 +34,16 @@ function pad(
   }));
   buttons[7] = { pressed: r2 > 0, value: r2 };
   buttons[6] = { pressed: l2 > 0, value: l2 };
-  const index: Record<PadButton, number> = { cross: 0, l1: 4, r1: 5 };
+  const index: Record<PadButton, number> = {
+    cross: 0,
+    l1: 4,
+    r1: 5,
+    dpadUp: 12,
+    dpadDown: 13,
+  };
   for (const name of down) buttons[index[name]] = { pressed: true, value: 1 };
-  return { mapping, axes: [0, stickY, 0, 0], buttons };
+  // Axes 2 and 3 are the right stick under the standard mapping.
+  return { mapping, axes: [0, stickY, 0, rightStickY], buttons };
 }
 
 // The slider's own bounds, mirrored here so the expectations below read as the
@@ -134,4 +145,47 @@ Deno.test("every bound button has a label and no two share a command", () => {
   for (const name of Object.keys(PAD_BINDINGS) as PadButton[]) {
     assert(PAD_LABELS[name], `${name} has no label to show in the palette`);
   }
+});
+
+Deno.test("the right stick is read from its own axis, with the same deadzone", () => {
+  // Axes 2 and 3 are the right stick under the standard mapping. Reading the
+  // wrong index would make the *left* stick scroll two things at once, which
+  // looks like the sidebar having a mind of its own.
+  assertEquals(readPad(pad({ rightStickY: 0 }))!.rightStickY, 0);
+  assert(readPad(pad({ rightStickY: 1 }))!.rightStickY > 0.9);
+  assert(readPad(pad({ rightStickY: -1 }))!.rightStickY < -0.9);
+  // A worn stick at rest must not creep the panel along all service.
+  assertEquals(readPad(pad({ rightStickY: 0.1 }))!.rightStickY, 0);
+  // And the two sticks stay independent.
+  const both = readPad(pad({ stickY: -1, rightStickY: 1 }))!;
+  assert(both.stickY < -0.9 && both.rightStickY > 0.9);
+  assertEquals(readPad(pad({ stickY: 1 }))!.rightStickY, 0);
+});
+
+Deno.test("the D-pad's up and down arrive as pressed buttons", () => {
+  assertEquals(readPad(pad({ down: ["dpadUp"] }))!.pressed.has("dpadUp"), true);
+  assertEquals(
+    readPad(pad({ down: ["dpadDown"] }))!.pressed.has("dpadDown"),
+    true,
+  );
+  assertEquals(readPad(pad({}))!.pressed.size, 0);
+});
+
+Deno.test("the D-pad moves the viewers' size, in the direction it points", () => {
+  // Up is bigger. Worth asserting because the other vertical control on this
+  // pad — the speed slider — is geometrically inverted, so "up means more" is
+  // true here and false there, and the two sit under the same thumbs.
+  assertEquals(PAD_BINDINGS.dpadUp, "scale.up");
+  assertEquals(PAD_BINDINGS.dpadDown, "scale.down");
+});
+
+Deno.test("a held button waits before repeating, then repeats steadily", () => {
+  // Nothing fires during the delay, however long the frame gaps are.
+  assertEquals(repeatDue(0, 0), false);
+  assertEquals(repeatDue(REPEAT_DELAY_MS - 1, 999), false);
+  // Then it is the interval that governs, so the rate does not depend on the
+  // frame rate.
+  assertEquals(repeatDue(REPEAT_DELAY_MS, REPEAT_EVERY_MS), true);
+  assertEquals(repeatDue(REPEAT_DELAY_MS + 500, REPEAT_EVERY_MS - 1), false);
+  assertEquals(repeatDue(5000, REPEAT_EVERY_MS + 5), true);
 });

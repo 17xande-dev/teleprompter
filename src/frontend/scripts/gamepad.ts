@@ -20,7 +20,7 @@ export interface GamepadLike {
 }
 
 /** The controls this feature uses, named as a PlayStation pad labels them. */
-export type PadButton = "cross" | "l1" | "r1";
+export type PadButton = "cross" | "l1" | "r1" | "dpadUp" | "dpadDown";
 
 /**
  * Indices into `Gamepad.buttons` under the "standard" mapping.
@@ -29,8 +29,25 @@ export type PadButton = "cross" | "l1" | "r1";
  * rather than only `pressed` — which is what makes an analog throttle possible
  * at all. The stick is axes 0 (x) and 1 (y).
  */
-const BUTTON_INDEX = { cross: 0, l1: 4, r1: 5, l2: 6, r2: 7 } as const;
+const BUTTON_INDEX = {
+  cross: 0,
+  l1: 4,
+  r1: 5,
+  l2: 6,
+  r2: 7,
+  dpadUp: 12,
+  dpadDown: 13,
+} as const;
 const AXIS_STICK_Y = 1;
+/**
+ * The right stick's vertical axis.
+ *
+ * Axes 2 and 3 are the right stick under the standard mapping, the same way 0
+ * and 1 are the left. Only the vertical half is read: the sidebar it scrolls
+ * has no horizontal travel, and a stick that did something on both axes would
+ * make a diagonal nudge move the page sideways for no reason.
+ */
+const AXIS_RIGHT_STICK_Y = 3;
 
 /** One frame of the pad, in the terms this app cares about. */
 export interface PadSample {
@@ -40,6 +57,8 @@ export interface PadSample {
   reverse: number;
   /** -1..1 as the browser reports it: negative is stick pushed *up*. */
   stickY: number;
+  /** The same for the right stick, which scrolls the operator's own panel. */
+  rightStickY: number;
   /** The one-shot buttons held down this frame. */
   pressed: Set<PadButton>;
 }
@@ -83,7 +102,7 @@ export function readPad(pad: GamepadLike): PadSample | null {
 
   const button = (i: number) => pad.buttons[i];
   const pressed = new Set<PadButton>();
-  for (const name of ["cross", "l1", "r1"] as const) {
+  for (const name of ["cross", "l1", "r1", "dpadUp", "dpadDown"] as const) {
     if (button(BUTTON_INDEX[name])?.pressed) pressed.add(name);
   }
 
@@ -91,6 +110,10 @@ export function readPad(pad: GamepadLike): PadSample | null {
     forward: triggerValue(button(BUTTON_INDEX.r2)?.value ?? 0),
     reverse: triggerValue(button(BUTTON_INDEX.l2)?.value ?? 0),
     stickY: pastDeadzone(pad.axes[AXIS_STICK_Y] ?? 0, STICK_DEADZONE),
+    rightStickY: pastDeadzone(
+      pad.axes[AXIS_RIGHT_STICK_Y] ?? 0,
+      STICK_DEADZONE,
+    ),
     pressed,
   };
 }
@@ -161,6 +184,11 @@ export const PAD_BINDINGS: Record<PadButton, string> = {
   cross: "scroll.toggle",
   r1: "position.send",
   l1: "position.get",
+  // The viewers' size, not the operator's own: the D-pad is on the hand that
+  // is not holding the throttle, and "the text is too small" is a thing the
+  // person at the desk fixes for the room rather than for their screen.
+  dpadUp: "scale.up",
+  dpadDown: "scale.down",
 };
 
 /** How each bound button is named in the palette. */
@@ -168,4 +196,30 @@ export const PAD_LABELS: Record<PadButton, string> = {
   cross: "Cross",
   r1: "R1",
   l1: "L1",
+  dpadUp: "D-pad up",
+  dpadDown: "D-pad down",
 };
+
+/**
+ * How long a held button waits before it starts repeating, and how fast.
+ *
+ * A keyboard gets this from the operating system; a polled pad has to do it
+ * itself. Without it a held D-pad is one step, and the Text Scale slider is
+ * twenty steps wide — so the operator would be tapping rather than holding,
+ * which is not what a pad is for. The delay is what keeps a single deliberate
+ * press from becoming two.
+ */
+export const REPEAT_DELAY_MS = 400;
+export const REPEAT_EVERY_MS = 80;
+
+/**
+ * Whether a held button should fire again this frame.
+ *
+ * `heldMs` is how long it has been down, `sinceLastMs` how long since it last
+ * fired. Only commands marked `repeatable` are given to this — pressing
+ * "send my position" for half a second must send one position, not seven.
+ */
+export function repeatDue(heldMs: number, sinceLastMs: number): boolean {
+  if (heldMs < REPEAT_DELAY_MS) return false;
+  return sinceLastMs >= REPEAT_EVERY_MS;
+}
