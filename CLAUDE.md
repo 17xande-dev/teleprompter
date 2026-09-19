@@ -699,12 +699,31 @@ WebSocket relay, `ice.go` STUN/TURN config.
     of `var(--pane-height)`, so `Wordgard.scrolling()` was not in force, the
     script pane grew to the length of the document and **stopped scrolling at
     all** — with nothing in any console, and a reload appearing to fix it
-    because a reload goes back through the lucky path. `createWithStyles` in
+    because a reload goes back through the lucky path. `createEditor` in
     `editor.ts` is the fix this file already prescribed: copy the sheets the
     shadow root adopted onto `document.adoptedStyleSheets`, **diffed** against
     what that root held before the editor was built, so it takes the editor's
     own sheets and none of the component's. Anything that builds an editor goes
     through it.
+  - **The stylesheet is the lesser half. Wordgard keeps that same answer as
+    `wg.root` and decides focus with it**: `hasFocus` is
+    `root.activeElement == contentDOM`, and a shadow root's `activeElement` only
+    ever names elements _inside_ that shadow tree while the editor's content is
+    in the light DOM. So a rebuilt editor's `hasFocus` was permanently false —
+    and an editor that believes it is not focused never writes the browser's
+    selection. Measured after a double-click in a freshly created document:
+    Wordgard's state held the range (5 to 13, the word under the pointer) while
+    `getSelection()` was collapsed and empty, so **selecting with the mouse
+    highlighted nothing**, with the caret still blinking and nothing in any
+    console. `createEditor` therefore also sets `editor.root = document` —
+    `root` is public and writable, and the document is the correct answer for
+    slotted content: every other use of it is `activeElement`,
+    `elementFromPoint`, or a Safari branch that tests for a shadow root. It is
+    set _after_ create because `setConnected` assigns the root and calls
+    `mountStyles` in the same breath, leaving no moment to set it first — which
+    is also why the sheets still have to be hoisted. An editor **moved** in the
+    DOM would go back to the shadow root; nothing moves one today, since a
+    document switch builds a fresh editor.
   - This is invisible to type-checking _and_ to DOM-structure assertions —
     `.cm-editor`, `.cm-gutters` and 16 `.cm-line`s were all present and correct
     while the thing was completely unstyled. Assert **computed styles**, and
