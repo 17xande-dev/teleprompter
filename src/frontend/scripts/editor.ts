@@ -247,7 +247,7 @@ function enclosingShadowRoot(node: Node | null): ShadowRoot | null {
 }
 
 /**
- * Build an editor and rescue its stylesheet if it lands in a shadow root.
+ * Build an editor and put it back in touch with the document it lives in.
  *
  * **This is the trap CLAUDE.md predicted, and it is no longer hypothetical.**
  * Wordgard injects its CSS at runtime through style-mod, which picks a target
@@ -267,23 +267,49 @@ function enclosingShadowRoot(node: Node | null): ShadowRoot | null {
  * with nothing in any console. A reload appeared to fix it, because a reload
  * goes back through the lucky path.
  *
- * The rescue is CLAUDE.md's own prescription: copy the sheets the shadow root
- * adopted onto the document. Diffed against what that root held *before* the
- * editor was built rather than pattern-matched, so it takes exactly the
- * editor's own sheets and none of the component's. Idempotent across
- * switches: style-mod caches per root, so a second editor in the same place
- * adds nothing new, and the document already holds what the first one added.
+ * **The stylesheet is only half of it, and the other half is worse.** Wordgard
+ * keeps that same answer as `wg.root` and asks it `root.activeElement ==
+ * contentDOM` to decide whether it has focus — and a shadow root's
+ * `activeElement` only ever names elements *inside* that shadow tree, while
+ * the editor's content is in the light DOM. So `hasFocus` is permanently
+ * false, and an editor that believes it is not focused never writes the
+ * browser's selection: measured after a double-click in a freshly created
+ * document, Wordgard's own state held the range (5 to 13, the word under the
+ * pointer) while `getSelection()` was collapsed and empty. Nothing is painted
+ * from a collapsed selection, so **selecting with the mouse highlights
+ * nothing** — with the caret still blinking and nothing in any console.
+ *
+ * `root` is public and writable (`root: DocumentOrShadowRoot`, and not
+ * `readonly`, unlike `dom`), and `document` is the correct value for content
+ * that is slotted: every other use of it is `activeElement`,
+ * `elementFromPoint`, or a Safari branch that tests for a shadow root, and all
+ * three want the document here.
+ *
+ * The sheets are hoisted as well, because they are mounted *during* create —
+ * `setConnected` assigns the root and calls `mountStyles` in the same breath —
+ * so there is no moment to set the root first. Diffed against what that root
+ * held *before* the editor was built rather than pattern-matched, so it takes
+ * exactly the editor's own sheets and none of the component's. Idempotent
+ * across switches: style-mod caches per root, so a second editor in the same
+ * place adds nothing new, and the document already holds what the first added.
+ *
+ * One constraint this leaves behind: `setConnected` recomputes the root every
+ * time the element is connected, so an editor **moved** in the DOM would go
+ * back to the shadow root. Nothing moves one today — a document switch clears
+ * the mount and builds a fresh editor, which comes back through here.
  */
-function createWithStyles(el: Element, make: () => Wordgard): Wordgard {
+function createEditor(el: Element, make: () => Wordgard): Wordgard {
   const root = enclosingShadowRoot(el);
   const before = root ? [...root.adoptedStyleSheets] : [];
   const editor = make();
   if (!root) return editor;
+
   const added = root.adoptedStyleSheets.filter((s) => !before.includes(s));
   const missing = added.filter((s) => !document.adoptedStyleSheets.includes(s));
   if (missing.length) {
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, ...missing];
   }
+  editor.root = document;
   return editor;
 }
 
@@ -294,7 +320,7 @@ export function newEditor(
   brightenPaste?: () => boolean,
 ): Wordgard {
   clearMount(el);
-  return createWithStyles(el, () =>
+  return createEditor(el, () =>
     Wordgard.create({
       parent: el,
       doc: `<p>New Document</p>`,
@@ -334,5 +360,5 @@ export function restoreEditor(
     return newEditor(el, onUpdate, textSize, brightenPaste);
   }
   clearMount(el);
-  return createWithStyles(el, () => Wordgard.create({ parent: el, state }));
+  return createEditor(el, () => Wordgard.create({ parent: el, state }));
 }
