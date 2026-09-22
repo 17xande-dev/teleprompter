@@ -136,7 +136,20 @@ export class Viewer {
       },
     });
 
-    if (globalThis.self !== globalThis.top) {
+    // Being framed was never what made this the preview pane — having no room
+    // to join was. The two used to be the same thing, so the cheaper test
+    // stood in for the real one, and it stopped being true the moment
+    // something else framed this page: the marketing site's live demo puts
+    // /viewer?room=<id> in an iframe and got a viewer that rendered nothing
+    // and connected to nothing, silently, because this branch claimed it.
+    //
+    // The control page's own preview is still `/viewer` with no query, so it
+    // still lands here and the contract between the two is unchanged.
+    const room = new URLSearchParams(location.search).get("room");
+    if (!room) {
+      if (globalThis.self === globalThis.top) {
+        throw new Error("missing ?room= on standalone viewer page");
+      }
       this.isPreviewer = true;
       globalThis.addEventListener("message", (e: MessageEvent) => {
         if (e.origin !== location.origin) return;
@@ -157,11 +170,6 @@ export class Viewer {
         this.#restoreScroll();
       });
       return;
-    }
-
-    const room = new URLSearchParams(location.search).get("room");
-    if (!room) {
-      throw new Error("missing ?room= on standalone viewer page");
     }
 
     this.#link = connectViewer(room, {

@@ -29,6 +29,27 @@ Two paths matter behind a proxy or a cache rule: **`/control`** is the
 operator's page and **`/viewer`** is a display. `/` redirects to `/control`.
 Everything else served from the root is a content-hashed asset.
 
+## Who may frame this
+
+`securityHeaders` in `src/backend/main.go` sends
+`frame-ancestors 'self' https://teleprompter.17xande.dev`.
+
+`'self'` is what lets the control page put `/viewer` in its own preview pane.
+The named origin is the project's site, whose live demo frames `/control` and
+`/viewer?room=<id>` side by side so a visitor drives the real app rather than
+watching a recording of it. Under `-dev` the directive also admits
+`http://localhost:*` and `http://127.0.0.1:*`, so that site can be developed
+against a local server; production never sees those.
+
+If you self-host and want to embed this elsewhere, that is the line to edit, and
+the only one. Framing grants nothing beyond display: a framed control page
+reaches exactly the rooms any other control page does, and control of a room is
+gated by the control key, not by who may frame the page.
+
+A framing refusal is invisible from the server — it is reported in the _framing_
+page's console — so a wrong origin here looks like a blank iframe and nothing
+else.
+
 ## HTTPS
 
 **Put TLS in front of this.** Two reasons, and the second is not obvious:

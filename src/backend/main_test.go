@@ -7,10 +7,11 @@ import (
 	"testing"
 )
 
-// csp runs one request through the middleware and returns the policy.
-func csp(t *testing.T) string {
+// csp runs one request through the middleware and returns the policy. dev is
+// the server's -dev flag, which only frame-ancestors reads.
+func csp(t *testing.T, dev bool) string {
 	t.Helper()
-	h := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	h := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}), dev)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/control", nil))
 	got := rec.Header().Get("Content-Security-Policy")
@@ -39,7 +40,7 @@ func directive(t *testing.T, policy, name string) string {
 // are easy to drop when someone tightens this policy later, because nothing
 // in this repo references them and no other test would notice.
 func TestCSPAdmitsTheAnalyticsBeacon(t *testing.T) {
-	policy := csp(t)
+	policy := csp(t, false)
 
 	script := directive(t, policy, "script-src")
 	if !strings.Contains(script, "https://static.cloudflareinsights.com") {
@@ -58,7 +59,7 @@ func TestCSPAdmitsTheAnalyticsBeacon(t *testing.T) {
 // The relaxation above is one host in one directive. These are the properties
 // that make it affordable, and they are worth failing over if they go.
 func TestCSPStaysTightElsewhere(t *testing.T) {
-	policy := csp(t)
+	policy := csp(t, false)
 
 	script := directive(t, policy, "script-src")
 	// The pages render HTML pasted from Word and Google Docs (editor) and
@@ -92,8 +93,40 @@ func TestCSPStaysTightElsewhere(t *testing.T) {
 	}
 }
 
+// The marketing site's live demo is a pair of iframes pointed at /control and
+// /viewer, and the only thing that permits them is this directive. A framing
+// refusal never reaches this server's logs — it appears in the *framing*
+// page's console — so nothing else would notice this being tightened back.
+func TestCSPLetsTheMarketingSiteFrameTheApp(t *testing.T) {
+	ancestors := directive(t, csp(t, false), "frame-ancestors")
+
+	// 'self' stays: the control page frames /viewer as its own preview pane.
+	if !strings.Contains(ancestors, "'self'") {
+		t.Errorf("frame-ancestors must keep 'self' for the preview iframe, got %q", ancestors)
+	}
+	if !strings.Contains(ancestors, "https://teleprompter.17xande.dev") {
+		t.Errorf("frame-ancestors must admit the marketing site, got %q", ancestors)
+	}
+	// Production is exactly those two. localhost belongs to -dev alone.
+	if strings.Contains(ancestors, "localhost") {
+		t.Errorf("frame-ancestors must not admit localhost without -dev, got %q", ancestors)
+	}
+}
+
+// -dev is what lets the site's own dev server frame a local app. Its port
+// moves, hence the wildcard; it must never reach the deployed policy.
+func TestCSPAdmitsLocalhostOnlyInDev(t *testing.T) {
+	ancestors := directive(t, csp(t, true), "frame-ancestors")
+
+	for _, want := range []string{"http://localhost:*", "http://127.0.0.1:*"} {
+		if !strings.Contains(ancestors, want) {
+			t.Errorf("-dev frame-ancestors must admit %s, got %q", want, ancestors)
+		}
+	}
+}
+
 func TestSecurityHeadersSetNosniff(t *testing.T) {
-	h := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	h := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}), false)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/viewer", nil))
 	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {

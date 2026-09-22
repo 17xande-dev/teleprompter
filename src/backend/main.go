@@ -100,8 +100,27 @@ func pageHandler(fsys fs.FS, name string) http.Handler {
 // pdf.js only falls back to its blob: worker wrapper when workerSrc is
 // cross-origin, and /pdfworker.js is served from here — which is precisely
 // why the worker gets its own un-hashed bundle output (see deno.jsonc).
-func securityHeaders(next http.Handler) http.Handler {
-	const csp = "default-src 'self'; " +
+// frame-ancestors names the marketing site as well as 'self'. That site runs
+// a live demo of this app: it mints a room id and frames /control and
+// /viewer?room=<id> side by side, so a visitor drives the real thing rather
+// than watching a recording of it. 'self' alone refused that, and the refusal
+// is invisible from here — it surfaces only in the *framing* page's console.
+//
+// This permits framing; it grants nothing else. A framed control page reaches
+// the same rooms any other control page does, and a room has always been
+// joinable by anyone holding its id (see docs/architecture.md on the control
+// key, which is what actually gates control). The one origin named here is one
+// we serve; adding a second is a deliberate act, not a default.
+func securityHeaders(next http.Handler, dev bool) http.Handler {
+	// The site's dev server is some localhost port, and which one moves. A
+	// port-wildcarded source is the narrowest thing that survives that, and
+	// it is only ever in the policy under -dev — production never sees it.
+	frameAncestors := "frame-ancestors 'self' https://teleprompter.17xande.dev"
+	if dev {
+		frameAncestors += " http://localhost:* http://127.0.0.1:*"
+	}
+
+	csp := "default-src 'self'; " +
 		"script-src 'self' 'wasm-unsafe-eval' " +
 		"https://static.cloudflareinsights.com; " +
 		"style-src 'self' 'unsafe-inline'; " +
@@ -110,7 +129,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		"img-src 'self' data:; " +
 		"object-src 'none'; " +
 		"base-uri 'none'; " +
-		"frame-ancestors 'self'"
+		frameAncestors
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", csp)
@@ -150,7 +169,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           securityHeaders(mux),
+		Handler:           securityHeaders(mux, *dev),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
