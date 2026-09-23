@@ -12,7 +12,7 @@ On a Mac, `Ctrl` here means `Cmd`.
 A blank **Keys** cell means the command is palette-only, which is
 deliberate for anything reached once while setting up rather than mid-
 service. See [operating.md](operating.md) for what the controller's
-throttles and stick do, and [why some chords are unavailable](#unavailable).
+throttles and stick do, and [why some chords are unavailable](#unavailable-by-design).
 
 ## Scroll
 
@@ -85,7 +85,7 @@ throttles and stick do, and [why some chords are unavailable](#unavailable).
 | Command palette    | `Ctrl+K` |     |
 | Keyboard shortcuts | `Ctrl+/` |     |
 
-## Unavailable by design {#unavailable}
+## Unavailable by design
 
 `Ctrl+0`, `Ctrl+=` and `Ctrl+-` are browser zoom, which Chrome handles
 above the page: `preventDefault` does not stop them, so a binding there
