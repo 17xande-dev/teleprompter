@@ -109,13 +109,18 @@ func pageHandler(fsys fs.FS, name string) http.Handler {
 // This permits framing; it grants nothing else. A framed control page reaches
 // the same rooms any other control page does, and a room has always been
 // joinable by anyone holding its id (see docs/architecture.md on the control
-// key, which is what actually gates control). The one origin named here is one
-// we serve; adding a second is a deliberate act, not a default.
+// key, which is what actually gates control). The origins named here are ones
+// we serve; adding another is a deliberate act, not a default.
+//
+// The site moved to https://17xande.dev/teleprompter/. The old host stays
+// named only until teleprompter.17xande.dev is a redirect; after that nothing
+// frames from it, and it should go.
 func securityHeaders(next http.Handler, dev bool) http.Handler {
 	// The site's dev server is some localhost port, and which one moves. A
 	// port-wildcarded source is the narrowest thing that survives that, and
 	// it is only ever in the policy under -dev — production never sees it.
-	frameAncestors := "frame-ancestors 'self' https://teleprompter.17xande.dev"
+	frameAncestors := "frame-ancestors 'self' https://17xande.dev " +
+		"https://teleprompter.17xande.dev"
 	if dev {
 		frameAncestors += " http://localhost:* http://127.0.0.1:*"
 	}

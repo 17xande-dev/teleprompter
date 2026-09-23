@@ -32,10 +32,12 @@ Everything else served from the root is a content-hashed asset.
 ## Who may frame this
 
 `securityHeaders` in `src/backend/main.go` sends
-`frame-ancestors 'self' https://teleprompter.17xande.dev`.
+`frame-ancestors 'self' https://17xande.dev https://teleprompter.17xande.dev`.
 
 `'self'` is what lets the control page put `/viewer` in its own preview pane.
-The named origin is the project's site, whose live demo frames `/control` and
+The named origins are the project's site — now at
+`https://17xande.dev/teleprompter/`, with the old host kept only until it
+becomes a redirect — whose live demo frames `/control` and
 `/viewer?room=<id>` side by side so a visitor drives the real app rather than
 watching a recording of it. Under `-dev` the directive also admits
 `http://localhost:*` and `http://127.0.0.1:*`, so that site can be developed

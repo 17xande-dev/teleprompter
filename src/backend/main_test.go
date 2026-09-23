@@ -104,10 +104,11 @@ func TestCSPLetsTheMarketingSiteFrameTheApp(t *testing.T) {
 	if !strings.Contains(ancestors, "'self'") {
 		t.Errorf("frame-ancestors must keep 'self' for the preview iframe, got %q", ancestors)
 	}
-	if !strings.Contains(ancestors, "https://teleprompter.17xande.dev") {
+	if !strings.Contains(ancestors, "https://17xande.dev ") &&
+		!strings.HasSuffix(ancestors, "https://17xande.dev") {
 		t.Errorf("frame-ancestors must admit the marketing site, got %q", ancestors)
 	}
-	// Production is exactly those two. localhost belongs to -dev alone.
+	// localhost belongs to -dev alone.
 	if strings.Contains(ancestors, "localhost") {
 		t.Errorf("frame-ancestors must not admit localhost without -dev, got %q", ancestors)
 	}
