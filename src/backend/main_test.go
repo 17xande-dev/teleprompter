@@ -100,17 +100,13 @@ func TestCSPStaysTightElsewhere(t *testing.T) {
 func TestCSPLetsTheMarketingSiteFrameTheApp(t *testing.T) {
 	ancestors := directive(t, csp(t, false), "frame-ancestors")
 
-	// 'self' stays: the control page frames /viewer as its own preview pane.
-	if !strings.Contains(ancestors, "'self'") {
-		t.Errorf("frame-ancestors must keep 'self' for the preview iframe, got %q", ancestors)
-	}
-	if !strings.Contains(ancestors, "https://17xande.dev ") &&
-		!strings.HasSuffix(ancestors, "https://17xande.dev") {
-		t.Errorf("frame-ancestors must admit the marketing site, got %q", ancestors)
-	}
-	// localhost belongs to -dev alone.
-	if strings.Contains(ancestors, "localhost") {
-		t.Errorf("frame-ancestors must not admit localhost without -dev, got %q", ancestors)
+	// Production is exactly these two. 'self' is what lets the control page
+	// frame /viewer as its own preview pane; the other is the marketing site.
+	// An exact match rather than a search, so neither can go missing, and
+	// nothing else — localhost belongs to -dev alone — can slip in beside them.
+	const want = "'self' https://17xande.dev"
+	if ancestors != want {
+		t.Errorf("frame-ancestors = %q, want %q", ancestors, want)
 	}
 }
 
