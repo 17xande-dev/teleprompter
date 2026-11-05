@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for Codex working in this repository.
+Guidance for AI coding agents (Claude Code, Codex) working in this repository.
 
 Everything here is about _changing_ the code: the trade-offs, the rejected
 alternatives, and the constraints that produce no error when you break them. The
@@ -109,8 +109,13 @@ WebSocket relay, `ice.go` STUN/TURN config.
   client can't route the message to the right per-peer connection, so
   negotiation never completes and the connection sits in "connecting" forever
   with no error anywhere.
-- Server→client kinds: `welcome` (your id), `viewer-list`, `peer-joined`,
-  `peer-left`, `waiting`, `denied`.
+- Server→client kinds: `welcome` (your id and the ICE servers, TURN credentials
+  included — written before anything queued, and the only way they are issued;
+  there is no `/ice` endpoint), `viewer-list`, `peer-joined`, `peer-left`,
+  `waiting`, `denied`.
+- The hub caps rooms, peers per room and total peers (`limits`, env
+  `MAX_ROOMS`/`MAX_PEERS_PER_ROOM`/`MAX_PEERS`); a refusal is a 1013 close, not
+  a new message kind.
 - **A new controller evicts the sitting one** so an operator's refresh
   reconnects instead of orphaning viewers. Two consequences that are easy to get
   wrong, both now covered by tests:
@@ -143,6 +148,10 @@ WebSocket relay, `ice.go` STUN/TURN config.
 - `filetransfer.ts` — the framing for `file`: a JSON string header, raw
   ArrayBuffer chunks, a JSON string trailer, told apart by `typeof`. Kept
   separate from `webrtc.ts` so the boundary cases are unit-testable.
+- `controlframes.ts` — the framing for an oversized `control` message: JSON
+  parts with a `k: "part"` envelope, reassembled in order. Split out of
+  `webrtc.ts` for the same reason `filetransfer.ts` is, and see the trap below
+  for why it exists at all.
 - `pdfview.ts` — renders a PDF as a plain column of page divs, which is all the
   sync layer needs; `pdfjs.ts` / `pdfworker.ts` are bundle entries, not modules
   anyone imports directly.
@@ -162,6 +171,10 @@ WebSocket relay, `ice.go` STUN/TURN config.
   scroll by it every frame _after the speed was back at zero_, undoing any
   position sent to it on the next frame. "Send my position" silently did nothing
   and the viewer sat pinned to one end.
+- `colours.ts` / `textColour.ts` — the script's colour palette, split the usual
+  way: the list, its search words and the ids are DOM-free and tested (including
+  against the viewer's background — see the trap below), while the half that
+  dispatches a mark imports Wordgard and so can only be checked in a browser.
 - `textscale.ts` — the arithmetic behind matching the editor's font size to a
   viewer's, kept DOM-free and tested; `teleprompter.ts` does the measuring. What
   is matched is font size over content width, i.e. characters per line, because
@@ -219,7 +232,16 @@ WebSocket relay, `ice.go` STUN/TURN config.
   command _ids_**, resolved out of the same `Command[]` the palette gets, so the
   third input device joins the same "one list feeds both" rule — and
   `applyPadBindings` stamps the `pad` label onto the specs from that same map,
-  so the palette can't advertise a button that isn't wired.
+  so the palette can't advertise a button that isn't wired. **Each stick drives
+  its own scroller and carries its own remainder** — the left the script, the
+  right the sidebar's `#controls` — because a debt owed by one has no business
+  being spent on the other, and the sidebar's rate is lower (900 against
+  2500px/s) since that column is about 1300px rather than tens of thousands. **A
+  held button repeats only where the command says `repeatable`**, which is the
+  same flag the keyboard reads: the Text Scale slider is twenty steps wide and
+  wants holding, while holding "send my position" must still send one position.
+  The delay before the first repeat is what keeps a deliberate press from
+  becoming two.
 - `teleprompter.ts` — the control page. `viewer.ts` — the display, running
   either standalone (own WebRTC link) or embedded in the control page's preview
   iframe (postMessage), detected via `window.parent !== window`.
@@ -682,17 +704,65 @@ WebSocket relay, `ice.go` STUN/TURN config.
   plain box with numbers in it".
   - CodeMirror accepts `root`, so `cssEditor.ts` passes `root: document`.
   - **Wordgard has no such option** (`this.root = getRoot(this.dom.parentNode)`
-    in `setConnected`). The main editor gets away with it only by accident:
-    `teleprompter.ts` builds it in its constructor, _before_ `wa-split-panel`
-    upgrades and attaches its shadow root, so `assignedSlot` is still null and
-    the walk reaches the document. Verified — its rules really are in
-    `document.head`. If anything ever defers editor construction, or the mount
-    moves, it will break with no error. The fix then is to copy the sheets the
-    shadow root adopted onto `document.adoptedStyleSheets`.
+    in `setConnected`). The editor built in `teleprompter.ts`'s constructor gets
+    away with it by accident of timing — it is created _before_ `wa-split-panel`
+    upgrades and attaches its shadow root, so the walk reaches the document.
+    **Every _rebuilt_ editor does not, and that is every document switch and
+    every New.** This was predicted here as hypothetical and then found in the
+    running app: after a switch, `scrollDOM` computed `height: 32211px` instead
+    of `var(--pane-height)`, so `Wordgard.scrolling()` was not in force, the
+    script pane grew to the length of the document and **stopped scrolling at
+    all** — with nothing in any console, and a reload appearing to fix it
+    because a reload goes back through the lucky path. `createEditor` in
+    `editor.ts` is the fix this file already prescribed: copy the sheets the
+    shadow root adopted onto `document.adoptedStyleSheets`, **diffed** against
+    what that root held before the editor was built, so it takes the editor's
+    own sheets and none of the component's. Anything that builds an editor goes
+    through it.
+  - **The stylesheet is the lesser half. Wordgard keeps that same answer as
+    `wg.root` and decides focus with it**: `hasFocus` is
+    `root.activeElement == contentDOM`, and a shadow root's `activeElement` only
+    ever names elements _inside_ that shadow tree while the editor's content is
+    in the light DOM. So a rebuilt editor's `hasFocus` was permanently false —
+    and an editor that believes it is not focused never writes the browser's
+    selection. Measured after a double-click in a freshly created document:
+    Wordgard's state held the range (5 to 13, the word under the pointer) while
+    `getSelection()` was collapsed and empty, so **selecting with the mouse
+    highlighted nothing**, with the caret still blinking and nothing in any
+    console. `createEditor` therefore also sets `editor.root = document` —
+    `root` is public and writable, and the document is the correct answer for
+    slotted content: every other use of it is `activeElement`,
+    `elementFromPoint`, or a Safari branch that tests for a shadow root. It is
+    set _after_ create because `setConnected` assigns the root and calls
+    `mountStyles` in the same breath, leaving no moment to set it first — which
+    is also why the sheets still have to be hoisted. An editor **moved** in the
+    DOM would go back to the shadow root; nothing moves one today, since a
+    document switch builds a fresh editor.
   - This is invisible to type-checking _and_ to DOM-structure assertions —
     `.cm-editor`, `.cm-gutters` and 16 `.cm-line`s were all present and correct
     while the thing was completely unstyled. Assert **computed styles**, and
     look at a screenshot.
+- **Wordgard draws its own caret, so the script's gutter has to be padding.**
+  `caret-color` is transparent and a `wg-cursor` element is positioned inside
+  `wg-cursor-layer`, which is placed from the scroller and accounts for
+  `wg-content`'s _padding_ but not for a margin added underneath it. This file
+  used to recommend the opposite: `#editor wg-content` carried
+  `margin-inline-start`, and every caret was drawn **12.9px left of the text** —
+  at every position along the line, so an origin shift rather than a measurement
+  error — which at prompter sizes sits on the last letter instead of after it.
+  As padding the error is 0.9px, the caret's own border. The declared value
+  absorbs Wordgard's own 0.75rem on that element, since a longhand replaces it,
+  so the gutter stays where it was. `editorstyle_test.ts` guards it against the
+  stylesheet on disk: nothing else can see this — no unit test renders CSS,
+  type-checking cannot, and on screen it reads as a browser quirk rather than as
+  something this repo did.
+- **The editor states its own `::selection`.** Left to the browser, Chrome picks
+  different colours when the document does not have focus — a grey that is
+  nearly invisible against this near-black editor — and an operator's window
+  loses focus constantly, not least to the display they popped out. The colours
+  are named rather than taken from the theme, because the selection has to stay
+  readable over a script carrying its own: pasted red, a yellow cue, a
+  highlighted run.
 - **Custom elements here are autonomous (`<tp-clock>`), never customized
   built-ins (`<time is="tp-clock">`)**, because WebKit accepts the definition
   and then ignores it. Measured on iOS 18.7 / Safari 26.6 through the device's
@@ -751,6 +821,40 @@ WebSocket relay, `ice.go` STUN/TURN config.
   - Each attempt re-arms the next from inside its own callback rather than
     waiting for another state change, because a restart that fails to connect
     may never transition again — and then nothing would be left trying.
+- **Cloudflare injects a script the repo never wrote, and the CSP has to admit
+  it.** Web Analytics is set up by the proxy, so the deployed HTML asks for
+  `static.cloudflareinsights.com/beacon.min.js` even though nothing here
+  references it — and under `script-src 'self'` it was refused on every load,
+  logging a violation and collecting nothing. Two hosts, because they are two
+  different things: the beacon is _fetched_ from `static.cloudflareinsights.com`
+  and _reports_ to `cloudflareinsights.com/cdn-cgi/rum`, so allowing only the
+  script leaves it loading and then failing to report — which looks like working
+  analytics until the dashboard stays empty. `main_test.go` guards both hosts
+  and, in the same file, the properties that make the relaxation affordable (no
+  `'unsafe-inline'`, no `'unsafe-eval'`, no `blob:`), because nothing in this
+  repo references those hosts and a later tightening would drop them with no
+  other test noticing.
+- **A data channel refuses a message past `max-message-size`, and the script
+  goes past it.** 256KB in Chrome. `sendControl` used to hand the whole script
+  to `send` as one JSON string, and over that size it throws
+  `TypeError: Trying to send message larger than max-message-size` — measured on
+  the running app at 143KB of pasted HTML going through and 333KB throwing. Two
+  things made it expensive to diagnose. The throw lands _inside the editor's
+  update listener_, so it takes the rest of that handler with it and the preview
+  stops updating too; and it repeats on every later edit, so the display sits on
+  the last script small enough to fit with nothing on screen saying why.
+  `controlframes.ts` frames an oversized message as parts — `{k: "part"}`, never
+  `type`, so a part can never be read as a `ControlMessage` — and `pumpControl`
+  sends them with the same backpressure and generation `pumpFile` uses. **A
+  message that fits is still sent unwrapped**, which is every message but the
+  script and is what keeps them synchronous and in order. Two things not to
+  simplify: a cut must not split a surrogate pair (a lone surrogate is not
+  encodable as UTF-8, so the channel puts U+FFFD at both ends of the join and
+  the script arrives mangled), and the part count is produced by walking the
+  cuts rather than by dividing the length — a cut moved back off a pair makes a
+  part shorter, so the arithmetic answer can be one short and the receiver then
+  waits forever for a part that never comes. A theme's CSS travels the same
+  channel and is the other message that can grow without limit.
 - **A data channel isn't open when it's created.** Anything sent between
   `createDataChannel` and negotiation completing is dropped unless queued —
   `makeLink` queues control sends, and `connectViewer` queues again for the
@@ -1181,6 +1285,81 @@ position and the pacer carries on from there at the set speed.
   its real maximum. Pre-existing, and visible now that a scrub can put a display
   anywhere. Also note the guard is permanently true when the document is shorter
   than the viewport, so such a display never auto-scrolls at all.
+
+### Colouring the script
+
+Ctrl+Alt+C opens a searchable colour list, Ctrl+Alt+H repeats the last colour,
+and Ctrl+Alt+Y/R/B/N are the direct ones. `colours.ts` holds the palette,
+`textColour.ts` applies it, and the picker is the command palette in a third
+mode.
+
+- **Ctrl+Alt, not bare Alt.** Bare Alt+letter opens the browser's menus on
+  Windows and Linux and _inserts a character_ on macOS (Option+Y is ¥), and
+  these are pressed with the cursor in the script — a chord that fights the
+  editor is worse than no chord. It is also the family the rest of the table
+  uses. All six are `allowWhileTyping`, or they would be suppressed exactly when
+  they are wanted.
+- **There is no standard to follow for per-colour chords** — no major editor
+  ships them, checked before choosing. What _is_ conventional is repeat-last
+  (Notion `Ctrl+Shift+H`, Docs `Ctrl+Alt+H`, hence `H`) and a searchable list
+  (Notion's `/red`). Worth knowing before someone "corrects" these to match
+  another app.
+- **Clearing a colour is not `remove: Color.of("")`.** An attribute mark is
+  matched by its _value_, so removing an empty-valued Color leaves a `#ffd400`
+  run exactly as it was — verified in the browser, where the span survived the
+  shortcut with nothing reported anywhere. The document has to be walked over
+  the selection and the instance actually present removed, which is what
+  Wordgard's own `setColor` does, and a range can hold several colours at once.
+- **A bare cursor needs the stored-marks branch.** Colouring with no selection
+  means "what I type next", which is a mark on the selection rather than a
+  change to the document; without it, pressing a colour chord before typing a
+  cue does nothing at all.
+- **`wa-dialog` returns focus but not the caret.** After picking from the
+  palette the editor reported `hasFocus` while the browser's selection was still
+  inside the closed dialog's markup, so the next keystroke landed at the _top_
+  of a 200-block script. `PaletteControls` takes a `restoreFocus` callback and
+  calls it on `wa-after-hide` — after the hide, because the dialog restores
+  focus as part of hiding and anything done before is undone — and the control
+  page re-asserts `state.selection`, which is what writes the caret back.
+  `state.selection`, not `state.sel`: the latter is the resolved selection and
+  `dispatch` wants the plain one.
+- **The palette is contrast-checked, not chosen by taste.** `colours_test.ts`
+  runs every entry through `contrastOnBlack` and `MIN_TEXT_LUMINANCE` — the same
+  bar `brightenTextColor` applies to a _pasted_ colour. Shipping a list is only
+  worth anything if the list passes it: plain blue is 2.44:1 on black, which is
+  why the blue here is a pale cornflower. The operator can still reach any
+  colour through the editor's own picker.
+- **"Default" clears the mark rather than setting white**, so the run inherits
+  `--viewer-color` and follows a user theme — the same reasoning as
+  `contrast.ts` dropping a grey instead of replacing it. It is also the one
+  choice not remembered by "repeat last colour", which would otherwise come to
+  mean "clear it again".
+
+### Remembering where the operator was
+
+The control page's own pane is stored per document as a `BlockPos` on `Doc`, and
+restored a frame after the editor is built.
+
+- **A block and a fraction, never pixels or a ratio**, for the reason the Sync
+  buttons already carry: the reading size and the pane's width both change
+  between sessions, and a bigger font wraps long paragraphs more than short
+  ones, so neither survives. The block index is the same document either way.
+- **`setScrollFor` takes the id explicitly.** `setCurrent` moves before the
+  editor is rebuilt, so writing against "the current document" files the
+  outgoing pane's position under the script just opened — the operator then
+  opens a script and lands somewhere they have never been. `#loadedDocID` is
+  what the control page measures against.
+- **Restored after a frame, not immediately.** The editor is built synchronously
+  but has no geometry until layout, and `#blockMetrics` measured before that
+  returns zero-height blocks, which resolves to the top — silently losing the
+  place this exists to keep.
+- Shares `DocStorage`'s throttle and its timer: a wheel produces events as fast
+  as typing does, and each write serialises the whole collection. The control
+  page measures _and_ flushes on `pagehide`/hidden rather than leaving it to
+  `DocControls`' own handler, which was registered first and so would write
+  before the measurement.
+- PDFs are excluded: held in memory for the session, so there is nothing to come
+  back to.
 
 ### The Sync buttons, and the coordinate space their offsets live in
 
