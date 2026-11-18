@@ -36,6 +36,12 @@ servers:
 # The health check is /viewer: a static 200. `/` redirects to /control, and the
 # app has no dedicated health route. The image sets no Docker HEALTHCHECK.
 proxy:
+  run:
+    # Pinned: Kamal defaults to v0.9.2. A running proxy is not swapped by `kamal deploy`;
+    # `kamal proxy reboot` (brief outage) applies a change here. `publish: false` replaces
+    # the old `kamal proxy boot_config set --no-publish`: the tunnel is the only way in.
+    version: v0.10.3
+    publish: false
   ssl: false
   host: teleprompter.17xande.dev
   app_port: 8080
