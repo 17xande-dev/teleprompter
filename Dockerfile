@@ -1,5 +1,5 @@
 # Stage 1: bundle the frontend with Deno.
-FROM denoland/deno:alpine-2.9.7 AS frontend
+FROM denoland/deno:alpine-2.9.8 AS frontend
 WORKDIR /app
 COPY deno.jsonc deno.lock ./
 COPY bundle.ts ./
